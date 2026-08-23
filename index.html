@@ -41,11 +41,20 @@
     display:flex; gap:8px; padding:8px 10px; background:var(--panel);
     border-bottom:1px solid var(--line); flex:0 0 auto; overflow-x:auto;
   }
+  /* Tinted with the seat's own colour, and with a solid bar down the left,
+     so you can tell who is who at a glance however people rename themselves.
+     The colours arrive as custom properties rather than a plain inline style
+     so that .active can still take the border over for whose turn it is. */
   .pcard{
-    flex:1 1 0; min-width:128px; background:var(--panel2); border:1px solid var(--line);
-    border-radius:8px; padding:7px 9px;
+    flex:1 1 0; min-width:128px; border-radius:8px; padding:7px 9px;
+    background:var(--pcTint, var(--panel2));
+    border:1px solid var(--pcEdge, var(--line));
+    border-left:5px solid var(--pc, var(--line));
   }
-  .pcard.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset}
+  .pcard.active{
+    border-color:var(--accent); border-left-color:var(--pc);
+    box-shadow:0 0 0 2px var(--accent) inset;
+  }
   .pcard.done{opacity:.55}
   .pcard .phead{display:flex; align-items:center; gap:7px; margin-bottom:6px}
   .pcard .pname{font-weight:600; font-size:13px; flex:1; white-space:nowrap}
@@ -74,8 +83,10 @@
   svg{width:100%; height:100%; touch-action:none; display:block}
   #leftbtns{position:absolute; left:10px; top:10px; z-index:5; display:flex; gap:6px}
   #leftbtns button{white-space:nowrap}
+  /* Sits under the dice, which share this right edge — the offset has to
+     clear their full height or the two overlap. */
   #zoomWrap{
-    position:absolute; right:12px; top:62px; z-index:4;
+    position:absolute; right:12px; top:110px; z-index:4;
     display:flex; flex-direction:column; gap:4px;
   }
   #zoomWrap button{width:30px; text-align:center; padding:3px 0; font-size:14px; line-height:1}
@@ -226,19 +237,19 @@
   @keyframes evin{from{transform:translateX(-10px);opacity:0}to{transform:none;opacity:1}}
   #diceWrap{position:absolute; right:12px; top:10px; z-index:3; display:flex; align-items:center; gap:8px}
   .die{
-    width:44px; height:44px; border-radius:9px; background:#f2ead6; border:1px solid #0b0d10;
-    box-shadow:0 3px 10px #0008; display:grid; grid-template:repeat(3,1fr)/repeat(3,1fr);
-    padding:6px; gap:1px; flex:0 0 auto;
+    width:88px; height:88px; border-radius:16px; background:#f2ead6; border:2px solid #0b0d10;
+    box-shadow:0 5px 16px #0009; display:grid; grid-template:repeat(3,1fr)/repeat(3,1fr);
+    padding:11px; gap:2px; flex:0 0 auto;
   }
-  .die i{border-radius:50%; background:#242424; width:8px; height:8px; align-self:center; justify-self:center}
+  .die i{border-radius:50%; background:#242424; width:16px; height:16px; align-self:center; justify-self:center}
   .die i.off{background:transparent}
   .die.roll{animation:tumble .45s ease-out}
   @keyframes tumble{
     0%{transform:rotate(-18deg) scale(.8)} 60%{transform:rotate(10deg) scale(1.08)} 100%{transform:none}
   }
   .dicesum{
-    font-size:21px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--ink);
-    background:#0b0d10cc; border:1px solid var(--line); border-radius:8px; padding:5px 11px;
+    font-size:32px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--ink);
+    background:#0b0d10cc; border:1px solid var(--line); border-radius:10px; padding:7px 15px;
   }
   .dicesum.seven{color:var(--danger); border-color:var(--danger)}
 
@@ -391,6 +402,11 @@
   .recent span.seven{border-color:var(--danger); color:var(--danger)}
 
   @media (max-width:900px){
+    /* Full-size dice would eat a narrow board. */
+    .die{width:58px; height:58px; border-radius:11px; padding:7px}
+    .die i{width:10px; height:10px}
+    .dicesum{font-size:22px; padding:5px 11px}
+    #zoomWrap{top:80px}
     #feed{width:150px}
     .ev{font-size:11px; padding:4px 6px}
     #leftbtns{flex-direction:column}
@@ -482,7 +498,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-23b";
+const GAME_VERSION = "2026-08-23c";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1258,11 +1274,18 @@ function drawBoard(){
     const generic = e.port === "3:1";
     const col = generic ? "#95a1b3" : RES_COLOR[e.port];
     // 2:1 ports are identified by colour alone; 3:1s just show "?".
+    // The <title> has to be a CHILD of what it describes. Loose in the SVG it
+    // became the title of the whole drawing, so every port showed whichever
+    // one happened to be emitted first. Wrapping each marker in its own <g>
+    // gives each port back its own tooltip.
+    const label = generic ? "3:1 port — any resource, three of a kind"
+                          : "2:1 port — " + RES_NAME[e.port];
     h += `<line x1="${m.x}" y1="${m.y}" x2="${px}" y2="${py}" stroke="${col}" stroke-width="3" opacity=".6"/>`;
-    h += `<circle cx="${px}" cy="${py}" r="13" fill="#1a1e25" stroke="${col}" stroke-width="2.5"/>`;
-    h += `<title>${generic ? "3:1 — any resource" : "2:1 " + RES_NAME[e.port]}</title>`;
-    h += `<text x="${px}" y="${py + 4}" text-anchor="middle" font-size="${generic ? 13 : 10}"
-             font-weight="700" fill="${col}" pointer-events="none">${generic ? "?" : "2:1"}</text>`;
+    h += `<g class="portmark"><title>${esc(label)}</title>
+            <circle cx="${px}" cy="${py}" r="13" fill="#1a1e25" stroke="${col}" stroke-width="2.5"/>
+            <text x="${px}" y="${py + 4}" text-anchor="middle" font-size="${generic ? 13 : 10}"
+                  font-weight="700" fill="${col}" pointer-events="none">${generic ? "?" : "2:1"}</text>
+          </g>`;
   }
 
   // Hexes
@@ -1360,17 +1383,17 @@ function drawBoard(){
       const col = S.players[v.owner].color;
       const pieceArt = art("piece", v.type);
       if (pieceArt){
-        const sz = v.type === "city" ? 34 : 28;
+        const sz = v.type === "city" ? 38 : 32;
         h += `<image href="${pieceArt}" x="${v.x - sz/2}" y="${v.y - sz/2}" width="${sz}" height="${sz}"
                      filter="url(#tint${v.owner})" pointer-events="none"/>`;
       } else if (v.type === "settlement"){
-        h += `<g transform="translate(${v.x},${v.y})">
-                <path d="M-9,4 L-9,-2 L0,-9 L9,-2 L9,4 Z" fill="${col}" stroke="#0b0d10" stroke-width="2"/>
+        h += `<g transform="translate(${v.x},${v.y}) scale(1.18)">
+                <path d="M-9,4 L-9,-2 L0,-9 L9,-2 L9,4 Z" fill="${col}" stroke="#0b0d10" stroke-width="1.8"/>
               </g>`;
       } else {
-        h += `<g transform="translate(${v.x},${v.y})">
+        h += `<g transform="translate(${v.x},${v.y}) scale(1.18)">
                 <path d="M-12,6 L-12,-3 L-4,-9 L-4,-3 L4,-3 L12,-3 L12,6 Z" fill="${col}"
-                      stroke="#0b0d10" stroke-width="2"/>
+                      stroke="#0b0d10" stroke-width="1.8"/>
               </g>`;
       }
     }
@@ -1519,7 +1542,8 @@ function drawPlayers(){
   for (const p of S.players){
     const active = p.id === S.cur && S.phase !== "over";
     h += `<div class="pcard ${active ? "active" : ""} ${p.skipTokens ? "done" : ""}"
-                data-pid="${p.id}">
+                data-pid="${p.id}"
+                style="--pc:${p.color}; --pcTint:${p.color}26; --pcEdge:${p.color}88">
             <div class="phead">
               <span class="dot" style="background:${p.color}"></span>
               <span class="pname">${p.name}${!isBot(p.id) && anyBots() ? " <span class=\"you\">you</span>" : ""}</span>
@@ -2749,9 +2773,16 @@ function resolveCard(action){
         const n = Math.min(want[r], target.res[r]);
         if (n > 0){ target.res[r] -= n; actor.res[r] += n; noteGain(actor, r, n); got.push(n + " " + RES_NAME[r]); }
       }
+      const asked = plainRes(want);
       logMsg(got.length
-        ? `<b>${target.name}</b> owes <b>${actor.name}</b> a favor: ${got.join(", ")}.`
-        : `<b>${target.name}</b> had none of what <b>${actor.name}</b> asked for.`);
+        ? `<b>${target.name}</b> owes <b>${actor.name}</b> a favor: ${got.join(", ")} (asked for ${asked}).`
+        : `<b>${target.name}</b> had none of what <b>${actor.name}</b> asked for (${asked}).`);
+      // The outcome had no feed line at all, so a Favor that came up empty
+      // looked identical to one that was never resolved.
+      announce(got.length
+        ? pdot(actor) + " takes " + esc(got.join(", ")) + " from " + pdot(target)
+        : pdot(target) + " has none of it — " + pdot(actor) + " gets nothing",
+        got.length ? "attack" : "info");
       break;
     }
 
@@ -3200,8 +3231,22 @@ function defuseEntry(id, defuserId){
 
 
 /* One line describing a card being played. */
+/* Plain text version of a resource bundle: "2 Wheat, 1 Ore". resList() is the
+   chip markup for the feed; this is for the places that want a sentence. */
+function plainRes(o){
+  if (!o) return "";
+  return RES.filter(r => o[r] > 0).map(r => o[r] + " " + RES_NAME[r]).join(", ");
+}
+
 function describeCard(base){
   const who = S.players[base.actor];
+  // Naming three cards IS the Favor — say which three. Without this a Favor
+  // that collected nothing left no record of what was ever asked for.
+  if (base.card.key === "favor" && base.payload && base.payload.want){
+    const asked = plainRes(base.payload.want);
+    return pdot(who) + " plays <b>Favor</b> on " + pdot(S.players[base.target]) +
+           (asked ? "<br><span style='opacity:.8'>asks for " + esc(asked) + "</span>" : "");
+  }
   if (base.card.key === "alter" && base.payload && base.payload.hexes){
     const [ha, hb] = base.payload.hexes;
     return pdot(who) + " plays <b>Alter the Future</b>: swap <b>" + hexes[ha].number +
@@ -4258,13 +4303,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-23b"></script>
+<script src="ai.js?v=2026-08-23c"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-23b"></script>
-<script src="net.js?v=2026-08-23b"></script>
+<script src="firebase-config.js?v=2026-08-23c"></script>
+<script src="net.js?v=2026-08-23c"></script>
 </body>
 </html>
