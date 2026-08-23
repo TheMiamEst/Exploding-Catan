@@ -8,13 +8,12 @@
 
    Until this is filled in, the Online button explains itself and the local
    game (hot-seat, or you against the bots) works exactly as it always has. */
-
-const FIREBASE_CONFIG = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT.firebaseapp.com",
-  databaseURL:       "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-  projectId:         "YOUR_PROJECT",
-  storageBucket:     "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID"
+const firebaseConfig = {
+  apiKey: "AIzaSyBBuuCbiXAVZxImw5450tRKtfogBJswryI",
+  authDomain: "exploding-catan.firebaseapp.com",
+  databaseURL: "https://exploding-catan-default-rtdb.firebaseio.com",
+  projectId: "exploding-catan",
+  storageBucket: "exploding-catan.firebasestorage.app",
+  messagingSenderId: "592888559207",
+  appId: "1:592888559207:web:8408de57e8003ed40406c2"
 };
