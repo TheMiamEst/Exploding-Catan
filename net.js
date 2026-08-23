@@ -123,6 +123,18 @@ function connect(){
   return NET.db;
 }
 
+/* Whatever was being played on this machine stops now. Without this a guest
+   carried its local game's bots into the online session, and since a click
+   handler on a terminal sends an intent rather than acting, those bots
+   cheerfully played the guest's turns for them the moment one came round —
+   which looks exactly like "the board does not respond". */
+function dropLocalGame(){
+  window.AGENTS = {};
+  if (window.AI && window.AI.stop) window.AI.stop();
+  if (typeof clearReactClock === "function") clearReactClock();
+  if (typeof clearImplodeClock === "function") clearImplodeClock();
+}
+
 function randomCode(){
   let s = "";
   for (let i = 0; i < 4; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
@@ -158,6 +170,7 @@ function arr(v, len){
 
 function serializeGame(){
   return {
+    ver:      (typeof GAME_VERSION !== "undefined") ? GAME_VERSION : null,
     n:        S.players.length,
     terrain:  hexes.map(h => h.terrain),
     numbers:  hexes.map(h => h.number),
@@ -222,6 +235,11 @@ function viewFor(blob, seat){
 NET.pubVersion = 0;
 
 function applyGame(b){
+  // Say so plainly when the host is running different code. Nearly every
+  // "online is broken" report is one machine sitting on a cached build.
+  if (typeof showVersionWarning === "function") showVersionWarning(b.ver);
+  // A terminal never runs bots, whatever it was doing before it joined.
+  if (isGuest() && window.AGENTS && Object.keys(window.AGENTS).length) dropLocalGame();
   if (!S || S.players.length !== b.n) newGame(b.n);
 
   const nh = hexes.length, nv = vertices.length, ne = edges.length;
@@ -496,7 +514,7 @@ function hostLobby(){
       '<div class="rules" style="margin-top:8px">You are the host: your browser is running the game, so ' +
       'leaving this page ends it for everyone.</div>';
     openModal("Hosting — " + NET.code, body, [
-      { label:"Cancel", fn: () => { teardown(); closeModal(); } },
+      { label:"Cancel", fn: () => { teardown(); closeModal(); backToIdle(); } },
       { label:"Start game", cls:"primary", fn: start }
     ]);
   };
@@ -509,13 +527,14 @@ function guestLobby(){
     if (NET.started) return;
     openModal("Joined " + NET.code,
       '<p class="sub">You are in. Waiting for the host to start.</p>' + seatRowsHTML(),
-      [{ label:"Leave", fn: () => { teardown(); closeModal(); } }]);
+      [{ label:"Leave", fn: () => { teardown(); closeModal(); backToIdle(); } }]);
   };
   NET.onRoster = refresh;
   refresh();
 }
 
 function startHost(n, name){
+  dropLocalGame();
   connect();
   NET.role = "host"; NET.on = true; NET.dead = null;
   NET.uid = randomId(); NET.name = name; NET.seat = 0; NET.code = randomCode();
@@ -550,6 +569,7 @@ function startHost(n, name){
 }
 
 function startGuest(code, name){
+  dropLocalGame();
   connect();
   NET.role = "guest"; NET.on = true; NET.dead = null;
   NET.uid = randomId(); NET.name = name; NET.code = code; NET.seat = null;
@@ -610,7 +630,7 @@ function hostGone(){
   NET.dead = "host left";
   openModal("The host left", '<p class="sub">The browser running the game has gone, so the game ' +
     'has gone with it. That is the trade for not needing a server.</p>',
-    [{ label:"Close", cls:"primary", fn: () => { teardown(); closeModal(); newGameDialog(); } }]);
+    [{ label:"Close", cls:"primary", fn: () => { teardown(); closeModal(); backToIdle(); } }]);
 }
 
 function teardown(){
@@ -645,7 +665,7 @@ window.onlineDialog = function(){
       '</b> as <b>' + esc(NET.name) + '</b>' + (NET.seat !== null ? " in the " +
       PLAYER_NAMES[NET.seat] + " seat" : "") + '.</p>' + seatRowsHTML(),
       [{ label:"Stay", cls:"primary", fn: closeModal },
-       { label:"Leave the game", cls:"warn", fn: () => { teardown(); closeModal(); newGameDialog(); } }]);
+       { label:"Leave the game", cls:"warn", fn: () => { teardown(); closeModal(); backToIdle(); } }]);
     return;
   }
 

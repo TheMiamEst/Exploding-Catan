@@ -957,6 +957,10 @@ function selectOwner(){
 function tickNow(){
   timer = null;
   if (!S || S.phase === "over") return;
+  // Online, only the host runs the game. A terminal that still had agents
+  // lying about from a local game would drive seats it does not own, and its
+  // "clicks" go out as intents — so it would play for the human sitting there.
+  if (window.NET && NET.isGuest && NET.isGuest()) return;
   if (!S.players.some(p => agentOf(p.id))) return;      // pure hot-seat game
 
   // A human prompt is open, or a response window is settling. Wait it out.

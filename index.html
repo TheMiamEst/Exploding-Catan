@@ -102,6 +102,27 @@
   #implodeClock.urgent{border-color:#ff5a5a; animation:pulse .6s infinite alternate}
   /* The hand-over window between turns: the seconds in which a Nope, an
      Attack or a Defuse can still be thrown before the next player rolls. */
+  /* Shown when no game is running. Not a modal: the header stays reachable,
+     which is the whole point — the New Game dialog used to cover it. */
+  #idleCard{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:6;
+    background:#1c2129f2; border:1px solid var(--line); border-radius:12px;
+    padding:26px 30px; text-align:center; max-width:430px;
+    box-shadow:0 18px 50px #000a;
+  }
+  #idleCard h2{margin:0 0 6px; font-size:22px; letter-spacing:.5px}
+  #idleCard h2 span{color:var(--accent)}
+  #idleCard p{margin:0 0 16px; color:var(--dim); font-size:13px; line-height:1.5}
+  #idleCard .pick{display:flex; gap:8px; justify-content:center; flex-wrap:wrap}
+  #idleCard .pick button{padding:9px 16px}
+  #verTag{font-size:10px; color:var(--dim); letter-spacing:.4px; font-variant-numeric:tabular-nums}
+  /* Someone in this game is running different code. */
+  #verWarn{
+    position:absolute; left:50%; transform:translateX(-50%); top:8px; z-index:8;
+    background:#4a2230f2; border:1px solid var(--danger); border-radius:8px;
+    padding:7px 14px; font-size:12.5px; text-align:center; color:#ffdede;
+    box-shadow:0 6px 20px #0009; max-width:min(560px, 92%);
+  }
   #reactClock{
     position:absolute; left:50%; transform:translateX(-50%); top:8px; z-index:7;
     background:#12303aF2; border:1px solid #4bb1d9; border-radius:8px;
@@ -416,6 +437,7 @@
 <header>
   <h1>Exploding <span>Catan</span></h1>
   <div class="spacer"></div>
+  <span id="verTag" title="Build. Everyone playing together must match."></span>
   <button class="sm" onclick="onlineDialog()">Online</button>
   <button class="sm" onclick="showArt()">Art</button>
   <button class="sm" onclick="showRules()">Rules</button>
@@ -453,6 +475,14 @@
 /* ══════════════════════════════════════════════════════════════════════
    CONSTANTS
    ══════════════════════════════════════════════════════════════════════ */
+
+/* Bump this on any change to what travels between browsers, AND bump the ?v=
+   on the three script tags at the bottom of this file to match — GitHub Pages
+   serves assets with max-age=600, so without it players sit on stale code for
+   ten minutes and the game misbehaves in ways that look like game bugs.
+   The host stamps this into the state; a terminal on a different build says
+   so out loud instead of quietly failing. */
+const GAME_VERSION = "2026-08-23a";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1103,8 +1133,68 @@ function tradeRate(p, r){
    RENDERING
    ══════════════════════════════════════════════════════════════════════ */
 
+/* No game in progress. The page used to open on a New Game dialog with no way
+   out of it, so you had to start a local game before you could even reach the
+   Online button — and that local game, bots and all, then went on running
+   underneath the online session. */
+function renderIdle(){
+  const strip = document.getElementById("players"); if (strip) strip.innerHTML = "";
+  const svg = document.getElementById("board");     if (svg) svg.innerHTML = "";
+  const dk  = document.getElementById("deckWrap");  if (dk) dk.innerHTML = "";
+  const dc  = document.getElementById("diceWrap");  if (dc) dc.innerHTML = "";
+  const bot = document.getElementById("bottom");
+  if (bot) bot.innerHTML = '<div class="bside"></div><div class="bcentre">' +
+    '<span class="emptyhand">No game running.</span></div><div class="bside right"></div>';
+  hint(null);
+  showIdle(true);
+}
+
+/* Put the table away and go back to the opening screen. */
+function backToIdle(){
+  if (window.AI && window.AI.stop) window.AI.stop();
+  window.AGENTS = {};
+  clearReactClock(); clearImplodeClock();
+  S = null;
+  clearFeed();
+  renderIdle();
+}
+
+function showIdle(on){
+  let el = document.getElementById("idleCard");
+  if (!on){ if (el) el.remove(); return; }
+  if (el) return;
+  el = document.createElement("div");
+  el.id = "idleCard";
+  el.innerHTML = '<h2>Exploding <span>Catan</span></h2>' +
+    '<p>Catan with the development deck torn out and 54 kitten cards put in its place.</p>' +
+    '<div class="pick">' +
+      '<button class="primary" onclick="newGameDialog()">New game here</button>' +
+      '<button onclick="onlineDialog()">Play online</button>' +
+      '<button onclick="showRules()">Rules</button>' +
+    '</div>';
+  const area = document.getElementById("boardArea");
+  if (area) area.appendChild(el);
+}
+
+/* A banner, not a dialog: the state arriving from the host would close a
+   dialog on the next update, and this needs to stay put until it is fixed. */
+function showVersionWarning(hostVer){
+  let el = document.getElementById("verWarn");
+  if (!hostVer || hostVer === GAME_VERSION){ if (el) el.remove(); return; }
+  if (!el){
+    el = document.createElement("div");
+    el.id = "verWarn";
+    const area = document.getElementById("boardArea");
+    if (area) area.appendChild(el);
+  }
+  el.innerHTML = "⚠ You are running build <b>" + esc(GAME_VERSION) + "</b> but the host is on <b>" +
+                 esc(hostVer) + "</b>. Reload the page — until you do, the game will " +
+                 "behave strangely in ways that are not its fault.";
+}
+
 function render(){
-  if (!S) return;
+  if (!S){ renderIdle(); return; }
+  showIdle(false);
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
   refreshFeedMarks();
   // A repaint in the middle of a drag (a bot moving, say) wipes the outlines
@@ -3731,7 +3821,7 @@ function newGameDialog(){
   for (let n = 2; n <= 6; n++)
     h += `<button onclick="window.__ng(${n},false)">${n} players${n === 2 ? " (test)" : ""}</button>`;
   h += `</div>`;
-  openModal("New Game", h, []);
+  openModal("New Game", h, [{ label:"Cancel", fn: () => { closeModal(); if (!S) renderIdle(); } }]);
   window.__ng = (n, bots) => {
     closeModal();
     window.AGENTS = {};
@@ -4151,18 +4241,23 @@ preloadArt(() => {
 /* Deferred to load: ai.js is a separate <script> that has not run yet at this
    point in the file, so calling it inline would offer no bot options until the
    player opened the dialog a second time. */
-window.addEventListener("load", function(){ initBoardControls(); newGameDialog(); });
+window.addEventListener("load", function(){
+  initBoardControls();
+  const vt = document.getElementById("verTag");
+  if (vt) vt.textContent = GAME_VERSION;
+  renderIdle();                 // no forced dialog: the header stays reachable
+});
 window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js"></script>
+<script src="ai.js?v=2026-08-23a"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js"></script>
-<script src="net.js"></script>
+<script src="firebase-config.js?v=2026-08-23a"></script>
+<script src="net.js?v=2026-08-23a"></script>
 </body>
 </html>
