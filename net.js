@@ -86,15 +86,39 @@ function isGuest(){ return online() && NET.role === "guest"; }
 
 /* ══ plumbing ═══════════════════════════════════════════════════════════ */
 
-function fbReady(){
-  return typeof firebase !== "undefined" && firebase.apps !== undefined &&
-         typeof FIREBASE_CONFIG !== "undefined" && FIREBASE_CONFIG &&
-         FIREBASE_CONFIG.databaseURL && !/YOUR_/.test(FIREBASE_CONFIG.databaseURL);
+/* The Firebase console hands you a block that begins `const firebaseConfig =`,
+   and pasting it over the placeholder verbatim is the obvious thing to do — so
+   both that name and the one the placeholder file used are accepted. */
+function cfg(){
+  if (typeof FIREBASE_CONFIG !== "undefined" && FIREBASE_CONFIG) return FIREBASE_CONFIG;
+  if (typeof firebaseConfig !== "undefined" && firebaseConfig) return firebaseConfig;
+  return null;
 }
+
+/* Why online play cannot start, in words, or null when it can. Worth being
+   specific: "not set up" on its own sends you hunting through five things. */
+function fbProblem(){
+  if (typeof firebase === "undefined" || !firebase.apps)
+    return "The Firebase scripts did not load — normally no internet, or the page " +
+           "was opened straight off the disk with the network down.";
+  const c = cfg();
+  if (!c)
+    return "<b>firebase-config.js</b> did not define a config. It needs to set " +
+           "<b>firebaseConfig</b> to the block the Firebase console gave you.";
+  if (!c.databaseURL)
+    return "The config has no <b>databaseURL</b> line. That only appears once a " +
+           "Realtime Database actually exists — <b>Build → Realtime Database → " +
+           "Create Database</b> — so create it, then copy the config again.";
+  if (/YOUR_/.test(c.databaseURL))
+    return "<b>firebase-config.js</b> still has the placeholder values in it.";
+  return null;
+}
+
+function fbReady(){ return !fbProblem(); }
 
 function connect(){
   if (NET.db) return NET.db;
-  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  if (!firebase.apps.length) firebase.initializeApp(cfg());
   NET.db = firebase.database();
   return NET.db;
 }
@@ -596,14 +620,15 @@ function teardown(){
 /* ══ the Online button ══════════════════════════════════════════════════ */
 
 window.onlineDialog = function(){
-  if (!fbReady()){
-    openModal("Online play is not set up",
-      '<p class="sub">Online play needs a Firebase Realtime Database to pass messages between ' +
-      'browsers. It is free and takes about five minutes to set up once.</p>' +
-      '<div class="okbox">Open <b>README.md</b> next to this file — it walks through creating the ' +
-      'project and pasting six lines into <b>firebase-config.js</b>.</div>' +
-      '<p class="rules">Until then the local game works exactly as before: hot-seat, or you against ' +
-      'the bots.</p>',
+  const problem = fbProblem();
+  if (problem){
+    openModal("Online play is not ready",
+      '<div class="warnbox">' + problem + '</div>' +
+      '<p class="sub">Online play passes messages between browsers through a Firebase Realtime ' +
+      'Database. It is free, and setting one up is a five minute job you only do once — ' +
+      '<b>README.md</b> next to this file walks through it.</p>' +
+      '<p class="rules">Until then the local game works exactly as before: hot-seat, or you ' +
+      'against the bots.</p>',
       [{ label:"Close", cls:"primary", fn: closeModal }]);
     return;
   }

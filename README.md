@@ -32,8 +32,12 @@ update the game files.
 3. Still in the sidebar: **Project settings** (the gear) → scroll to
    **Your apps** → click the web icon `</>`. Register the app with any
    nickname. Firebase shows you a `firebaseConfig = { … }` block.
-4. Copy those values into `firebase-config.js`, replacing the `YOUR_…`
-   placeholders. Keep the quotes.
+4. Paste that whole block into `firebase-config.js`, replacing the one that is
+   already there — variable name included. The console writes
+   `const firebaseConfig = {…}` and that is exactly what the game looks for.
+
+If the **Online** button still says it is not ready, it will now tell you which
+of these is wrong rather than just that something is.
 
 ### 2. Lock the database down a little
 

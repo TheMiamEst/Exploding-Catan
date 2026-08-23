@@ -1,5 +1,7 @@
-/* Your Firebase project's web config. Paste the six lines Firebase gives you
-   over the placeholders below — see README.md, "Setting up online play".
+/* Your Firebase project's web config. Paste the block the Firebase console
+   gives you straight over the one below, variable name and all — see
+   README.md, "Setting up online play". Either `firebaseConfig` (what the
+   console writes) or `FIREBASE_CONFIG` works.
 
    This is not a secret. Firebase web configs are meant to be public and every
    player's browser downloads this file anyway; what keeps strangers out is the
