@@ -207,7 +207,7 @@ function serializeGame(){
       id: e.id, turn: e.turn, actor: e.actor, target: e.target, kind: e.kind,
       card: e.card ? { key: e.card.key, flavor: e.card.flavor || null } : null,
       payload: e.payload || null, nopeable: e.nopeable, noped: e.noped,
-      plain: e.plain, snap: 1
+      show: e.show || null, plain: e.plain, snap: 1
     })),
     feed: (S.feed || []).slice(-FEED_KEEP)
   };

@@ -174,9 +174,12 @@ Two knobs, both reachable from the browser console mid-game. Only the host's
 setting matters for bot pacing, since only the host runs bots.
 
 ```js
-AI.pace(1500)   // ms between visible bot actions (default 3000)
-NOPE_REACH      // how many log lines back a Nope may reach (default 4)
+AI.pace(1500)     // ms between visible bot actions (default 3000)
+NOPE_REACH        // log lines a Nope may reach back, within the turn (default 4)
+SHOWCASE_MS       // how long a played card stays on screen (default 2300)
 ```
 
 Bot pacing is deliberately slow: a Nope has to be draggable onto a line before
-the line scrolls out of reach, and a fast bot would bury it.
+the line scrolls out of reach, and a fast bot would bury it. A Nope only ever
+reaches within the turn still in progress — once a turn ends, everything in it
+is settled.

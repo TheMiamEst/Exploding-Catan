@@ -401,6 +401,53 @@
     .slot,.kcard{width:44px; height:60px}
   }
 
+  /* A play announces itself in the middle of the board for a couple of
+     seconds. The log keeps the full record; this is so a card actually being
+     played is not something you only find out by reading. Nothing here takes
+     a click — pointer-events stay off the whole layer, so a Nope can still be
+     dragged onto the log while it is on screen. */
+  #showcase{
+    position:absolute; inset:0; z-index:9; pointer-events:none;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  }
+  #showcase.out{animation:showout .4s ease-in forwards}
+  @keyframes showout{to{opacity:0; transform:scale(.94)}}
+  .showcard{
+    width:clamp(112px, 17vh, 156px); aspect-ratio:5/7; border-radius:12px;
+    border:2px solid var(--accent); background:linear-gradient(160deg,#2c3444,#1c222c);
+    box-shadow:0 26px 64px #000d, 0 0 0 5px #0007; position:relative; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    animation:flipin .55s cubic-bezier(.2,.85,.3,1.25) both;
+  }
+  .showcard img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+  .showcard .kn{position:relative; z-index:1; font-size:15px; font-weight:600;
+                text-align:center; padding:0 8px; text-shadow:0 2px 6px #000}
+  @keyframes flipin{
+    0%  {transform:perspective(900px) rotateY(-115deg) scale(.5);  opacity:0}
+    55% {transform:perspective(900px) rotateY(14deg)   scale(1.08); opacity:1}
+    100%{transform:perspective(900px) rotateY(0)       scale(1)}
+  }
+  /* A seven gets the same moment without a card to turn over. */
+  .showseven{
+    width:clamp(84px, 13vh, 116px); aspect-ratio:1; border-radius:50%;
+    background:#f2ead6; border:3px solid var(--danger); color:#b3261e;
+    display:flex; align-items:center; justify-content:center;
+    font-size:clamp(40px, 6.5vh, 60px); font-weight:700; line-height:1;
+    box-shadow:0 26px 64px #000d; animation:sevenin .5s cubic-bezier(.2,.9,.3,1.3) both;
+  }
+  @keyframes sevenin{
+    0%  {transform:scale(.3) rotate(-25deg); opacity:0}
+    60% {transform:scale(1.14) rotate(6deg); opacity:1}
+    100%{transform:scale(1) rotate(0)}
+  }
+  .showcap{
+    background:#0b0d10e8; border:1px solid var(--line); border-radius:9px;
+    padding:7px 14px; font-size:14px; max-width:min(420px, 76%); text-align:center;
+    box-shadow:0 10px 30px #000a; animation:capin .45s .12s ease-out both;
+  }
+  .showcap.seven{border-color:var(--danger); color:#ffd9d9}
+  @keyframes capin{from{transform:translateY(10px); opacity:0}to{transform:none; opacity:1}}
+
   /* Dialogs that dock beside the board rather than covering it. A trade or a
      card purchase is not urgent enough to take the screen away, and taking it
      away meant you could not answer a Nope while one was open — the log, the
@@ -501,6 +548,7 @@
     </div>
     <div id="deckWrap"></div>
     <div id="panels"></div>
+    <div id="showcase" hidden></div>
   </div>
   <div id="leftbtns">
     <button class="sm on" id="logBtn" onclick="toggleFeed()">Game log</button>
@@ -527,7 +575,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-24e";
+const GAME_VERSION = "2026-08-25a";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -973,6 +1021,8 @@ function newGame(numPlayers){
   };
   S.turnRec = freshTurnRecord();
   closeAllPanels();
+  clearShowcase();
+  lastShowcased = 0;
   clearFeed();
   logMsg("New game — " + numPlayers + " players. Deck: 54 kitten cards.");
   logMsg("<b>" + S.players[first].name + "</b> goes first.");
@@ -1265,6 +1315,7 @@ function render(){
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
   refreshFeedMarks();
   checkStalePanels();
+  checkShowcase();
   // A repaint in the middle of a drag (a bot moving, say) wipes the outlines
   // showing where the card may go. Put them straight back.
   if (dragCard) markDropTargets();
@@ -2383,7 +2434,7 @@ function rollDice(){
   if (sum === 7){
     logAction(pdot(cur()) + " rolls <b>7</b> <span style='opacity:.55'>(" + d1 + "+" + d2 +
              ")</span><br><span style='opacity:.75'>robber moves — hands over 7 are cut</span>",
-             "roll", { snap: snapBefore });
+             "roll", { snap: snapBefore, show: "seven" });
     S.phase = "main"; startSevenSequence(S.cur); return;
   }
 
@@ -2896,6 +2947,7 @@ function logAction(html, kind, opts){
     turnBack: opts.turnBack || null,
     spent: opts.spent || null,
     redo: opts.redo || null,
+    show: opts.show || null,
     nopeable: opts.nopeable !== false,
     noped: false,
     plain: String(html).replace(/<[^>]+>/g, "").trim()
@@ -2936,6 +2988,9 @@ function openEntries(){
 function canNopeEntry(e){
   if (!e || e.noped || !e.nopeable || !e.snap) return false;
   if (S.phase === "over" || S.phase.startsWith("setup")) return false;
+  // Last call is the end of the turn. Reaching back across turns let people
+  // rewrite something from several turns ago, which nobody could see coming.
+  if (e.turn !== S.turnCounter) return false;
   const idx = S.journal.findIndex(x => x.id === e.id);
   if (idx < 0) return false;
   if (idx < S.journal.length - NOPE_REACH) return false;   // fallen out of reach
@@ -3083,9 +3138,9 @@ function nopeEntry(id, noperId){
 
   // A Nope can be Noped. It is the one reaction that can, and the hand-over
   // window is what makes it reachable.
-  logAction(pdot(noper) + " <b>Nopes</b> " + esc(label), "defend",
+  const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " + esc(label), "defend",
             { actor: noperId, snap: undone, nopeable: true, turnBack: turnBack,
-              spent: { pid: noperId, key: "nope" } });
+              spent: { pid: noperId, key: "nope" }, show: "nope" });
   logMsg(`<b>${noper.name}</b> Nopes: ${esc(label)}`);
 
   // Noping a Defuse cancels the "no you", so the original card is simply
@@ -3124,6 +3179,11 @@ function nopeEntry(id, noperId){
     logMsg(`<b>${victim.name}</b>'s turn ends.`);
     endTurnAfterNope();
   }
+  // A Nope that ends a turn (or hands one back) belongs to the turn it
+  // produced, not the one it interrupted. Without this the "current turn
+  // only" rule would put it out of reach the instant it landed, and a Nope
+  // could never be Noped.
+  noteEntry.turn = S.turnCounter;
   render();
   botTick();
   return true;
@@ -3197,7 +3257,7 @@ function defuseEntry(id, defuserId){
   // reflecting it — the defuser names their own numbers or their own demand.
   if (key === "alter"){
     logAction(pdot(d) + " <b>Defuses</b> Alter the Future — they swap instead", "defend",
-              Object.assign({ actor: defuserId }, answerable));
+              Object.assign({ actor: defuserId, show: "defuse" }, answerable));
     beginAlterPick(defuserId, (a, b) => playResolved(
       { type:"card", card:{ key:"alter", synthetic:true }, actor:defuserId,
         target:null, payload:{ hexes:[a, b] }, quiet:true }));
@@ -3206,7 +3266,8 @@ function defuseEntry(id, defuserId){
   }
   if (key === "favor"){
     logAction(pdot(d) + " <b>Defuses</b> the Favor — " + pdot(S.players[victimId]) +
-              " owes them instead", "defend", Object.assign({ actor: defuserId }, answerable));
+              " owes them instead", "defend",
+              Object.assign({ actor: defuserId, show: "defuse" }, answerable));
     const ag = agentOf(defuserId);
     const synth = { key:"favor", synthetic:true };
     if (ag && ag.favorWant){
@@ -3222,7 +3283,7 @@ function defuseEntry(id, defuserId){
   // Everything else bounces straight back at whoever played it.
   logAction(pdot(d) + " <b>Defuses</b> " + KITTEN[key].name + " — it hits " +
             pdot(S.players[victimId]) + " instead", "defend",
-            Object.assign({ actor: defuserId }, answerable));
+            Object.assign({ actor: defuserId, show: "defuse" }, answerable));
   playResolved({ type:"card", card:{ key: key, flavor: card.flavor, synthetic:true },
                  actor:defuserId, target:victimId, payload:payload, quiet:true });
   render();
@@ -3280,7 +3341,7 @@ function playResolved(base){
   if (!base.quiet){
     logAction(describeCard(base), aggressive ? "attack" : "info",
               { actor: base.actor, target: base.target, card: base.card,
-                payload: base.payload, snap: snap });
+                payload: base.payload, snap: snap, show: base.card.key });
   } else {
     // Part of resolving somebody's reaction, so no journal entry of its own —
     // it must not become separately answerable. The table still needs to SEE
@@ -3904,6 +3965,61 @@ function closeModal(){
   if (window.NET && NET.clearRemote) NET.clearRemote();
 }
 
+/* ══ SHOWCASE ═════════════════════════════════════════════════════
+   A card being played turns over in the middle of the board, and a seven
+   lands with a thump. Both fade after a couple of seconds. The game log is
+   untouched and still has everything — this is only so that a play is
+   something you SEE rather than something you find by reading.
+
+   Driven off the journal rather than the code that plays the card, so a
+   terminal shows it too: the entry arrives with the rest of the state and
+   the newest one gets its moment.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const SHOWCASE_MS = 2300;
+let lastShowcased = 0;
+let showcaseTimer = null;
+
+function clearShowcase(){
+  if (showcaseTimer){ clearTimeout(showcaseTimer); showcaseTimer = null; }
+  const el = document.getElementById("showcase");
+  if (el){ el.hidden = true; el.className = ""; el.innerHTML = ""; }
+}
+
+function showcase(bodyHTML, capHTML, capCls){
+  const el = document.getElementById("showcase");
+  if (!el) return;
+  if (showcaseTimer) clearTimeout(showcaseTimer);
+  el.className = "";
+  el.hidden = false;
+  el.innerHTML = bodyHTML + '<div class="showcap ' + (capCls || "") + '">' + capHTML + "</div>";
+  showcaseTimer = setTimeout(() => {
+    el.className = "out";
+    showcaseTimer = setTimeout(clearShowcase, 400);
+  }, SHOWCASE_MS);
+}
+
+/* The newest journal entry, if it is something worth turning over. */
+function checkShowcase(){
+  if (!S || !S.journal.length) return;
+  const e = S.journal[S.journal.length - 1];
+  if (!e.show || e.id <= lastShowcased) return;
+  lastShowcased = e.id;
+
+  if (e.show === "seven"){
+    showcase('<div class="showseven">7</div>',
+             esc(S.players[e.actor] ? S.players[e.actor].name : "") +
+             " rolls a seven — hands over 7 are cut, and the robber moves", "seven");
+    return;
+  }
+  const def = KITTEN[e.show];
+  if (!def) return;
+  const face = cardArt({ key: e.show, flavor: (e.card && e.card.flavor) || null });
+  showcase('<div class="showcard">' +
+             (face ? '<img src="' + face + '" alt="">' : '<span class="kn">' + esc(def.name) + "</span>") +
+           "</div>", esc(e.plain).replace(/\s+/g, " "));
+}
+
 /* ══ SIDE PANELS ═════════════════════════════════════════════════
    A dialog docked beside the board instead of covering it. Trades and card
    purchases are not urgent, and as modals they took away the log, the board
@@ -4320,11 +4436,12 @@ function nopeWholeTurn(ownerId, pid){
   // down, so a counter-Nope can put the whole thing back.
   const turnBack = { cur: S.cur, phase: S.phase, turnCounter: S.turnCounter,
                      rolled: S.rolled ? S.rolled.slice() : null, extraTurn: S.extraTurn };
-  logAction(pdot(noper) + " <b>Nopes</b> " + pdot(victim) + "'s turn",
+  const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " + pdot(victim) + "'s turn",
             "defend", { actor: ownerId, snap: snapAll(), nopeable: true, turnBack: turnBack,
-                        spent: { pid: ownerId, key: "nope" } });
+                        spent: { pid: ownerId, key: "nope" }, show: "nope" });
   clearImplodeClock();
   cancelTurn(pid, totalVP(victim) >= 10);     // cancelTurn ends the turn itself
+  noteEntry.turn = S.turnCounter;             // it belongs to the turn it made
 }
 
 /* Cards can be shuffled around in your own hand at will; where a card sits is
@@ -4418,12 +4535,13 @@ function showRules(){
     Defuse cancels the "no you": the original card is simply played again, at whoever it was first
     aimed at. A <b>Defuse</b> cannot answer another Defuse, though — "no you" does not stack
     against itself.</p>
-    <p><b>You can reach back a few lines.</b> Drag a Nope or a Defuse onto any of the last
-    <b>four</b> lines of the game log, whatever turn they came from. Lines you are holding the card
-    to answer wear a small badge of that card — only you can see it, so a badge never gives away
-    what is in your hand. Bots take three seconds between moves, so there is always time.</p>
+    <p><b>Last call is the end of the turn.</b> Drag a Nope or a Defuse onto any of the last
+    <b>four</b> lines of the game log, as long as they happened on the turn still in progress —
+    once a turn is over, everything in it is settled. Lines you are holding the card to answer
+    wear a small badge of that card; only you can see it, so a badge never gives away what is in
+    your hand. Bots take three seconds between moves, so there is always time.</p>
     <p>Answering a line also erases everything that came after it, which is why the reach is short
-    rather than the whole game.</p>
+    rather than the whole turn.</p>
     <p><b>Being Noped ends your turn.</b> Whatever you were Noped for — a roll, a build, a card —
     the rest of that turn goes with it. A counter-Nope hands that turn straight back: the
     interrupted player picks up exactly where they were standing.</p>
@@ -4477,13 +4595,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-24e"></script>
+<script src="ai.js?v=2026-08-25a"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-24e"></script>
-<script src="net.js?v=2026-08-24e"></script>
+<script src="firebase-config.js?v=2026-08-25a"></script>
+<script src="net.js?v=2026-08-25a"></script>
 </body>
 </html>
