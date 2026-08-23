@@ -371,6 +371,7 @@
   .recent span.seven{border-color:var(--danger); color:var(--danger)}
 
   @media (max-width:900px){
+    #panels{width:min(300px, 52%); top:88px; bottom:140px}
     /* Full-size dice would eat a narrow board. */
     .die{width:58px; height:58px; border-radius:11px; padding:7px}
     .die i{width:10px; height:10px}
@@ -387,6 +388,38 @@
     .stat b{font-size:12.5px}
     .slot,.kcard{width:44px; height:60px}
   }
+
+  /* Dialogs that dock beside the board rather than covering it. A trade or a
+     card purchase is not urgent enough to take the screen away, and taking it
+     away meant you could not answer a Nope while one was open — the log, the
+     board and your hand all sit behind an .overlay. These leave all three
+     reachable. Several can stand at once, one per seat, which is what lets a
+     trade offer go to everybody together instead of round the table. */
+  #panels{
+    position:absolute; right:12px; top:110px; bottom:148px;
+    width:min(320px, 44%); z-index:6;
+    display:flex; flex-direction:column; gap:8px; align-items:stretch;
+    overflow-y:auto; scrollbar-width:none;
+    pointer-events:none;              /* the empty column never eats a click */
+  }
+  #panels::-webkit-scrollbar{width:0}
+  .panel{
+    pointer-events:auto;
+    background:var(--panel); border:1px solid var(--accent); border-radius:10px;
+    padding:12px 14px; box-shadow:0 12px 34px #000a; flex:0 0 auto;
+    animation:panelin .16s ease-out;
+  }
+  @keyframes panelin{from{transform:translateX(14px);opacity:0}to{transform:none;opacity:1}}
+  .panel h3{margin:0 0 6px; font-size:14px; letter-spacing:.2px}
+  .panel .sub{margin:0 0 10px; color:var(--dim); font-size:12px; line-height:1.45}
+  .panel .actions{display:flex; gap:6px; justify-content:flex-end; margin-top:11px; flex-wrap:wrap}
+  .panel .actions button{padding:6px 11px; font-size:12.5px}
+  .panel .counter{margin-bottom:3px}
+  .panel .stack{font-size:12.5px}
+  .panel.forme{border-color:#7fc48f; box-shadow:0 12px 34px #000a, 0 0 0 2px #7fc48f33}
+  /* The board moved under an open panel — a Nope rewound something. */
+  .panel.stale{border-color:var(--danger)}
+  body.haspanel #zoomWrap{display:none}
 
   .overlay{
     position:fixed; inset:0; background:#000a; display:flex; align-items:center; justify-content:center;
@@ -441,6 +474,7 @@
       <button class="sm" onclick="resetZoom()" title="Reset view">⌂</button>
     </div>
     <div id="deckWrap"></div>
+    <div id="panels"></div>
   </div>
   <div id="leftbtns">
     <button class="sm on" id="logBtn" onclick="toggleFeed()">Game log</button>
@@ -467,7 +501,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-24a";
+const GAME_VERSION = "2026-08-24b";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -892,10 +926,12 @@ function newGame(numPlayers){
     implodeBy: null,          // who drew it, so the seal outlives their turn
     implodeUntil: 0,          // wall-clock deadline for that turn
     feed: [],                 // the on-screen event list, so it can be sent online
+    rewinds: 0,               // bumped whenever a Nope or Defuse rewinds the board
     log: [],
     winner: null
   };
   S.turnRec = freshTurnRecord();
+  closeAllPanels();
   clearFeed();
   logMsg("New game — " + numPlayers + " players. Deck: 54 kitten cards.");
   logMsg("<b>" + S.players[first].name + "</b> goes first.");
@@ -1144,6 +1180,7 @@ function backToIdle(){
   window.AGENTS = {};
   clearImplodeClock();
   S = null;
+  closeAllPanels();
   clearFeed();
   renderIdle();
 }
@@ -1186,6 +1223,7 @@ function render(){
   showIdle(false);
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
   refreshFeedMarks();
+  checkStalePanels();
   // A repaint in the middle of a drag (a bot moving, say) wipes the outlines
   // showing where the card may go. Put them straight back.
   if (dragCard) markDropTargets();
@@ -2475,7 +2513,6 @@ function cardsFromPool(pool){
 
 function buyKittenDialog(){
   if (netSend("buy")) return;
-  promptFor(S.cur);
   if (!myTurnNow()) return;
   const p = cur();
   const pool = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
@@ -2503,12 +2540,12 @@ function buyKittenDialog(){
             ${leftover.length ? `<div style="opacity:.55">Not enough to pair up: ${resList(res.left)}</div>` : ""}
           </div>`;
 
-    openModal("Buy Kitten Cards", h, [
+    openPanel("buy", p.id, "Buy kitten cards", h, [
       { label:"Clear", fn: () => { for (const r of RES) pool[r] = 0; refresh(); } },
-      { label:"Cancel", fn: () => { closeModal(); render(); } },
+      { label:"Cancel", fn: () => { closePanel("buy"); render(); } },
       { label: capped > 1 ? `Buy ${capped} cards` : "Buy", cls:"primary", disabled: capped < 1,
         fn: () => {
-          closeModal();
+          closePanel("buy");
           for (const r of RES) take(p, r, res.spent[r]);
           for (let k = 0; k < capped; k++) drawKitten(p);
           hint(`Bought ${capped} kitten card${capped === 1 ? "" : "s"}.`);
@@ -2973,6 +3010,7 @@ function nopeEntry(id, noperId){
   // Captured BEFORE the rewind: this is what a counter-Nope has to put back,
   // and it still holds the Nope we are about to spend.
   const undone = snapAll();
+  S.rewinds++;
 
   // Rewind first, then spend the card — the entry's own snapshot predates the
   // Nope and would otherwise hand it straight back.
@@ -3091,6 +3129,7 @@ function defuseEntry(id, defuserId){
   const answerable = { snap: preCard, redo: redo, nopeable: true,
                        spent: { pid: defuserId, key: "defuse" } };
 
+  S.rewinds++;
   restoreAll(e.snap);
   S.journal.splice(idx);
   spendCard(d, "defuse");
@@ -3471,7 +3510,6 @@ function showStandings(){
 
 function bankTradeDialog(){
   if (netSend("bankTrade")) return;
-  promptFor(S.cur);
   if (!myTurnNow()) return;
   const p = cur();
   const give_ = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };   // in LOTS, not cards
@@ -3522,11 +3560,11 @@ function bankTradeDialog(){
                : ""}
           </div>`;
 
-    openModal("Bank / Port Trade", h, [
+    openPanel("bank", p.id, "Bank / port trade", h, [
       { label:"Clear", fn: () => { for (const r of RES){ give_[r] = 0; get_[r] = 0; } refresh(); } },
-      { label:"Cancel", fn: () => { closeModal(); render(); } },
+      { label:"Cancel", fn: () => { closePanel("bank"); render(); } },
       { label:"Trade", cls:"primary", disabled: !bal, fn: () => {
-          closeModal();
+          closePanel("bank");
           for (const r of RES) if (spend[r]) take(p, r, spend[r]);
           for (const r of RES) if (get_[r])  give(p, r, get_[r]);
           logMsg(`<b>${p.name}</b> trades with the bank.`);
@@ -3559,7 +3597,6 @@ function playerTradeDialog(){
   // The whole negotiation sits on the offering player's screen: they click
   // Accept or Decline as the table answers out loud. A hot-seat habit, but it
   // survives going online intact, and you will be on a call anyway.
-  promptFor(S.cur);
   const p = cur();
   const offer = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
   const want  = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
@@ -3584,7 +3621,6 @@ function playerTradeDialog(){
 
   /* ── stage 1: compose ── */
   function compose(){
-    promptFor(p.id);
     let h = `<p class="sub">Put one offer to the whole table. Everyone answers, then you
              choose who to deal with.</p>
              <table class="trade"><tr><td style="vertical-align:top;width:50%">
@@ -3592,8 +3628,8 @@ function playerTradeDialog(){
              </td><td style="vertical-align:top">
              ${counterRow("You want", want, "__twa")}
              </td></tr></table>`;
-    openModal("Open Trade", h, [
-      { label:"Cancel", fn: closeModal },
+    openPanel("trade", p.id, "Open trade", h, [
+      { label:"Cancel", fn: () => { closePanel("trade"); render(); } },
       { label:"Ask everyone", cls:"primary", disabled: !anyOffer(), fn: ask }
     ]);
   }
@@ -3607,7 +3643,7 @@ function playerTradeDialog(){
      This used to hand the offerer Accept and Decline buttons for every other
      player. Fine when the only person playing was the one holding the mouse;
      once other people were at other screens it meant you could simply take
-     their resources. */
+     their resources. Nobody answers for anybody else now. */
   function ask(){
     replies = {};
     const toAsk = [];
@@ -3620,28 +3656,36 @@ function playerTradeDialog(){
     }
     logMsg(`<b>${p.name}</b> offers ${fmt(offer)} for ${fmt(want)}.`);
     announce(pdot(p) + " offers " + esc(fmt(offer)) + " for " + esc(fmt(want)), "info");
-    askNext(toAsk);
+    askAll(toAsk);
   }
 
-  function askNext(queue){
-    if (!queue.length){ results(); return; }
-    const qid = queue[0], rest = queue.slice(1);
-    const q = S.players[qid];
-    const answer = (a) => { replies[qid] = a; closeModal(); askNext(rest); };
-    announce(pdot(p) + " is waiting on " + pdot(q), "info");
-    render();
-    promptFor(qid);
-    openModal("Trade offer from " + esc(p.name),
+  /* The offer goes to everyone who could pay, all at once, each on their own
+     screen. Panels rather than modals, so nobody is locked out of the board or
+     the log while they think about it. */
+  function askAll(queue){
+    for (const qid of queue){
+      replies[qid] = "wait";
+      askSeat(qid);
+    }
+    results();
+  }
+
+  function askSeat(qid){
+    const key = "offer" + qid;
+    const answer = (a) => { replies[qid] = a; closePanel(key); results(); };
+    openPanel(key, qid, "Trade offer from " + esc(p.name),
       `<div class="stack"><div>They give you: <b>${esc(fmt(offer))}</b></div>
          <div>They want from you: <b>${esc(fmt(want))}</b></div></div>
-       <p class="sub">Yours to answer — nobody else can answer it for you. Declining
-       costs you nothing.</p>`,
+       <p class="sub">Yours to answer. Declining costs you nothing.</p>`,
       [ { label:"Decline", fn: () => answer("no") },
         { label:"Accept", cls:"primary", fn: () => answer("yes") } ]);
   }
 
+  function dropOffers(){
+    for (const q of others()) closePanel("offer" + q.id);
+  }
+
   function results(){
-    promptFor(p.id);                       // back to whoever made the offer
     const list = others();
     let h = `<div class="stack"><div>You give: <b>${fmt(offer)}</b></div>
              <div>You want: <b>${fmt(want)}</b></div></div>`;
@@ -3650,7 +3694,9 @@ function playerTradeDialog(){
       const st = replies[q.id];
       h += `<div class="counter">
               <span class="lbl"><span class="dot" style="background:${q.color}"></span><b>${q.name}</b></span>`;
-      if (st === "yes"){
+      if (st === "wait"){
+        h += `<span style="color:var(--dim);font-size:12px">thinking…</span>`;
+      } else if (st === "yes"){
         h += `<span style="color:#6fbf7a;font-size:12px;margin-right:8px">accepted</span>
               <button class="sm primary" onclick="window.__deal(${q.id})">Trade</button>`;
       } else if (st === "cant"){
@@ -3661,18 +3707,20 @@ function playerTradeDialog(){
       h += `</div>`;
     }
     h += `</div>`;
-    if (!list.some(q => replies[q.id] === "yes"))
+    const waiting = list.some(q => replies[q.id] === "wait");
+    if (!waiting && !list.some(q => replies[q.id] === "yes"))
       h += `<div class="warnbox">Nobody took it. Try a different offer.</div>`;
 
-    openModal("Open Trade", h, [
-      { label:"New offer", fn: compose },
-      { label:"Done", cls:"primary", fn: () => { closeModal(); render(); } }
+    openPanel("trade", p.id, "Open trade", h, [
+      { label:"New offer", fn: () => { dropOffers(); compose(); } },
+      { label:"Done", cls:"primary", fn: () => { dropOffers(); closePanel("trade"); render(); } }
     ]);
   }
 
   window.__tof = (r, d) => { offer[r] = Math.max(0, Math.min(p.res[r], offer[r] + d)); compose(); };
   window.__twa = (r, d) => { want[r]  = Math.max(0, want[r] + d); compose(); };
   window.__deal = (qid) => {
+    dropOffers();
     const q = S.players[qid];
     if (!RES.every(r => q.res[r] >= want[r])){ replies[qid] = "cant"; results(); return; }
     for (const r of RES){
@@ -3783,6 +3831,106 @@ function openModal(title, bodyHTML, buttons){
 function closeModal(){
   dismissLocalModal();
   if (window.NET && NET.clearRemote) NET.clearRemote();
+}
+
+/* ══ SIDE PANELS ═════════════════════════════════════════════════
+   A dialog docked beside the board instead of covering it. Trades and card
+   purchases are not urgent, and as modals they took away the log, the board
+   and your hand — so you could not drop a Nope on anything while one was
+   open. Panels leave all of that reachable.
+
+   Each panel belongs to a seat. On one screen you see the panels for the
+   seats that screen plays, which is every human seat in hot-seat and just
+   your own online — so one offer can go to the whole table at once and
+   everybody answers for themselves.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const panelBox = {};        // key -> { seat, buttons, rewindAt, title }
+
+/* Which seats this screen answers for. */
+function ownsSeat(pid){
+  if (window.NET && NET.isOnline && NET.isOnline()) return pid === NET.mySeat();
+  return !isBot(pid);                       // hot-seat: everyone is right here
+}
+
+function openPanel(key, seat, title, bodyHTML, buttons){
+  const fresh = !panelBox[key];
+  panelBox[key] = { seat: seat, buttons: buttons || [], title: title,
+                    rewindAt: fresh ? (S ? S.rewinds : 0)
+                                    : panelBox[key].rewindAt };
+  // Somebody else's to answer: hand it to them and draw nothing here.
+  if (seat !== null && seat !== undefined && !ownsSeat(seat)){
+    if (window.NET && NET.shipPanel) NET.shipPanel(key, seat, title, bodyHTML, buttons || []);
+    drawPanels();
+    return;
+  }
+  panelBox[key].body = bodyHTML;
+  drawPanels();
+}
+
+function closePanel(key){
+  const p = panelBox[key];
+  if (!p) return;
+  delete panelBox[key];
+  if (window.NET && NET.clearPanel) NET.clearPanel(key, p.seat);
+  drawPanels();
+}
+
+function closeAllPanels(){
+  for (const k in panelBox) closePanel(k);
+}
+
+function drawPanels(){
+  const box = document.getElementById("panels");
+  if (!box) return;
+  let h = "";
+  for (const key in panelBox){
+    const p = panelBox[key];
+    if (p.body === undefined) continue;             // it lives on somebody else's screen
+    const mine = p.seat !== null && p.seat !== undefined;
+    let btns = "";
+    (p.buttons || []).forEach((b, i) => {
+      btns += `<button class="${b.cls || ""}" ${b.disabled ? "disabled" : ""}
+                 onclick="panelClick('${key}',${i})">${b.label}</button>`;
+    });
+    h += `<div class="panel ${mine ? "forme" : ""}" data-key="${key}">
+            <h3>${p.title}</h3>${p.body}
+            ${btns ? `<div class="actions">${btns}</div>` : ""}
+          </div>`;
+  }
+  box.innerHTML = h;
+  document.body.classList.toggle("haspanel", !!h);
+}
+
+function panelClick(key, i){
+  const p = panelBox[key];
+  const b = p && p.buttons && p.buttons[i];
+  if (!b || b.disabled) return;
+  b.fn();
+}
+
+/* A Nope or a Defuse rewound the board while a panel was open, so whatever it
+   was offering may no longer be true — the resources it named could already
+   have moved. Close it rather than let somebody act on a stale offer. */
+function checkStalePanels(){
+  if (!S) return;
+  const dead = [];
+  for (const key in panelBox)
+    if (panelBox[key].rewindAt !== S.rewinds) dead.push(key);
+  if (!dead.length) return;
+  for (const key of dead) closePanel(key);
+  // The feed, not the hint bar: the very render that spots this goes on to
+  // redraw the hint, and a rewind usually triggers several in a row.
+  announce("↺ A card was answered — the trade on the table is off", "defend");
+}
+
+/* True while a person still owes an answer, here or on another screen. The
+   bots wait for it. */
+function humanPromptOpen(){
+  if (document.querySelector(".overlay")) return true;
+  if (Object.keys(panelBox).length) return true;
+  if (window.NET && NET.anyPrompt && NET.anyPrompt()) return true;
+  return false;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -4238,13 +4386,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-24a"></script>
+<script src="ai.js?v=2026-08-24b"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-24a"></script>
-<script src="net.js?v=2026-08-24a"></script>
+<script src="firebase-config.js?v=2026-08-24b"></script>
+<script src="net.js?v=2026-08-24b"></script>
 </body>
 </html>

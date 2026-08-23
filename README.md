@@ -149,12 +149,22 @@ Two things follow from having no server, and both are deliberate:
   would lend money to.
 - **If the host closes the tab, the game ends.** Everyone else is told why.
 
-### Known rough edge
+### Dialogs that do not take the screen
 
-An open trade goes round the table one player at a time rather than out to
-everybody at once, because only one dialog can be in flight across the room.
-Bots answer instantly; each person gets the offer on their own screen in turn.
-Nobody can be answered for, but a six-player table takes a moment to poll.
+Trades and card purchases open as **panels beside the board** rather than
+modals over it, so the log, the board and your hand all stay reachable — you
+can drop a Nope on something mid-trade. Each panel belongs to a seat, and one
+seat's screen only draws its own, which is how a trade offer reaches everybody
+at once: bots answer immediately, every person gets the offer on their own
+screen, and the offerer watches the answers land before choosing who to deal
+with. Nobody can answer for anybody else.
+
+If a Nope or a Defuse rewinds the board while a panel is open, the panel is
+closed — whatever it was offering may no longer be true.
+
+Forced dialogs (discarding, answering a card aimed at you) are still modals,
+because they have to be dealt with before play continues. Those carry their
+own Defuse and Nope buttons.
 
 ---
 

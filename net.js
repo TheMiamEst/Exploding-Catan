@@ -71,7 +71,7 @@ const NET = {
 
   // host bookkeeping
   promptSeat: null,      // the seat a dialog being opened right now belongs to
-  remoteSeat: null,      // the seat currently holding a shipped dialog
+  remote: {},            // seat -> {id, kind, key, buttons} of the dialog they hold
   remoteId: 0,
   pubTimer: null,
 
@@ -399,14 +399,38 @@ function applyRemoteDrop(seat, idx, kind, id){
    round trip per click. */
 
 NET.takePromptSeat = function(){
-  const s = NET.promptSeat !== null && NET.promptSeat !== undefined
-          ? NET.promptSeat : NET.remoteSeat;
+  let s = NET.promptSeat;
+  if (s === null || s === undefined){
+    // A dialog redrawing itself (every +/− reopens it) carries no fresh tag,
+    // so fall back to whoever is holding the modal already.
+    for (const k in NET.remote) if (NET.remote[k].kind === "modal") s = +k;
+  }
   NET.promptSeat = null;
   return s;
 };
 
+function writePrompt(seat, payload){
+  if (NET.room) NET.room.child("prompt/" + seat).set(clean(payload));
+}
+function dropPrompt(seat){
+  delete NET.remote[seat];
+  if (NET.room) NET.room.child("prompt/" + seat).remove();
+}
+
+/* Any player, anywhere, still owing an answer. The bots wait on this: a dialog
+   shipped to somebody else leaves no overlay on the host's screen, so the DOM
+   alone cannot tell. */
+NET.anyPrompt = function(){
+  for (const k in NET.remote) return true;
+  return false;
+};
+
 /* Called from openModal. Returns true when the dialog has been sent away and
    must not be drawn here. */
+function btnSpec(buttons){
+  return (buttons || []).map(b => ({ label: b.label, cls: b.cls || "", disabled: !!b.disabled }));
+}
+
 NET.shipModal = function(title, bodyHTML, buttons){
   // Read it either way, so a tag left over from an offline game can never send
   // the first online dialog to the wrong person.
@@ -416,41 +440,69 @@ NET.shipModal = function(title, bodyHTML, buttons){
   if (seat === NET.seat) return false;                 // it is the host's own
   if (!NET.roster[seat] || NET.roster[seat].bot) return false;   // a bot answers inline
 
-  NET.remoteSeat = seat;
-  NET.remoteButtons = buttons || [];
   const id = ++NET.remoteId;
-  NET.room.child("prompt").set(clean({
-    id: id, seat: seat, title: title, body: bodyHTML,
-    buttons: (buttons || []).map(b => ({ label: b.label, cls: b.cls || "", disabled: !!b.disabled }))
-  }));
+  NET.remote[seat] = { id: id, kind: "modal", key: null, buttons: buttons || [] };
+  writePrompt(seat, { id: id, kind: "modal", title: title, body: bodyHTML,
+                      buttons: btnSpec(buttons) });
   return true;
 };
 
+/* A side panel for a seat that is not at this screen. Unlike a modal there can
+   be one of these outstanding per seat at the same time, which is what lets a
+   trade offer reach the whole table together. */
+NET.shipPanel = function(key, seat, title, bodyHTML, buttons){
+  if (!isHost() || !NET.started) return false;
+  if (!NET.roster[seat] || NET.roster[seat].bot) return false;
+  const id = ++NET.remoteId;
+  NET.remote[seat] = { id: id, kind: "panel", key: key, buttons: buttons || [] };
+  writePrompt(seat, { id: id, kind: "panel", key: key, title: title, body: bodyHTML,
+                      buttons: btnSpec(buttons) });
+  return true;
+};
+
+NET.clearPanel = function(key, seat){
+  if (!isHost()) return;
+  if (seat !== null && seat !== undefined){
+    const r = NET.remote[seat];
+    if (r && r.kind === "panel" && r.key === key) dropPrompt(seat);
+    return;
+  }
+  for (const k in NET.remote)
+    if (NET.remote[k].kind === "panel" && NET.remote[k].key === key) dropPrompt(+k);
+};
+
 NET.clearRemote = function(){
-  if (!isHost() || NET.remoteSeat === null) return;
-  NET.remoteSeat = null;
-  NET.remoteButtons = null;
-  if (NET.room) NET.room.child("prompt").remove();
+  if (!isHost()) return;
+  for (const k in NET.remote) if (NET.remote[k].kind === "modal") dropPrompt(+k);
 };
 
 function remoteModalButton(seat, id, i){
-  if (seat !== NET.remoteSeat || id !== NET.remoteId) return;
-  const b = NET.remoteButtons && NET.remoteButtons[i];
+  const r = NET.remote[seat];
+  if (!r || r.id !== id) return;
+  const b = r.buttons && r.buttons[i];
   if (!b || b.disabled) return;
   b.fn();
 }
 
 function remoteModalCall(seat, fn, args){
-  if (seat !== NET.remoteSeat) return;
+  if (!NET.remote[seat]) return;
   if (REMOTE_CALLS.indexOf(fn) < 0) return;            // nothing else is callable
   if (typeof window[fn] !== "function") return;
   window[fn].apply(null, arr(args, (args && args.length) || 0));
 }
 
 /* ── the terminal side of a shipped dialog ── */
+/* Draw the dialog the host has handed this seat — as a modal if it demands an
+   answer before anything else can happen, or as a side panel if it should
+   leave the board and the log reachable. Passing null takes it away again. */
 function showRemotePrompt(p){
-  if (!p || p.seat !== NET.seat){ if (!p) dismissLocalModal(); return; }
-  if (NET.shownPrompt === p.id && document.querySelector(".overlay")) return;
+  if (!p){
+    if (NET.shownKind === "modal") dismissLocalModal();
+    if (NET.shownKind === "panel") closePanel("remote");
+    NET.shownPrompt = null; NET.shownKind = null;
+    return;
+  }
+  if (NET.shownPrompt === p.id) return;
   NET.shownPrompt = p.id;
 
   // Shims so the dialog's own inline handlers reach the host instead of
@@ -463,6 +515,21 @@ function showRemotePrompt(p){
   window.__mb = function(i){ NET.sendIntent("modalBtn", [p.id, i]); };
 
   const btns = arr(p.buttons, (p.buttons && p.buttons.length) || 0).filter(Boolean);
+
+  if (p.kind === "panel"){
+    if (NET.shownKind === "modal") dismissLocalModal();
+    NET.shownKind = "panel";
+    // Rebuilt locally rather than shipped as markup, so the buttons route back
+    // through the same intent path a modal's do.
+    panelBox["remote"] = { seat: NET.seat, title: p.title, body: p.body, rewindAt: S ? S.rewinds : 0,
+      buttons: btns.map((b, i) => ({ label: b.label, cls: b.cls, disabled: b.disabled,
+                                     fn: () => NET.sendIntent("modalBtn", [p.id, i]) })) };
+    drawPanels();
+    return;
+  }
+
+  if (NET.shownKind === "panel") closePanel("remote");
+  NET.shownKind = "modal";
   let h = "";
   btns.forEach((b, i) => {
     h += '<button class="' + (b.cls || "") + '" ' + (b.disabled ? "disabled" : "") +
@@ -492,9 +559,10 @@ function startTable(){
   closeModal();
   NET.started = true;
   NET.room.child("meta/started").set(true);
-  NET.remoteSeat = null;
+  NET.remote = {};
   NET.promptSeat = null;
   if (NET.room) NET.room.child("prompt").remove();
+  if (typeof closeAllPanels === "function") closeAllPanels();
   window.AGENTS = {};
   newGame(NET.roster.length);
   const bots = NET.roster.map((r, i) => r.bot ? i : -1).filter(i => i >= 0);
@@ -607,7 +675,7 @@ function startGuest(code, name){
       if (NET.lastView.v === NET.lastV) return;
       NET.lastV = NET.lastView.v;
       NET.started = true;
-      if (document.querySelector(".overlay") && !NET.shownPrompt) closeModal();
+      if (document.querySelector(".overlay") && NET.shownKind !== "modal") closeModal();
       applyGame(Object.assign({}, NET.lastView,
                 { journal: NET.lastPub.journal, feed: NET.lastPub.feed }));
       render();
@@ -619,10 +687,11 @@ function startGuest(code, name){
       NET.lastView = all[NET.seat] || null;
       tryApply();
     });
+    // One node per seat now, so several people can be holding a dialog at the
+    // same time — which is what lets a trade offer reach everybody together.
     NET.room.child("prompt").on("value", s => {
-      const p = s.val();
-      if (!p || p.seat !== NET.seat){ NET.shownPrompt = null; return; }
-      showRemotePrompt(p);
+      const all = s.val() || {};
+      showRemotePrompt(NET.seat === null ? null : (all[NET.seat] || null));
     });
     NET.room.child("meta").on("value", s => {
       if (!s.exists() && NET.on) hostGone();
@@ -647,7 +716,8 @@ function teardown(){
   }
   NET.on = false; NET.role = null; NET.started = false; NET.room = null;
   NET.seat = null; NET.dead = null; NET.onRoster = null; NET.shownPrompt = null;
-  NET.remoteSeat = null; NET.promptSeat = null;
+  NET.shownKind = null; NET.remote = {}; NET.promptSeat = null;
+  if (typeof closeAllPanels === "function") closeAllPanels();
 }
 
 /* ══ the Online button ══════════════════════════════════════════════════ */

@@ -971,8 +971,7 @@ function tickNow(){
   // seven could get rolled, the discard shipped out, and the robber never
   // moved: the sequence's continuation was waiting on an answer that arrived
   // several bot actions too late.
-  const remotePrompt = window.NET && NET.remoteSeat !== null && NET.remoteSeat !== undefined;
-  if (document.querySelector(".overlay") || remotePrompt || S.pending){
+  if ((typeof humanPromptOpen === "function" && humanPromptOpen()) || S.pending){
     guard = 0;
     return schedule(IDLE);
   }
