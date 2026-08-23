@@ -4,12 +4,14 @@ Catan with the development deck torn out and 54 kitten cards put in its place.
 Plays locally against bots, hot-seat on one screen, or online with up to six
 people.
 
-Everything is in `Exploding Catan.html`. Double-clicking it still works — the
-local game needs no server, no build step and no internet.
+Everything is in `index.html`. Double-clicking it still works — the local game
+needs no server, no build step and no internet. It is called `index.html` so
+that the published URL is a bare folder rather than
+`…/Exploding%20Catan.html`, which is unreadable over a phone call.
 
 | file | what it is |
 |---|---|
-| `Exploding Catan.html` | the game: rules, board, UI, all of it |
+| `index.html` | the game: rules, board, UI, all of it |
 | `ai.js` | the bots |
 | `net.js` | online play |
 | `firebase-config.js` | your Firebase keys (see below) |
@@ -81,21 +83,28 @@ properly closed, the next step up is Firebase Anonymous Auth and
 
 GitHub Pages, free, and updating is a `git push`.
 
-1. Make an empty repo on GitHub. It can be private — Pages works either way on
-   a free account for public repos; for a private repo you need Pages enabled,
-   which is a paid feature, so **public is the easy path**.
-2. From this folder:
+**The repository has to be public.** On a free GitHub account Pages is a paid
+feature for private repositories, and the giveaway is that **Settings → Pages**
+shows an upgrade notice where the *Source* dropdown should be. That is the one
+thing that catches everybody.
 
-```bash
-git remote add origin https://github.com/YOUR_NAME/exploding-catan.git
-git branch -M main
-git push -u origin main
-```
+Making it public is fine here: `firebase-config.js` is the only sensitive-
+looking file and Firebase web configs are meant to be public — every player's
+browser downloads it anyway. What protects the database is the rules in step 2
+above, which is why you should not skip them once the repo is out in the open.
+If you would rather keep the source private, Cloudflare Pages and Netlify both
+build from a private GitHub repo on their free tiers.
 
-3. On GitHub: **Settings → Pages → Source: Deploy from a branch**, branch
-   `main`, folder `/ (root)`. Save.
-4. A minute later the game is at
-   `https://YOUR_NAME.github.io/exploding-catan/Exploding%20Catan.html`.
+1. On GitHub: **Settings → General → Danger Zone → Change repository
+   visibility → Make public**.
+2. **Settings → Pages** (left sidebar, under *Code and automation*). Under
+   *Build and deployment*, set Source to **Deploy from a branch**, then pick
+   branch **`master`** and folder **`/ (root)`**. Save.
+3. Wait a minute or two. The game is then at
+
+   ```
+   https://themiamest.github.io/Exploding-Catan/
+   ```
 
 To ship a change after that:
 
