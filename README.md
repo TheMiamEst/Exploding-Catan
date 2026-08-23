@@ -76,6 +76,8 @@ properly closed, the next step up is Firebase Anonymous Auth and
   room code, press *Join room*.
 - The host presses **Start game** when everyone is in. Any seat nobody took is
   played by a bot.
+- For another round, the host opens **Online** again and picks **Restart with
+  these players**: same room, same seats, a fresh board. Nobody has to rejoin.
 
 ---
 
@@ -149,21 +151,22 @@ Two things follow from having no server, and both are deliberate:
 
 ### Known rough edge
 
-Open trades are run entirely from the offering player's screen — they click
-Accept or Decline for each person as the table answers out loud. That is a
-hot-seat habit that survived going online. It works, but it assumes you are on
-a call together.
+An open trade goes round the table one player at a time rather than out to
+everybody at once, because only one dialog can be in flight across the room.
+Bots answer instantly; each person gets the offer on their own screen in turn.
+Nobody can be answered for, but a six-player table takes a moment to poll.
 
 ---
 
 ## Tuning
 
-Two knobs, both readable from the browser console mid-game:
+Two knobs, both reachable from the browser console mid-game. Only the host's
+setting matters for bot pacing, since only the host runs bots.
 
 ```js
-REACT_WINDOW = 2000   // ms of answering room at every hand-over (default 3000)
-AI.pace(1500)         // ms between visible bot actions (default 3000)
+AI.pace(1500)   // ms between visible bot actions (default 3000)
+NOPE_REACH      // how many log lines back a Nope may reach (default 4)
 ```
 
-Both are deliberately slow: the window for a Nope or a Defuse is one log entry
-wide, so a fast bot would slam it shut before a human could reach for a card.
+Bot pacing is deliberately slow: a Nope has to be draggable onto a line before
+the line scrolls out of reach, and a fast bot would bury it.

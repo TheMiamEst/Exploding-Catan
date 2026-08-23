@@ -963,8 +963,16 @@ function tickNow(){
   if (window.NET && NET.isGuest && NET.isGuest()) return;
   if (!S.players.some(p => agentOf(p.id))) return;      // pure hot-seat game
 
-  // A human prompt is open, or a response window is settling. Wait it out.
-  if (document.querySelector(".overlay") || S.pending){
+  // A human prompt is open. Wait it out.
+  //
+  // Online, a dialog handed to another player leaves NO overlay on this
+  // screen — it was shipped to theirs — so the DOM check alone let the bots
+  // carry on playing while somebody was still discarding. That is how a
+  // seven could get rolled, the discard shipped out, and the robber never
+  // moved: the sequence's continuation was waiting on an answer that arrived
+  // several bot actions too late.
+  const remotePrompt = window.NET && NET.remoteSeat !== null && NET.remoteSeat !== undefined;
+  if (document.querySelector(".overlay") || remotePrompt || S.pending){
     guard = 0;
     return schedule(IDLE);
   }
@@ -992,14 +1000,6 @@ function tickNow(){
     try { acted = rb.react(); }
     catch (err){ console.error("bot react failed:", err); }
     if (acted) return schedule();
-  }
-
-  // The hand-over window between turns. The reaction pass above still runs on
-  // every tick — that is the whole point of the window — but nobody advances
-  // the game until it has run out.
-  if (typeof reactWindowOpen === "function" && reactWindowOpen()){
-    guard = 0;
-    return schedule(250);
   }
 
   const ag = agentOf(S.cur);

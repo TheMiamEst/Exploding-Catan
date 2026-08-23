@@ -111,37 +111,6 @@
   }
   #implodeClock span{font-size:16px; font-weight:700; font-variant-numeric:tabular-nums}
   #implodeClock.urgent{border-color:#ff5a5a; animation:pulse .6s infinite alternate}
-  /* The hand-over window between turns: the seconds in which a Nope, an
-     Attack or a Defuse can still be thrown before the next player rolls. */
-  /* Shown when no game is running. Not a modal: the header stays reachable,
-     which is the whole point — the New Game dialog used to cover it. */
-  #idleCard{
-    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:6;
-    background:#1c2129f2; border:1px solid var(--line); border-radius:12px;
-    padding:26px 30px; text-align:center; max-width:430px;
-    box-shadow:0 18px 50px #000a;
-  }
-  #idleCard h2{margin:0 0 6px; font-size:22px; letter-spacing:.5px}
-  #idleCard h2 span{color:var(--accent)}
-  #idleCard p{margin:0 0 16px; color:var(--dim); font-size:13px; line-height:1.5}
-  #idleCard .pick{display:flex; gap:8px; justify-content:center; flex-wrap:wrap}
-  #idleCard .pick button{padding:9px 16px}
-  #verTag{font-size:10px; color:var(--dim); letter-spacing:.4px; font-variant-numeric:tabular-nums}
-  /* Someone in this game is running different code. */
-  #verWarn{
-    position:absolute; left:50%; transform:translateX(-50%); top:8px; z-index:8;
-    background:#4a2230f2; border:1px solid var(--danger); border-radius:8px;
-    padding:7px 14px; font-size:12.5px; text-align:center; color:#ffdede;
-    box-shadow:0 6px 20px #0009; max-width:min(560px, 92%);
-  }
-  #reactClock{
-    position:absolute; left:50%; transform:translateX(-50%); top:8px; z-index:7;
-    background:#12303aF2; border:1px solid #4bb1d9; border-radius:8px;
-    padding:6px 14px; font-size:13px; text-align:center; color:#dff2fb;
-    box-shadow:0 6px 20px #0009; pointer-events:none;
-  }
-  #reactClock span{font-size:16px; font-weight:700; font-variant-numeric:tabular-nums}
-  #reactClock.bumped{animation:pulse .5s infinite alternate}
   @keyframes pulse{from{opacity:.75}to{opacity:1}}
   /* Running event feed. Newest at the bottom; older entries scroll up and out
      of sight but stay in the list, so you can scroll back through the game. */
@@ -498,7 +467,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-23c";
+const GAME_VERSION = "2026-08-24a";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -922,13 +891,11 @@ function newGame(numPlayers){
     implodeTurn: -1,          // turn number made Nope-proof by an Imploding Kitten
     implodeBy: null,          // who drew it, so the seal outlives their turn
     implodeUntil: 0,          // wall-clock deadline for that turn
-    reactUntil: 0,            // hand-over window: nobody rolls until this passes
     feed: [],                 // the on-screen event list, so it can be sent online
     log: [],
     winner: null
   };
   S.turnRec = freshTurnRecord();
-  clearReactClock();
   clearFeed();
   logMsg("New game — " + numPlayers + " players. Deck: 54 kitten cards.");
   logMsg("<b>" + S.players[first].name + "</b> goes first.");
@@ -1175,7 +1142,7 @@ function renderIdle(){
 function backToIdle(){
   if (window.AI && window.AI.stop) window.AI.stop();
   window.AGENTS = {};
-  clearReactClock(); clearImplodeClock();
+  clearImplodeClock();
   S = null;
   clearFeed();
   renderIdle();
@@ -1725,9 +1692,9 @@ function drawBottom(){
   if (!p.cards.length){
     h += `<span class="emptyhand">No kitten cards</span>`;
   } else {
-    // The one entry still open to a reaction, so a Nope or Defuse that has
-    // something to answer right now can light up in your hand.
-    const live = openEntry();
+    // Every entry still open to a reaction, so a Nope or Defuse with something
+    // to answer right now can light up in your hand.
+    const live = openEntries();
     p.cards.forEach((c, i) => {
       const def = KITTEN[c.key];
       // Online, another seat's hand arrives as face-down placeholders. The
@@ -1743,9 +1710,9 @@ function drawBottom(){
       const playable = (myTurn && !locked && !isVP && !S.pending &&
                         (def.kind !== "response" || c.key === "nope") &&
                         (S.phase === "main" || S.phase === "roll")) || offTurn;
-      const canAnswer = !!live && !locked &&
-                        ((c.key === "defuse" && canDefuseEntry(live, p.id)) ||
-                         (c.key === "nope"   && canNopeEntry(live) && live.actor !== p.id));
+      const canAnswer = !locked && live.some(e =>
+                        (c.key === "defuse" && canDefuseEntry(e, p.id)) ||
+                        (c.key === "nope"   && e.actor !== p.id));
       const held = dragCard && dragCard.ownerId === p.id && dragCard.idx === i;
       const face = cardArt(c);
       let cls = offTurn ? "playable offturn" : playable ? "playable"
@@ -1776,9 +1743,7 @@ function drawBottom(){
     h += `<span class="thinking"><span class="dot" style="background:${who.color}"></span>
             ${who.name} is thinking…</span>`;
   } else if (S.phase === "roll"){
-    const waiting = reactWindowOpen();
-    h += `<button class="primary" id="rollBtn" ${waiting ? "disabled" : ""} onclick="rollDice()">${
-            waiting ? "Reactions open — " + reactSecondsLeft() + "s" : "Roll Dice"}</button>`;
+    h += `<button class="primary" id="rollBtn" onclick="rollDice()">Roll Dice</button>`;
   } else if (S.phase === "main"){
     h += `<button onclick="bankTradeDialog()">Bank / Port</button>`;
     h += `<button onclick="playerTradeDialog()">Trade</button>`;
@@ -1848,7 +1813,8 @@ function refreshFeedMarks(){
   if (!box || !S) return;
   const me = viewSeat();
   const p = S.players[me];
-  const live = openEntry();
+  const live = openEntries();
+  const liveIds = live.map(e => e.id);
   const hasDefuse = p && p.cards.some(c => c.key === "defuse" && c.boughtTurn !== S.turnCounter);
   const hasNope   = p && p.cards.some(c => c.key === "nope"   && c.boughtTurn !== S.turnCounter);
 
@@ -1865,7 +1831,8 @@ function refreshFeedMarks(){
     const oldestKnown = S.journal.length ? S.journal[0].id : Infinity;
     const gone = jid >= oldestKnown && !S.journal.some(x => x.id === jid);
     el.classList.toggle("undone", gone);
-    const isLive = !!live && live.id === jid;
+    const isLive = liveIds.indexOf(jid) >= 0;
+    const entry = isLive ? live[liveIds.indexOf(jid)] : null;
     el.classList.toggle("livewindow", isLive);
     const old = el.querySelector(".evmarks");
     if (old) old.remove();
@@ -1873,9 +1840,9 @@ function refreshFeedMarks(){
     if (!isLive) return;
 
     let marks = "";
-    if (hasDefuse && canDefuseEntry(live, me))
+    if (hasDefuse && canDefuseEntry(entry, me))
       marks += markFace("defuse", "defuse", "You can Defuse this — drag your Defuse onto this line");
-    if (hasNope && live.actor !== me)
+    if (hasNope && entry.actor !== me)
       marks += markFace("nope", "nope", "You can Nope this — drag your Nope onto this line");
     if (!marks) return;
     el.classList.add("answerable");
@@ -2019,78 +1986,14 @@ function implodeClockTick(){
   implodeTimer = setTimeout(implodeClockTick, 250);
 }
 
-/* ══ HAND-OVER WINDOW ══════════════════════════════════════════
-   A Nope may be played at any time, including after the turn it answers has
-   already ended — which is the only way a Nope can itself be Noped, since
-   being Noped ends your turn on the spot. So every turn hands over through a
-   few seconds in which nobody may roll and the last entry in the log is still
-   live. Playing a Nope inside the window starts it again, so a chain of them
-   can run as long as people keep answering.
-   ═══════════════════════════════════════════════════════════════════ */
-/* Tunable from the console if three seconds is too brisk or too slow:
-   REACT_WINDOW = 2000 (it is read fresh every time a window opens). */
-let REACT_WINDOW = 3000;        // ms of answering room at every hand-over
-let reactTimer = null;
-
-function reactWindowOpen(){
-  return !!S && S.phase !== "over" && !S.phase.startsWith("setup") &&
-         S.reactUntil > Date.now();
-}
-function reactSecondsLeft(){
-  if (!S) return 0;
-  return Math.max(0, Math.ceil((S.reactUntil - Date.now()) / 1000));
-}
-
-function clearReactClock(){
-  if (reactTimer){ clearTimeout(reactTimer); reactTimer = null; }
-  const el = document.getElementById("reactClock");
-  if (el) el.remove();
-}
-
-/* Open the window, or push it back out to full length if it is already
-   running — a Nope played inside the window buys everyone another go. */
-function openReactWindow(bumped){
-  if (!S || S.phase === "over" || S.phase.startsWith("setup")) return;
-  S.reactUntil = Date.now() + REACT_WINDOW;
-  if (reactTimer){ clearTimeout(reactTimer); reactTimer = null; }
-  reactClockTick(bumped);
-}
-
-function reactClockTick(bumped){
-  reactTimer = null;
-  if (!S || S.phase === "over" || S.phase.startsWith("setup")){ clearReactClock(); return; }
-  const left = reactSecondsLeft();
-
-  if (left <= 0){
-    clearReactClock();
-    S.reactUntil = 0;
-    render();
-    botTick();
-    return;
-  }
-
-  let el = document.getElementById("reactClock");
-  if (!el){
-    el = document.createElement("div");
-    el.id = "reactClock";
-    const area = document.getElementById("boardArea");
-    if (area) area.appendChild(el);
-  }
-  el.className = bumped ? "bumped" : "";
-  el.innerHTML = "↩︎ last call — Nope, Attack or Defuse<br><span>" + left +
-                 "s</span> before " + esc(cur().name) + " rolls";
-  const rb = document.getElementById("rollBtn");
-  if (rb) rb.textContent = "Reactions open — " + left + "s";
-
-  reactTimer = setTimeout(function(){ reactClockTick(bumped); }, 200);
-}
-
-/* A terminal is sent how much of each clock is still to run rather than being
-   trusted to keep time; this starts and stops the two banners to match. */
+/* A terminal is sent how much of the imploding-kitten clock is still to run
+   rather than being trusted to keep time; this starts and stops the banner to
+   match. There used to be a second, turn hand-over clock here as well — a few
+   seconds after every turn in which nobody could roll. It was removed: a Nope
+   can now simply be dragged onto any of the last few lines of the log, which
+   is both easier to understand and never makes anyone wait. */
 function mirrorClocks(){
   if (!S) return;
-  if (S.reactUntil > Date.now()){ if (!reactTimer) reactClockTick(false); }
-  else clearReactClock();
   if (S.implodeUntil > Date.now() && S.implodeTurn === S.turnCounter){
     if (!implodeTimer) implodeClockTick();
   } else if (S.implodeTurn !== S.turnCounter){
@@ -2383,10 +2286,6 @@ document.addEventListener("keydown", e => {
 
 function rollDice(){
   if (netSend("roll")) return;
-  if (reactWindowOpen()){
-    hint("Hold on — " + reactSecondsLeft() + "s left for anyone to react.");
-    return;
-  }
   const snapBefore = snapAll();
   const d1 = 1 + Math.floor(Math.random() * 6);
   const d2 = 1 + Math.floor(Math.random() * 6);
@@ -2658,8 +2557,11 @@ function drawKitten(p){
   if (S.turnRec && p.id === S.cur) S.turnRec.drawn.push(c);
   logMsg(`<b>${p.name}</b> buys a kitten card.`);
   // Only the buyer learns what it was; everyone sees that a card was bought.
+  // Never name the card. This used to reveal a human's purchase to the whole
+  // table — harmless when the only human was the one reading the screen, a
+  // straight information leak the moment other people are playing. You can see
+  // what you drew in your own hand.
   logAction(pdot(p) + " buys a kitten card" +
-           (isBot(p.id) ? "" : " — <b>" + KITTEN[c.key].name + "</b>") +
            ' <span style="opacity:.6">(' + S.deck.length + ' left)</span>', "buy",
             { actor: p.id, snap: snapBefore });
   if (c.key === "vp"){ checkVictory(); }
@@ -2919,32 +2821,39 @@ function logAction(html, kind, opts){
   return e;
 }
 
-/* The newest entry in the log — the only one still open to an answer. */
+/* How far back a Nope or a Defuse may still reach. Undoing an entry also
+   discards everything after it, so this stays short: far enough that you are
+   never rushed, short enough that a Nope cannot rewrite the last five minutes.
+   This replaced a timed window between turns, which made people wait and was
+   never obvious to anyone. */
+const NOPE_REACH = 4;
+
+/* The newest entry still open to an answer — what a prompt's Defuse and Nope
+   buttons act on, and what the hand highlights against. */
 function openEntry(){
   if (!S || !S.journal.length) return null;
   const e = S.journal[S.journal.length - 1];
   return canNopeEntry(e) ? e : null;
 }
 
+/* Every entry currently answerable, newest first. */
+function openEntries(){
+  if (!S) return [];
+  return S.journal.slice(-NOPE_REACH).filter(canNopeEntry).reverse();
+}
+
 /* May this entry still be answered?
 
-   The window used to stay open for the whole turn, which meant a stack of
-   answerable entries and no sense of urgency. It is now exactly one entry
-   wide: the moment the NEXT thing reaches the log, the one before it is
-   settled for good. Bot pacing was slowed to 3s to keep that window humane.
-
-   It is not, however, closed by the turn ending. A Nope may be played at any
-   time, and the hand-over window keeps the last entry of a finished turn live
-   for a few seconds — without which a Nope could never be Noped, since being
-   Noped ends your turn on the spot. */
+   Any of the last NOPE_REACH lines of the log, whatever turn they came from.
+   Reaching across a turn boundary is deliberate: being Noped ends your turn,
+   so without it a Nope could never itself be Noped. Bots move at 3s, which is
+   what keeps the reach usable rather than a reflex test. */
 function canNopeEntry(e){
   if (!e || e.noped || !e.nopeable || !e.snap) return false;
   if (S.phase === "over" || S.phase.startsWith("setup")) return false;
-  // Only the newest entry. Anything older has been overtaken.
-  if (!S.journal.length || S.journal[S.journal.length - 1].id !== e.id) return false;
-  // From a turn that is already over: live only while the hand-over window is
-  // still counting down.
-  if (e.turn !== S.turnCounter && !reactWindowOpen()) return false;
+  const idx = S.journal.findIndex(x => x.id === e.id);
+  if (idx < 0) return false;
+  if (idx < S.journal.length - NOPE_REACH) return false;   // fallen out of reach
   // An Imploding Kitten seals its own turn for good, not just while it lasts.
   if (e.turn === S.implodeTurn && e.actor === S.implodeBy) return false;
   return true;
@@ -3115,16 +3024,20 @@ function nopeEntry(id, noperId){
     const back = S.players[S.cur];
     announce(pdot(back) + " gets their turn back", "defend");
     logMsg(`<b>${back.name}</b> gets their turn back.`);
-  } else if (wasNoperTurn){
+  } else if (wasNoperTurn && !e.redo){
     // Being Noped costs you the rest of your turn, whatever you were doing.
     // A Noped roll is therefore not rerolled — there is no turn left to roll
     // for — which is a good part of why a Nope is worth holding on to.
+    //
+    // Not so for a Defuse (the `e.redo` case above). That is a defensive card
+    // played out of turn; cancelling it means the original attack lands after
+    // all, which is punishment enough. Ending the defender's turn on top of it
+    // was wrong — an Exploding Kitten thrown at them on their OWN turn, then
+    // Defused, then Noped, cost them the turn instead of the resources.
     announce(pdot(victim) + " is Noped — their turn ends", "attack");
     logMsg(`<b>${victim.name}</b>'s turn ends.`);
     endTurnAfterNope();
   }
-  // Whatever just happened, everyone gets a fresh few seconds to answer it.
-  openReactWindow(true);
   render();
   botTick();
   return true;
@@ -3281,6 +3194,13 @@ function playResolved(base){
     logAction(describeCard(base), aggressive ? "attack" : "info",
               { actor: base.actor, target: base.target, card: base.card,
                 payload: base.payload, snap: snap });
+  } else {
+    // Part of resolving somebody's reaction, so no journal entry of its own —
+    // it must not become separately answerable. The table still needs to SEE
+    // it though: a Defused Alter or Favor is played by the defuser, on their
+    // own terms, and without this nothing ever said which tokens they swapped
+    // or which three cards they demanded.
+    announce(describeCard(base), aggressive ? "attack" : "info");
   }
   logMsg(describeCard(base).replace(/<span[^>]*><\/span>/g, "") + ".");
   resolveCard(base);
@@ -3410,7 +3330,6 @@ function doEndTurn(){
     S.turnCounter++;
     S.turnRec = freshTurnRecord();
     logMsg(`<b>${cur().name}</b> takes another turn.`);
-    openReactWindow();
     render();
     botTick();
     return;
@@ -3438,9 +3357,6 @@ function advancePlayer(){
   S.turnCounter++;
   S.turnRec = freshTurnRecord();
   clearImplodeClock();
-  // A few seconds of answering room before the new player may roll. The last
-  // entry of the turn just ended stays live for exactly this long.
-  openReactWindow();
   render();
   botTick();
 
@@ -3488,8 +3404,6 @@ function declareWinner(pid){
   S.phase = "over";
   S.select = null;
   S.armed = null;
-  S.reactUntil = 0;
-  clearReactClock();
   S.revealed = true;              // every hand is face up once the game is done
   clearImplodeClock();
   logMsg(`🏆 <b>${p.name}</b> wins with ${totalVP(p)} victory points!`);
@@ -3670,6 +3584,7 @@ function playerTradeDialog(){
 
   /* ── stage 1: compose ── */
   function compose(){
+    promptFor(p.id);
     let h = `<p class="sub">Put one offer to the whole table. Everyone answers, then you
              choose who to deal with.</p>
              <table class="trade"><tr><td style="vertical-align:top;width:50%">
@@ -3683,24 +3598,51 @@ function playerTradeDialog(){
     ]);
   }
 
-  /* ── stage 2: collect answers ── */
+  /* ── stage 2: put it to the table ──
+     Everyone answers for themselves. Bots decide on the spot; people are asked
+     one at a time, each on their own screen. Only one dialog can be in flight
+     across the table at once, so the offer goes round the room rather than out
+     to everybody together — slower, but nobody can be answered FOR.
+
+     This used to hand the offerer Accept and Decline buttons for every other
+     player. Fine when the only person playing was the one holding the mouse;
+     once other people were at other screens it meant you could simply take
+     their resources. */
   function ask(){
     replies = {};
+    const toAsk = [];
     for (const q of others()){
       const canPay = RES.every(r => q.res[r] >= want[r]);
       if (!canPay){ replies[q.id] = "cant"; continue; }
       const ag = agentOf(q.id);
       if (ag && ag.considerTrade) replies[q.id] = ag.considerTrade(p, q, offer, want) ? "yes" : "no";
-      else replies[q.id] = "wait";        // a human at this table must answer
+      else toAsk.push(q.id);
     }
     logMsg(`<b>${p.name}</b> offers ${fmt(offer)} for ${fmt(want)}.`);
-    announce(pdot(p) + " offers a trade to the table", "info");
-    results();
+    announce(pdot(p) + " offers " + esc(fmt(offer)) + " for " + esc(fmt(want)), "info");
+    askNext(toAsk);
+  }
+
+  function askNext(queue){
+    if (!queue.length){ results(); return; }
+    const qid = queue[0], rest = queue.slice(1);
+    const q = S.players[qid];
+    const answer = (a) => { replies[qid] = a; closeModal(); askNext(rest); };
+    announce(pdot(p) + " is waiting on " + pdot(q), "info");
+    render();
+    promptFor(qid);
+    openModal("Trade offer from " + esc(p.name),
+      `<div class="stack"><div>They give you: <b>${esc(fmt(offer))}</b></div>
+         <div>They want from you: <b>${esc(fmt(want))}</b></div></div>
+       <p class="sub">Yours to answer — nobody else can answer it for you. Declining
+       costs you nothing.</p>`,
+      [ { label:"Decline", fn: () => answer("no") },
+        { label:"Accept", cls:"primary", fn: () => answer("yes") } ]);
   }
 
   function results(){
+    promptFor(p.id);                       // back to whoever made the offer
     const list = others();
-    const waiting = list.some(q => replies[q.id] === "wait");
     let h = `<div class="stack"><div>You give: <b>${fmt(offer)}</b></div>
              <div>You want: <b>${fmt(want)}</b></div></div>`;
     h += `<div style="margin-top:10px">`;
@@ -3708,10 +3650,7 @@ function playerTradeDialog(){
       const st = replies[q.id];
       h += `<div class="counter">
               <span class="lbl"><span class="dot" style="background:${q.color}"></span><b>${q.name}</b></span>`;
-      if (st === "wait"){
-        h += `<button class="sm" onclick="window.__ans(${q.id},'yes')">Accept</button>
-              <button class="sm" onclick="window.__ans(${q.id},'no')">Decline</button>`;
-      } else if (st === "yes"){
+      if (st === "yes"){
         h += `<span style="color:#6fbf7a;font-size:12px;margin-right:8px">accepted</span>
               <button class="sm primary" onclick="window.__deal(${q.id})">Trade</button>`;
       } else if (st === "cant"){
@@ -3722,7 +3661,7 @@ function playerTradeDialog(){
       h += `</div>`;
     }
     h += `</div>`;
-    if (!waiting && !list.some(q => replies[q.id] === "yes"))
+    if (!list.some(q => replies[q.id] === "yes"))
       h += `<div class="warnbox">Nobody took it. Try a different offer.</div>`;
 
     openModal("Open Trade", h, [
@@ -3733,7 +3672,6 @@ function playerTradeDialog(){
 
   window.__tof = (r, d) => { offer[r] = Math.max(0, Math.min(p.res[r], offer[r] + d)); compose(); };
   window.__twa = (r, d) => { want[r]  = Math.max(0, want[r] + d); compose(); };
-  window.__ans = (qid, a) => { replies[qid] = a; results(); };
   window.__deal = (qid) => {
     const q = S.players[qid];
     if (!RES.every(r => q.res[r] >= want[r])){ replies[qid] = "cant"; results(); return; }
@@ -4148,7 +4086,6 @@ function nopeWholeTurn(ownerId, pid){
                         spent: { pid: ownerId, key: "nope" } });
   clearImplodeClock();
   cancelTurn(pid, totalVP(victim) >= 10);     // cancelTurn ends the turn itself
-  openReactWindow(true);
 }
 
 /* Cards can be shuffled around in your own hand at will; where a card sits is
@@ -4242,19 +4179,17 @@ function showRules(){
     Defuse cancels the "no you": the original card is simply played again, at whoever it was first
     aimed at. A <b>Defuse</b> cannot answer another Defuse, though — "no you" does not stack
     against itself.</p>
-    <p><b>The window is one entry wide.</b> Anything in the game log can be answered, but only while
-    it is the <i>newest</i> line: the moment the next thing happens, the line before it is settled
-    for good. When you are holding the card that would answer the live line, a small badge of that
-    card appears on it — that badge is your countdown, and only you can see it. Bots deliberately
-    take three seconds between moves so the window is never a reflex test.</p>
+    <p><b>You can reach back a few lines.</b> Drag a Nope or a Defuse onto any of the last
+    <b>four</b> lines of the game log, whatever turn they came from. Lines you are holding the card
+    to answer wear a small badge of that card — only you can see it, so a badge never gives away
+    what is in your hand. Bots take three seconds between moves, so there is always time.</p>
+    <p>Answering a line also erases everything that came after it, which is why the reach is short
+    rather than the whole game.</p>
     <p><b>Being Noped ends your turn.</b> Whatever you were Noped for — a roll, a build, a card —
     the rest of that turn goes with it. A counter-Nope hands that turn straight back: the
     interrupted player picks up exactly where they were standing.</p>
-    <p><b>The hand-over window.</b> A Nope may be played at any time, including after the turn it
-    answers has ended — without that, a Nope could never be Noped, since being Noped ends your
-    turn on the spot. So every turn hands over through <b>three seconds</b> in which nobody may
-    roll and the last line of the log is still live. Playing a Nope inside that window starts it
-    again, so a chain runs for as long as people keep answering.</p>
+    <p>Noping a <b>Defuse</b> is the exception: it costs nobody their turn. The "no you" is simply
+    cancelled and the original card lands where it was first aimed.</p>
     <p>When a card forces a window open on you — the discard from an Attack, the handover from a
     Favor — <b>Defuse</b> and <b>Nope</b> sit in that window next to the usual buttons, so you can
     answer before you pay rather than afterwards. They only appear when you are actually holding
@@ -4303,13 +4238,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-23c"></script>
+<script src="ai.js?v=2026-08-24a"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-23c"></script>
-<script src="net.js?v=2026-08-23c"></script>
+<script src="firebase-config.js?v=2026-08-24a"></script>
+<script src="net.js?v=2026-08-24a"></script>
 </body>
 </html>

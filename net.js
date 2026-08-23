@@ -53,7 +53,7 @@ const JOURNAL_KEEP = 24;      // enough to judge the live entry and mark the fee
 /* Inline handlers a shipped dialog is allowed to call back into. Anything the
    game puts on `window.__…` for its own modals goes here; nothing else can be
    invoked from another machine. */
-const REMOTE_CALLS = ["__dc", "__fv", "__pickVictim", "__ans", "__bGive", "__bGet",
+const REMOTE_CALLS = ["__dc", "__fv", "__pickVictim", "__bGive", "__bGet",
                       "__deal", "__poolAdd", "__tof", "__twa"];
 
 const NET = {
@@ -131,7 +131,6 @@ function connect(){
 function dropLocalGame(){
   window.AGENTS = {};
   if (window.AI && window.AI.stop) window.AI.stop();
-  if (typeof clearReactClock === "function") clearReactClock();
   if (typeof clearImplodeClock === "function") clearImplodeClock();
 }
 
@@ -198,9 +197,8 @@ function serializeGame(){
     winner: S.winner, revealed: S.revealed,
     diceLog: S.diceLog.slice(-60),
 
-    // Deadlines travel as "milliseconds still to run", so nobody has to trust
-    // anybody else's wall clock.
-    reactLeft:   Math.max(0, (S.reactUntil   || 0) - Date.now()),
+    // The deadline travels as "milliseconds still to run", so nobody has to
+    // trust anybody else's wall clock.
     implodeLeft: Math.max(0, (S.implodeUntil || 0) - Date.now()),
 
     // Snapshots stay home: they are big, and a terminal never rewinds
@@ -277,7 +275,6 @@ function applyGame(b){
   S.deck    = new Array(b.deckLen    || 0).fill(null).map(() => ({ key:"hidden" }));
   S.discard = new Array(b.discardLen || 0).fill(null).map(() => ({ key:"hidden" }));
 
-  S.reactUntil   = b.reactLeft   > 0 ? Date.now() + b.reactLeft   : 0;
   S.implodeUntil = b.implodeLeft > 0 ? Date.now() + b.implodeLeft : 0;
 
   S.journal = arr(b.journal, (b.journal && b.journal.length) || 0).filter(Boolean)
@@ -488,22 +485,31 @@ function seatRowsHTML(){
   return h;
 }
 
+/* Deal a fresh board to the people already sitting down. Used both by Start
+   in the lobby and by Restart mid-game, so a table that wants another round
+   never has to break up and swap a new room code around. */
+function startTable(){
+  closeModal();
+  NET.started = true;
+  NET.room.child("meta/started").set(true);
+  NET.remoteSeat = null;
+  NET.promptSeat = null;
+  if (NET.room) NET.room.child("prompt").remove();
+  window.AGENTS = {};
+  newGame(NET.roster.length);
+  const bots = NET.roster.map((r, i) => r.bot ? i : -1).filter(i => i >= 0);
+  if (bots.length && typeof window.AI !== "undefined"){
+    const humans = NET.roster.map((r, i) => r.bot ? -1 : i).filter(i => i >= 0);
+    window.AI.enable(humans);
+  }
+  S.players.forEach((p, i) => { if (NET.roster[i] && !NET.roster[i].bot) p.name = NET.roster[i].name; });
+  beginSetupStep();
+  publish();
+}
+NET.startTable = startTable;
+
 function hostLobby(){
-  const start = () => {
-    closeModal();
-    NET.started = true;
-    NET.room.child("meta/started").set(true);
-    window.AGENTS = {};
-    newGame(NET.roster.length);
-    const bots = NET.roster.map((r, i) => r.bot ? i : -1).filter(i => i >= 0);
-    if (bots.length && typeof window.AI !== "undefined"){
-      const humans = NET.roster.map((r, i) => r.bot ? -1 : i).filter(i => i >= 0);
-      window.AI.enable(humans);
-    }
-    S.players.forEach((p, i) => { if (NET.roster[i] && !NET.roster[i].bot) p.name = NET.roster[i].name; });
-    beginSetupStep();
-    publish();
-  };
+  const start = startTable;
   const refresh = () => {
     const body =
       '<p class="sub">Room code <b style="font-size:22px;letter-spacing:3px">' + NET.code + '</b>' +
@@ -664,8 +670,18 @@ window.onlineDialog = function(){
       '<p class="sub">You are ' + (isHost() ? "hosting" : "playing in") + ' room <b>' + NET.code +
       '</b> as <b>' + esc(NET.name) + '</b>' + (NET.seat !== null ? " in the " +
       PLAYER_NAMES[NET.seat] + " seat" : "") + '.</p>' + seatRowsHTML(),
-      [{ label:"Stay", cls:"primary", fn: closeModal },
-       { label:"Leave the game", cls:"warn", fn: () => { teardown(); closeModal(); backToIdle(); } }]);
+      isHost()
+        ? [{ label:"Stay", cls:"primary", fn: closeModal },
+           { label:"Restart with these players", fn: () => {
+               openModal("Start another game?",
+                 '<p class="sub">Same room, same seats, a brand new board. Whatever is on the ' +
+                 'table now is gone.</p>',
+                 [{ label:"Keep playing", fn: closeModal },
+                  { label:"Deal a new board", cls:"warn", fn: startTable }]);
+             } },
+           { label:"Leave the game", cls:"warn", fn: () => { teardown(); closeModal(); backToIdle(); } }]
+        : [{ label:"Stay", cls:"primary", fn: closeModal },
+           { label:"Leave the game", cls:"warn", fn: () => { teardown(); closeModal(); backToIdle(); } }]);
     return;
   }
 
