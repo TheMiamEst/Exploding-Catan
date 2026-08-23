@@ -398,13 +398,15 @@ function applyRemoteDrop(seat, idx, kind, id){
    dialog that redraws itself keeps working across the wire at the cost of one
    round trip per click. */
 
+/* An untagged dialog stays on the screen that opened it. There used to be a
+   fallback here — "nobody said whose this is, so give it to whoever already
+   holds a modal" — meant for dialogs that redraw themselves. It also caught
+   every unrelated dialog opened while somebody was mid-discard, which is how
+   the dice history ended up on another player's screen and how the host's own
+   Restart confirmation got posted to a guest and never came back. The dialogs
+   that redraw now re-tag themselves instead. */
 NET.takePromptSeat = function(){
-  let s = NET.promptSeat;
-  if (s === null || s === undefined){
-    // A dialog redrawing itself (every +/− reopens it) carries no fresh tag,
-    // so fall back to whoever is holding the modal already.
-    for (const k in NET.remote) if (NET.remote[k].kind === "modal") s = +k;
-  }
+  const s = NET.promptSeat;
   NET.promptSeat = null;
   return s;
 };
@@ -423,6 +425,17 @@ function dropPrompt(seat){
 NET.anyPrompt = function(){
   for (const k in NET.remote) return true;
   return false;
+};
+
+NET.pendingSeats = function(){ return Object.keys(NET.remote).map(Number); };
+
+/* Last resort. A player who closed their tab mid-dialog leaves an answer
+   outstanding that will never arrive, and the bots wait on it forever. */
+NET.clearAllPrompts = function(){
+  if (!isHost()) return;
+  for (const k of Object.keys(NET.remote)) dropPrompt(+k);
+  if (typeof closeAllPanels === "function") closeAllPanels();
+  if (typeof render === "function") render();
 };
 
 /* Called from openModal. Returns true when the dialog has been sent away and
@@ -742,6 +755,9 @@ window.onlineDialog = function(){
       PLAYER_NAMES[NET.seat] + " seat" : "") + '.</p>' + seatRowsHTML(),
       isHost()
         ? [{ label:"Stay", cls:"primary", fn: closeModal },
+           { label: NET.anyPrompt() ? "Unstick (" + NET.pendingSeats().length + " waiting)" : "Unstick",
+             fn: () => { NET.clearAllPrompts(); closeModal();
+                         announce("⚠ Pending answers were cleared by the host", "info"); } },
            { label:"Restart with these players", fn: () => {
                openModal("Start another game?",
                  '<p class="sub">Same room, same seats, a brand new board. Whatever is on the ' +

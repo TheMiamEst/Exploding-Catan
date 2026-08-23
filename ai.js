@@ -524,30 +524,46 @@ function tryBankTrade(p){
 
 /* Put an offer in front of a human. Their answer arrives asynchronously; the
    driver simply waits while the modal is open. */
+/* A bot's offer reaches a person exactly the way another person's does: a
+   panel on THEIR screen, addressed to their seat.
+
+   It used to be a bare openModal with no seat on it, which drew on whichever
+   machine happened to be running the game. Online that meant the host got a
+   dialog for somebody else's trade — another way to be traded with against
+   your will — and if the host left it alone the bots waited on an answer
+   that could never come, which is the "thinking forever" freeze. */
 function proposeToHuman(bot, human, offer, want){
   const fmt = o => RES.filter(r => o[r] > 0).map(r => o[r] + " " + RES_NAME[r]).join(", ") || "nothing";
-  openModal("Trade offer from " + bot.name,
-    '<p class="sub">' + bot.name + ' wants to trade with you.</p>' +
-    '<div class="stack"><div>You receive: <b>' + fmt(offer) + '</b></div>' +
-    '<div>You give: <b>' + fmt(want) + '</b></div></div>',
-    [
-      { label:"Decline", fn: function(){
-          closeModal();
-          logMsg("<b>" + human.name + "</b> declines <b>" + bot.name + "</b>'s offer.");
-          render();
-        } },
-      { label:"Accept", cls:"primary", fn: function(){
-          closeModal();
-          for (const r of RES){
-            bot.res[r]   -= offer[r]; human.res[r] += offer[r]; noteGain(human, r, offer[r]);
-            human.res[r] -= want[r];  bot.res[r]   += want[r];  noteGain(bot,   r, want[r]);
-          }
-          logMsg("<b>" + bot.name + "</b> ⇄ <b>" + human.name + "</b>: gave " +
-                 fmt(offer) + " for " + fmt(want) + ".");
-          tradeToast(bot, human, offer, want);
-          render();
-        } }
-    ]);
+  const key = "botoffer" + bot.id + "_" + human.id;
+  let done = false;
+
+  const decline = function(){
+    if (done) return; done = true;
+    closePanel(key);
+    logMsg("<b>" + human.name + "</b> declines <b>" + bot.name + "</b>'s offer.");
+    render();
+  };
+  const accept = function(){
+    if (done) return; done = true;
+    closePanel(key);
+    // The board may have moved since the offer went out.
+    const ok = RES.every(r => bot.res[r] >= offer[r] && human.res[r] >= want[r]);
+    if (!ok){ hint("That trade is no longer possible."); render(); return; }
+    for (const r of RES){
+      bot.res[r]   -= offer[r]; human.res[r] += offer[r]; noteGain(human, r, offer[r]);
+      human.res[r] -= want[r];  bot.res[r]   += want[r];  noteGain(bot,   r, want[r]);
+    }
+    logMsg("<b>" + bot.name + "</b> ⇄ <b>" + human.name + "</b>: gave " +
+           fmt(offer) + " for " + fmt(want) + ".");
+    tradeToast(bot, human, offer, want);
+    render();
+  };
+
+  openPanel(key, human.id, "Trade offer from " + esc(bot.name),
+    '<div class="stack"><div>You get: <b>' + esc(fmt(offer)) + '</b></div>' +
+    '<div>You give: <b>' + esc(fmt(want)) + '</b></div></div>',
+    [ { label:"Decline", fn: decline },
+      { label:"Accept", cls:"primary", fn: accept } ]);
 }
 
 /* Offer a 1-for-1 to another player — bot or human. Never trade with whoever

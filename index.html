@@ -371,7 +371,7 @@
   .recent span.seven{border-color:var(--danger); color:var(--danger)}
 
   @media (max-width:900px){
-    #panels{width:min(300px, 52%); top:88px; bottom:140px}
+    #panels{width:min(300px, 54%); top:80px; bottom:124px}
     /* Full-size dice would eat a narrow board. */
     .die{width:58px; height:58px; border-radius:11px; padding:7px}
     .die i{width:10px; height:10px}
@@ -396,8 +396,8 @@
      reachable. Several can stand at once, one per seat, which is what lets a
      trade offer go to everybody together instead of round the table. */
   #panels{
-    position:absolute; right:12px; top:110px; bottom:148px;
-    width:min(320px, 44%); z-index:6;
+    position:absolute; right:12px; top:104px; bottom:132px;
+    width:min(330px, 46%); z-index:6;
     display:flex; flex-direction:column; gap:8px; align-items:stretch;
     overflow-y:auto; scrollbar-width:none;
     pointer-events:none;              /* the empty column never eats a click */
@@ -406,15 +406,18 @@
   .panel{
     pointer-events:auto;
     background:var(--panel); border:1px solid var(--accent); border-radius:10px;
-    padding:12px 14px; box-shadow:0 12px 34px #000a; flex:0 0 auto;
+    padding:10px 12px; box-shadow:0 12px 34px #000a; flex:0 0 auto;
     animation:panelin .16s ease-out;
   }
   @keyframes panelin{from{transform:translateX(14px);opacity:0}to{transform:none;opacity:1}}
-  .panel h3{margin:0 0 6px; font-size:14px; letter-spacing:.2px}
-  .panel .sub{margin:0 0 10px; color:var(--dim); font-size:12px; line-height:1.45}
-  .panel .actions{display:flex; gap:6px; justify-content:flex-end; margin-top:11px; flex-wrap:wrap}
+  .panel h3{margin:0 0 5px; font-size:13.5px; letter-spacing:.2px}
+  .panel .sub{margin:0 0 8px; color:var(--dim); font-size:11.5px; line-height:1.4}
+  .panel .actions{display:flex; gap:5px; justify-content:flex-end; margin-top:9px; flex-wrap:wrap}
   .panel .actions button{padding:6px 11px; font-size:12.5px}
   .panel .counter{margin-bottom:3px}
+  .panel .pick{display:flex; flex-wrap:wrap; gap:4px}
+  .pick.tight button{padding:4px 6px; font-size:11.5px; line-height:1.2}
+  .pick.tight .swatch{width:8px; height:8px; border-radius:2px}
   .panel .stack{font-size:12.5px}
   .panel.forme{border-color:#7fc48f; box-shadow:0 12px 34px #000a, 0 0 0 2px #7fc48f33}
   /* The board moved under an open panel — a Nope rewound something. */
@@ -501,7 +504,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-24b";
+const GAME_VERSION = "2026-08-24c";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1776,6 +1779,12 @@ function drawBottom(){
 
   // ── actions ──
   h += `<div class="bside right"><div class="actions-bar">`;
+  // Being stuck is much easier to unpick when the screen says who on.
+  const pend = pendingAnswerers().filter(s => s !== p.id);
+  if (pend.length && S.phase !== "over"){
+    h += `<span class="thinking"><span class="dot" style="background:${S.players[pend[0]].color}"></span>
+            waiting for ${esc(S.players[pend[0]].name)}…</span>`;
+  }
   if (!myTurn && S.phase !== "over"){
     const who = S.players[S.cur];
     h += `<span class="thinking"><span class="dot" style="background:${who.color}"></span>
@@ -2643,9 +2652,9 @@ function beginAlterPick(actorId, onPick){
 
 function favorGuessDialog(c, idx, tid, ownerId){
   const asker = ownerId === undefined ? S.cur : ownerId;
-  promptFor(asker);
   const want = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
   const refresh = () => {
+    promptFor(asker);        // every redraw is still this player's dialog
     const total = RES.reduce((s, r) => s + want[r], 0);
     let h = `<p class="sub">Name 3 resource cards. <b>${S.players[tid].name}</b> hands over whichever
              of them they actually hold — you get nothing for the ones they don't have.</p>`;
@@ -3601,34 +3610,40 @@ function playerTradeDialog(){
   const offer = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
   const want  = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
   let replies = null;                 // playerId -> "yes" | "no" | "wait"
+  let settled = false;                // one offer settles exactly once
+  const WANT_CAP = 6;
 
   const fmt = o => RES.filter(r => o[r] > 0).map(r => o[r] + " " + RES_NAME[r]).join(", ") || "nothing";
   const others = () => S.players.filter(q => q.id !== p.id);
   const anyOffer = () => RES.some(r => offer[r] > 0) || RES.some(r => want[r] > 0);
 
-  function counterRow(label, obj, fn){
-    let h = `<div style="margin-bottom:4px;color:var(--dim);font-size:12.5px">${label}</div>`;
+  /* Click a resource to add one; click past the most you could put in and it
+     wraps back to none. This replaced a −/+ pair on its own tall row for each
+     of the five resources, twice over — ten rows, which put a scrollbar in a
+     panel that is meant to be taken in at a glance. Same click-to-add idiom
+     the bank panel already used. */
+  function pickRow(label, obj, fn, capOf){
+    let h = `<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">${label}</div>
+             <div class="pick tight">`;
     for (const r of RES){
-      h += `<div class="counter">
-              <span class="lbl"><span class="swatch" style="background:${RES_COLOR[r]}"></span>${RES_NAME[r]}</span>
-              <button class="sm" onclick="window.${fn}('${r}',-1)">−</button>
-              <span class="val">${obj[r]}</span>
-              <button class="sm" onclick="window.${fn}('${r}',1)">+</button>
-            </div>`;
+      const cap = capOf(r);
+      h += `<button ${cap > 0 ? "" : "disabled"} onclick="window.${fn}('${r}')"
+              title="${RES_NAME[r]}${cap > 0 ? " — up to " + cap + ", then back to none" : " — none to give"}">
+              <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
+              ${RES_NAME[r].slice(0, 3)}${obj[r] ? ` <b>×${obj[r]}</b>` : ""}</button>`;
     }
-    return h;
+    return h + `</div>`;
   }
 
   /* ── stage 1: compose ── */
   function compose(){
-    let h = `<p class="sub">Put one offer to the whole table. Everyone answers, then you
-             choose who to deal with.</p>
-             <table class="trade"><tr><td style="vertical-align:top;width:50%">
-             ${counterRow("You give", offer, "__tof")}
-             </td><td style="vertical-align:top">
-             ${counterRow("You want", want, "__twa")}
-             </td></tr></table>`;
+    let h = `<p class="sub">Click to add; click past the limit to clear it.</p>
+             ${pickRow("You give", offer, "__tof", r => p.res[r])}
+             <div style="height:6px"></div>
+             ${pickRow("You want", want, "__twa", () => WANT_CAP)}`;
     openPanel("trade", p.id, "Open trade", h, [
+      { label:"Clear", disabled: !anyOffer(), fn: () => {
+          for (const r of RES){ offer[r] = 0; want[r] = 0; } compose(); } },
       { label:"Cancel", fn: () => { closePanel("trade"); render(); } },
       { label:"Ask everyone", cls:"primary", disabled: !anyOffer(), fn: ask }
     ]);
@@ -3674,9 +3689,8 @@ function playerTradeDialog(){
     const key = "offer" + qid;
     const answer = (a) => { replies[qid] = a; closePanel(key); results(); };
     openPanel(key, qid, "Trade offer from " + esc(p.name),
-      `<div class="stack"><div>They give you: <b>${esc(fmt(offer))}</b></div>
-         <div>They want from you: <b>${esc(fmt(want))}</b></div></div>
-       <p class="sub">Yours to answer. Declining costs you nothing.</p>`,
+      `<div class="stack"><div>You get: <b>${esc(fmt(offer))}</b></div>
+         <div>You give: <b>${esc(fmt(want))}</b></div></div>`,
       [ { label:"Decline", fn: () => answer("no") },
         { label:"Accept", cls:"primary", fn: () => answer("yes") } ]);
   }
@@ -3717,19 +3731,31 @@ function playerTradeDialog(){
     ]);
   }
 
-  window.__tof = (r, d) => { offer[r] = Math.max(0, Math.min(p.res[r], offer[r] + d)); compose(); };
-  window.__twa = (r, d) => { want[r]  = Math.max(0, want[r] + d); compose(); };
+  window.__tof = (r) => { offer[r] = offer[r] >= p.res[r] ? 0 : offer[r] + 1; compose(); };
+  window.__twa = (r) => { want[r]  = want[r]  >= WANT_CAP ? 0 : want[r]  + 1; compose(); };
+  /* One offer, one deal. Every acceptor used to keep a live Trade button after
+     the first had gone through, so clicking a second one ran the transfer
+     again — conjuring resources out of nothing and pushing the offerer
+     negative. The negotiation now closes the moment it settles, and both
+     sides are checked for the goods first, since a Nope may have moved them. */
   window.__deal = (qid) => {
-    dropOffers();
+    if (settled) return;
     const q = S.players[qid];
     if (!RES.every(r => q.res[r] >= want[r])){ replies[qid] = "cant"; results(); return; }
+    if (!RES.every(r => p.res[r] >= offer[r])){
+      hint("You no longer have what you offered.");
+      settled = true; dropOffers(); closePanel("trade"); render();
+      return;
+    }
+    settled = true;
     for (const r of RES){
       p.res[r] -= offer[r]; q.res[r] += offer[r]; noteGain(q, r, offer[r]);
       q.res[r] -= want[r];  p.res[r] += want[r];  noteGain(p, r, want[r]);
     }
     logMsg(`<b>${p.name}</b> ⇄ <b>${q.name}</b>: gave ${fmt(offer)} for ${fmt(want)}.`);
     tradeToast(p, q, offer, want);
-    closeModal();
+    dropOffers();
+    closePanel("trade");
     render();
   };
 
@@ -3741,7 +3767,6 @@ function playerTradeDialog(){
    ══════════════════════════════════════════════════════════════════════ */
 
 function discardDialog(p, n, done){
-  promptFor(p.id);
   const ag = agentOf(p.id);
   if (ag && ag.chooseDiscard){
     const pick = ag.chooseDiscard(p, n);
@@ -3757,6 +3782,7 @@ function discardDialog(p, n, done){
   }
   const pick = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
   const refresh = () => {
+    promptFor(p.id);         // every redraw is still this player's dialog
     const total = RES.reduce((s, r) => s + pick[r], 0);
     let h = `<p class="sub"><b>${p.name}</b> must discard <b>${n}</b> resource card${n === 1 ? "" : "s"}.</p>`;
     for (const r of RES){
@@ -3860,7 +3886,12 @@ function openPanel(key, seat, title, bodyHTML, buttons){
                                     : panelBox[key].rewindAt };
   // Somebody else's to answer: hand it to them and draw nothing here.
   if (seat !== null && seat !== undefined && !ownsSeat(seat)){
-    if (window.NET && NET.shipPanel) NET.shipPanel(key, seat, title, bodyHTML, buttons || []);
+    const sent = !!(window.NET && NET.shipPanel &&
+                    NET.shipPanel(key, seat, title, bodyHTML, buttons || []));
+    // If it cannot be delivered there is nobody to answer it, and an entry
+    // left in the box would stall the table for good — the bots wait on any
+    // outstanding answer. Drop it instead.
+    if (!sent) delete panelBox[key];
     drawPanels();
     return;
   }
@@ -3877,7 +3908,22 @@ function closePanel(key){
 }
 
 function closeAllPanels(){
-  for (const k in panelBox) closePanel(k);
+  // Snapshot the keys: closePanel deletes as it goes, and deleting out from
+  // under a for-in can skip entries — a panel left behind here is a table
+  // that never moves again, because the bots wait on it.
+  for (const k of Object.keys(panelBox)) closePanel(k);
+}
+
+/* Seats the table is currently waiting on for an answer, here or elsewhere. */
+function pendingAnswerers(){
+  const out = [];
+  for (const k in panelBox){
+    const s = panelBox[k].seat;
+    if (s !== null && s !== undefined && out.indexOf(s) < 0) out.push(s);
+  }
+  if (window.NET && NET.pendingSeats)
+    for (const s of NET.pendingSeats()) if (out.indexOf(s) < 0) out.push(s);
+  return out;
 }
 
 function drawPanels(){
@@ -4386,13 +4432,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-24b"></script>
+<script src="ai.js?v=2026-08-24c"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-24b"></script>
-<script src="net.js?v=2026-08-24b"></script>
+<script src="firebase-config.js?v=2026-08-24c"></script>
+<script src="net.js?v=2026-08-24c"></script>
 </body>
 </html>
