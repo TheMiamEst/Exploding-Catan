@@ -168,6 +168,7 @@ function serializeGame(){
     eOwner:   edges.map(e => e.owner),
 
     players: S.players.map(p => ({
+      name: p.name,                    // the host renames seats from the lobby
       res: Object.assign({}, p.res), cards: p.cards.slice(),
       knights: p.knights, skipTokens: p.skipTokens,
       roads: p.roads, settlements: p.settlements, cities: p.cities
@@ -234,6 +235,7 @@ function applyGame(b){
   const ps = arr(b.players, b.n);
   S.players.forEach((p, i) => {
     const q = ps[i]; if (!q) return;
+    if (q.name) p.name = q.name;
     p.res = Object.assign({ wood:0, brick:0, sheep:0, wheat:0, ore:0 }, q.res);
     p.cards = arr(q.cards, (q.cards && q.cards.length) || 0).filter(Boolean);
     p.knights = q.knights || 0; p.skipTokens = q.skipTokens || 0;
@@ -330,6 +332,10 @@ function handleIntent(m){
   // than trusted: a terminal is not an authority on whose turn it is.
   const mine = seat === S.cur;
 
+  // Stand the host's own "is it my turn" guards down for the duration: every
+  // click handler below is written for the person sitting in front of it.
+  window.__netApplying = true;
+  try {
   switch (m.type){
     case "roll":        if (mine) rollDice(); break;
     case "endTurn":     if (mine) requestEndTurn(); break;
@@ -343,6 +349,7 @@ function handleIntent(m){
     case "modalBtn":    remoteModalButton(seat, a[0], a[1]); break;
     case "modalCall":   remoteModalCall(seat, a[0], a[1]); break;
   }
+  } finally { window.__netApplying = false; }
   render();
 }
 
@@ -693,5 +700,9 @@ NET.publishNow = publish;
 NET.serializeGame = serializeGame;
 NET.viewFor    = viewFor;
 NET.clean      = clean;
+/* Also exposed so a suspect intent can be replayed by hand against the host's
+   own copy: NET.handleIntent({seat:1, type:"vertex", args:[42]}). */
+NET.handleIntent = handleIntent;
+NET.showRemotePrompt = showRemotePrompt;
 
 })();

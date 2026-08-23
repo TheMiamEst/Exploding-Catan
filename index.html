@@ -783,6 +783,12 @@ function viewPlayer(){ return S.players[viewSeat()]; }
    Exceptions: the bot driver itself (__botActing), and prompts a human owns —
    for example the robber after we Defused a bot's knight. */
 function uiBlocked(){
+  // The host is replaying somebody else's action right now. It is acting AS
+  // that player, and the intent was already checked against whose turn it is,
+  // so the "not your turn" guards have to stand aside — otherwise the host
+  // silently drops every click its guests make. Same escape hatch the bot
+  // driver uses one line down.
+  if (window.__netApplying) return false;
   if (window.NET && NET.isOnline && NET.isOnline()){
     // A prompt handed to you is yours to answer even on somebody else's turn.
     if (S.select && S.select.actor !== undefined) return S.select.actor !== viewSeat();
@@ -1405,6 +1411,8 @@ function initBoardControls(){
 
 /* Board clicks arriving straight after a pan are swallowed. */
 function swallowedByPan(){
+  // A remote click has nothing to do with whether the host was panning.
+  if (window.__netApplying) return false;
   if (window.__panDragged){ window.__panDragged = false; return true; }
   return false;
 }
@@ -1461,6 +1469,7 @@ function canBuyKitten(){
    the human can click has to be gated on this, or a stray click acts for a
    bot — which is how the deck was letting you buy cards on their behalf. */
 function myTurnNow(){
+  if (window.__netApplying) return true;          // acting as the player who asked
   if (window.NET && NET.isOnline && NET.isOnline()) return S.cur === viewSeat();
   if (!anyBots()) return true;
   return S.cur === viewSeat() && !uiBlocked();
@@ -1812,8 +1821,11 @@ function drawDice(){
 function drawHint(){
   // Advice is for whoever is actually playing. During a bot's turn the strip
   // stays empty unless a prompt has handed us control.
-  const ours = !anyBots() || myTurnNow() ||
-               (S.select && S.select.actor !== undefined && !isBot(S.select.actor));
+  const mineToAct = S.select && S.select.actor !== undefined && S.select.actor === viewSeat();
+  const ours = (window.NET && NET.isOnline && NET.isOnline())
+             ? (S.cur === viewSeat() || mineToAct)
+             : (!anyBots() || myTurnNow() ||
+                (S.select && S.select.actor !== undefined && !isBot(S.select.actor)));
   if (!ours){ hint(null); return; }
   if (S.armed){
     const what = S.armed.kind;
