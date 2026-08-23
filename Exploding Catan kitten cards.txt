@@ -1,0 +1,15 @@
+Exploding Catan kitten cards:
+
+Imploding Kitten - when drawn, receive every other players resources (1)
+Victory Point (feral kitten) - Victory Point (3)
+Skip - Skip a chosen players turn (5)
+Nope - Deny any action, including an entire turn - including a win: when a turn is Noped, players undo everything they did on that turn without getting their resources back (5)
+Exploding Kitten - Return the entire hand of a chosen player to the resource piles (5)
+Defuse - Return someone's attack on you to them - for example someone plays a knight on you, an attack on you, a favor on you, alter the future, etc, and you can say 'no you' and instead attack them with the same (5)
+Alter the Future - Swap any two numbers on the board (5)
+Attack - Choose a player to drop 3 cards of their choice (5)
+Favor - Choose a player to give you 3 cards of your guess - they only give you the cards they have, so if you ask for 2 wheat and an ore but they have no wheat, they just give you an ore (5)
+Reverse - Play again and then the turn order reverses (5)
+Knight (beard/watermelon/potato/rainbow/taco cat) - Knight Card (10)
+
+other non vanilla catan rules: you can play as many kitten (dev) cards as you want per turn (starting the turn after you buy them), and they cost any 3 unique resources to buy instead of 1 wheat/sheep/ore

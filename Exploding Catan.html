@@ -1,0 +1,4141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exploding Catan</title>
+<style>
+  :root{
+    --bg:#14171c; --panel:#1c2129; --panel2:#232936; --line:#333c4a;
+    --ink:#e7ebf1; --dim:#95a1b3; --accent:#e2b33c; --danger:#d94b4b;
+    --wood:#2f6b3a; --brick:#a4472a; --sheep:#7fb85c; --wheat:#dfae32; --ore:#78838f; --desert:#cdbb8e;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  header{
+    display:flex; align-items:center; gap:14px; padding:8px 14px;
+    background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto;
+  }
+  header h1{font-size:16px;margin:0;letter-spacing:.5px}
+  header h1 span{color:var(--accent)}
+  header .spacer{flex:1}
+  button{
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    border-radius:6px; padding:6px 11px; cursor:pointer; font:inherit;
+  }
+  button:hover:not(:disabled){background:#2d3546; border-color:#4a5668}
+  button:disabled{opacity:.35; cursor:not-allowed}
+  button.primary{background:#2f5d3a; border-color:#3f7a4d}
+  button.primary:hover:not(:disabled){background:#3a7248}
+  button.warn{background:#6b2f2f; border-color:#8a3f3f}
+  button.warn:hover:not(:disabled){background:#813a3a}
+  button.sm{padding:3px 8px; font-size:12px}
+
+  /* ── Player strip ────────────────────────────────────────────────── */
+  #players{
+    display:flex; gap:8px; padding:8px 10px; background:var(--panel);
+    border-bottom:1px solid var(--line); flex:0 0 auto; overflow-x:auto;
+  }
+  .pcard{
+    flex:1 1 0; min-width:128px; background:var(--panel2); border:1px solid var(--line);
+    border-radius:8px; padding:7px 9px;
+  }
+  .pcard.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset}
+  .pcard.done{opacity:.55}
+  .pcard .phead{display:flex; align-items:center; gap:7px; margin-bottom:6px}
+  .pcard .pname{font-weight:600; font-size:13px; flex:1; white-space:nowrap}
+  .pcard .you{font-size:9px; color:var(--accent); border:1px solid var(--accent);
+              border-radius:3px; padding:0 3px; vertical-align:1px; letter-spacing:.3px}
+  .pcard .pskip{font-size:10px; color:var(--danger); border:1px solid var(--danger);
+                border-radius:4px; padding:0 4px}
+  .stats{display:flex; gap:4px}
+  .stat{
+    flex:1 1 0; background:#0004; border:1px solid var(--line); border-radius:5px;
+    padding:3px 0; text-align:center; min-width:0;
+  }
+  .stat b{display:block; font-size:14px; line-height:1.15; font-variant-numeric:tabular-nums}
+  .stat span{display:block; font-size:8.5px; letter-spacing:.2px; color:var(--dim);
+             text-transform:uppercase; white-space:nowrap; overflow:hidden}
+  .stat.vp b{color:var(--accent)}
+  .reveal{margin-top:6px; display:flex; flex-wrap:wrap; gap:3px}
+  .revcard{
+    font-size:9.5px; border:1px solid var(--line); border-radius:4px;
+    padding:1px 4px; background:#0004; color:var(--ink); white-space:nowrap;
+  }
+
+  /* ── Stage (board + floating overlays) ───────────────────────────── */
+  #stage{flex:1; position:relative; min-height:0; padding:6px}
+  #boardArea{position:absolute; inset:6px}
+  svg{width:100%; height:100%; touch-action:none; display:block}
+  #leftbtns{position:absolute; left:10px; top:10px; z-index:5; display:flex; gap:6px}
+  #leftbtns button{white-space:nowrap}
+  #zoomWrap{
+    position:absolute; right:12px; top:62px; z-index:4;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  #zoomWrap button{width:30px; text-align:center; padding:3px 0; font-size:14px; line-height:1}
+  #deckWrap{position:absolute; right:12px; bottom:12px; z-index:3; transition:left .12s, top .12s}
+  .rank{width:100%; border-collapse:collapse; font-size:13px; margin-top:4px}
+  .rank th{text-align:left; font-size:10px; letter-spacing:.5px; text-transform:uppercase;
+           color:var(--dim); font-weight:600; padding:4px 6px; border-bottom:1px solid var(--line)}
+  .rank td{padding:6px; border-bottom:1px solid #2a3140; font-variant-numeric:tabular-nums}
+  .rank tr.win td{background:#1f3a2833}
+  .rank .pl{width:30px; font-weight:700; color:var(--dim)}
+  .rank tr.win .pl{color:var(--accent)}
+  .rank .who{display:flex; align-items:center; gap:7px}
+  .rank .tot{font-weight:700; text-align:right}
+  .rank .brk{color:var(--dim); font-size:11px}
+  .thinking{display:flex; align-items:center; gap:7px; color:var(--dim); font-size:13px;
+            font-style:italic; padding:0 8px}
+  #implodeClock{
+    position:absolute; left:50%; transform:translateX(-50%); top:8px; z-index:7;
+    background:#3a1d1dF2; border:1px solid var(--danger); border-radius:8px;
+    padding:6px 14px; font-size:13px; text-align:center; color:#ffd9d9;
+    box-shadow:0 6px 20px #0009; pointer-events:none;
+  }
+  #implodeClock span{font-size:16px; font-weight:700; font-variant-numeric:tabular-nums}
+  #implodeClock.urgent{border-color:#ff5a5a; animation:pulse .6s infinite alternate}
+  /* The hand-over window between turns: the seconds in which a Nope, an
+     Attack or a Defuse can still be thrown before the next player rolls. */
+  #reactClock{
+    position:absolute; left:50%; transform:translateX(-50%); top:8px; z-index:7;
+    background:#12303aF2; border:1px solid #4bb1d9; border-radius:8px;
+    padding:6px 14px; font-size:13px; text-align:center; color:#dff2fb;
+    box-shadow:0 6px 20px #0009; pointer-events:none;
+  }
+  #reactClock span{font-size:16px; font-weight:700; font-variant-numeric:tabular-nums}
+  #reactClock.bumped{animation:pulse .5s infinite alternate}
+  @keyframes pulse{from{opacity:.75}to{opacity:1}}
+  /* Running event feed. Newest at the bottom; older entries scroll up and out
+     of sight but stay in the list, so you can scroll back through the game. */
+  /* Floats over the board rather than taking a column from it. Clicks pass
+     straight through, and there is no container or scrollbar — entries simply
+     stack up from the bottom and the oldest are clipped off the top. */
+  #feed{
+    position:absolute; left:10px; top:52px; bottom:8px;
+    width:clamp(170px, 19%, 280px); z-index:3;
+    display:flex; flex-direction:column; gap:5px;
+    overflow-y:auto; overflow-x:hidden;
+    /* Scrollable, but with no visible track — the wheel works over the panel
+       while the board keeps the wheel for zooming. */
+    scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 44px);
+    mask-image:linear-gradient(to bottom, transparent 0, #000 44px);
+  }
+  /* Bottom-aligned via auto margin rather than justify-content: with
+     justify-content:flex-end an overflowing column spills past the top edge
+     and cannot be scrolled back to. */
+  #feed > .ev:first-child{margin-top:auto}
+  #feed::-webkit-scrollbar{width:0; height:0}
+  #feed.hidden{display:none}
+  #leftbtns button.on{background:#2f5d3a; border-color:#4d8a5f}
+  .ev{
+    background:#151a22ee; border:1px solid #ffffff14; border-left:4px solid var(--line);
+    border-radius:6px; padding:6px 9px; font-size:12.5px; line-height:1.4;
+    flex:0 0 auto; animation:evin .2s ease-out; backdrop-filter:blur(3px);
+    box-shadow:0 3px 12px #0007; position:relative;
+  }
+  .ev b{font-weight:700}
+  .ev .evturn{
+    display:block; font-size:9.5px; letter-spacing:.4px; color:var(--dim);
+    text-transform:uppercase; margin-bottom:2px;
+  }
+  .toast b{font-weight:700}
+  .rchip{
+    display:inline-block; border:1px solid #ffffff1a; border-left:3px solid var(--line);
+    border-radius:4px; padding:0 5px; margin:1px 1px; font-size:11.5px;
+    background:#0005; font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  .ev.roll{border-left-color:#7f8ba0}
+  .ev.buy{border-left-color:#5a8f68}
+  .ev.attack{border-left-color:var(--danger)}
+  .ev.defend{border-left-color:#4bb1d9}
+  .ev.info{border-left-color:#5a6478}
+  .ev.big{
+    border-left-color:var(--accent); background:#232a1c; font-size:13.5px;
+    box-shadow:0 0 0 1px #e2b33c33 inset;
+  }
+
+  /* ── "you can answer this" markers ──────────────────────────────────
+     Personal to whoever is sitting at the screen: a badge only appears on an
+     entry THIS player still holds the card to answer, and it disappears the
+     moment the next entry lands. Everyone else's feed shows nothing, so the
+     badge never gives away what is in your hand. */
+  .evmarks{
+    position:absolute; top:-8px; right:3px; display:flex; gap:3px; z-index:2;
+    pointer-events:none;   /* never steals the drop from the entry underneath */
+  }
+  .evmark{
+    width:26px; height:26px; border-radius:50%; overflow:hidden; position:relative;
+    border:2px solid; background:#0d1014; box-shadow:0 2px 8px #000a;
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px; line-height:1;
+  }
+  .evmark img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+  .evmark.defuse{border-color:#4bb1d9; animation:markpop .9s ease-out infinite alternate}
+  .evmark.nope{border-color:#c76b6b; opacity:.85}
+  @keyframes markpop{
+    from{box-shadow:0 2px 8px #000a, 0 0 0 0 #4bb1d900}
+    to  {box-shadow:0 2px 8px #000a, 0 0 0 5px #4bb1d92e}
+  }
+  .ev.answerable{border-color:#4bb1d955}
+  /* Rewound by a Nope or a Defuse: it happened, then it un-happened. */
+  .ev.undone{opacity:.42; text-decoration:line-through}
+  .ev.undone .evturn, .ev.undone .evmarks{text-decoration:none}
+  /* The one entry still open to an answer. Its window closes as soon as the
+     next entry arrives, so it is worth pointing at. */
+  .ev.livewindow{box-shadow:0 3px 12px #0007, 0 0 0 1px #4bb1d94d inset}
+
+  /* Reaction buttons carried inside a prompt, so an attack can be answered
+     from the window it opened rather than after paying for it. */
+  .reactnote{
+    margin-top:10px; border-top:1px solid var(--line); padding-top:9px;
+    font-size:12px; color:var(--dim);
+  }
+  .reactnote b{color:var(--ink)}
+  .modal .actions button.react{background:#1d3a49; border-color:#4bb1d9; color:#dff2fb}
+  .modal .actions button.react:hover:not(:disabled){background:#265066}
+  .modal .actions button.reactno{background:#4a2230; border-color:#c76b6b; color:#ffdede}
+  .modal .actions button.reactno:hover:not(:disabled){background:#5e2b3c}
+  @keyframes evin{from{transform:translateX(-10px);opacity:0}to{transform:none;opacity:1}}
+  #diceWrap{position:absolute; right:12px; top:10px; z-index:3; display:flex; align-items:center; gap:8px}
+  .die{
+    width:44px; height:44px; border-radius:9px; background:#f2ead6; border:1px solid #0b0d10;
+    box-shadow:0 3px 10px #0008; display:grid; grid-template:repeat(3,1fr)/repeat(3,1fr);
+    padding:6px; gap:1px; flex:0 0 auto;
+  }
+  .die i{border-radius:50%; background:#242424; width:8px; height:8px; align-self:center; justify-self:center}
+  .die i.off{background:transparent}
+  .die.roll{animation:tumble .45s ease-out}
+  @keyframes tumble{
+    0%{transform:rotate(-18deg) scale(.8)} 60%{transform:rotate(10deg) scale(1.08)} 100%{transform:none}
+  }
+  .dicesum{
+    font-size:21px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--ink);
+    background:#0b0d10cc; border:1px solid var(--line); border-radius:8px; padding:5px 11px;
+  }
+  .dicesum.seven{color:var(--danger); border-color:var(--danger)}
+
+  /* vertical dice histogram */
+  .vchart{display:flex; align-items:flex-end; gap:5px; height:190px; margin:10px 0 4px}
+  .vcol{flex:1 1 0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%}
+  .vcol .vb{width:100%; background:var(--accent); border-radius:3px 3px 0 0; min-height:2px}
+  .vcol.seven .vb{background:var(--danger)}
+  .vcol .vn{font-size:11px; color:var(--dim); margin-top:4px; font-variant-numeric:tabular-nums}
+  .vcol.seven .vn{color:var(--danger)}
+  .vcol .vc{font-size:11px; font-weight:600; margin-bottom:3px; font-variant-numeric:tabular-nums}
+  /* Its own strip between board and bottom bar, so it can never cover a hex. */
+  #hintbar{
+    flex:0 0 auto; height:24px; line-height:24px; text-align:center;
+    color:var(--accent); font-size:12.5px; background:#0f1218;
+    border-top:1px solid var(--line); padding:0 10px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    opacity:0; transition:opacity .12s;
+  }
+  #hintbar.on{opacity:1}
+
+  /* Kitten deck */
+  .deck{
+    width:74px; height:104px; border-radius:9px; border:2px solid var(--line);
+    background:linear-gradient(150deg,#2a3242,#1a1f29); cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    box-shadow:0 5px 16px #0007; position:relative; overflow:hidden;
+  }
+  .deck img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+  .deck .cnt{position:relative; font-size:21px; font-weight:700; z-index:1; text-shadow:0 1px 4px #000}
+  .deck .lbl{position:relative; font-size:9px; letter-spacing:.5px; color:var(--dim); z-index:1;
+             text-transform:uppercase; text-shadow:0 1px 4px #000}
+  .deck.buyable{border-color:#5a8f68}
+  .deck.buyable:hover{transform:translateY(-2px); border-color:#7fc48f}
+  .deck.dim{opacity:.45; cursor:not-allowed}
+  .deckcost{font-size:10px; color:var(--dim); text-align:center; margin-top:4px; max-width:84px}
+
+  /* ── Bottom bar ──────────────────────────────────────────────────── */
+  #bottom{
+    flex:0 0 auto; background:var(--panel); border-top:1px solid var(--line);
+    padding:8px 10px; display:flex; align-items:center; gap:10px;
+  }
+  .group{display:flex; gap:5px; align-items:center}
+  .group.hand{flex-wrap:wrap; justify-content:center; max-width:100%; padding-bottom:2px}
+  .sep{width:1px; align-self:stretch; background:var(--line); flex:0 0 auto}
+  .slot{
+    width:52px; height:70px; border-radius:7px; border:1px solid var(--line);
+    background:#0004; position:relative; overflow:hidden; flex:0 0 auto;
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-end; padding-bottom:4px;
+  }
+  .slot .swatchbig{position:absolute; inset:0; opacity:.30}
+  .slot img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+  .slot .n{position:relative; font-size:17px; font-weight:700; z-index:1; text-shadow:0 1px 4px #000;
+           font-variant-numeric:tabular-nums}
+  .slot .rn{position:relative; font-size:8.5px; letter-spacing:.3px; color:#e7ebf1cc; z-index:1;
+            text-transform:uppercase; text-shadow:0 1px 4px #000}
+  .slot.zero{opacity:.4}
+
+  .kcard{
+    width:52px; height:70px; border-radius:7px; border:1px solid var(--line); flex:0 0 auto;
+    background:linear-gradient(160deg,#2c3444,#1c222c); position:relative;
+    display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px;
+    cursor:grab;
+    /* The card is dragged by hand (pointer events), never by the browser's own
+       drag-and-drop. Without these the browser grabs the <img> instead and
+       offers to open the picture in a new window when it is dropped. */
+    -webkit-user-drag:none; user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  /* Art comes in assorted sizes, so every card is cropped to one 5:7 tile.
+     The rounding lives on the image because the tile can no longer clip
+     (a clipping tile would cut off the hover preview). */
+  .kcard img{position:absolute; inset:0; width:100%; height:100%;
+             object-fit:cover; border-radius:6px;
+             -webkit-user-drag:none; user-select:none; pointer-events:none}
+
+  /* The card grows in place rather than spawning a preview. Growth is anchored
+     to the bottom edge, so the preview always rises into the board and can
+     never fall off the bottom of the screen whatever size the card is.
+     ONE hover rule covers every card: the old per-state rules quietly
+     overrode this one, which is why some cards barely moved. */
+  .kcard{transition:transform .12s ease-out, box-shadow .12s ease-out;
+         transform-origin:bottom center}
+  .kcard:hover{
+    transform:translateY(-10px) scale(3.4); z-index:40;
+    box-shadow:0 16px 44px #000d;
+  }
+  /* Nothing zooms while a card is being carried — the card under the pointer
+     is the floating one, and a zooming neighbour would fight it. */
+  body.dragging .kcard{transition:none}
+  body.dragging .kcard:hover{transform:none; box-shadow:none; z-index:auto}
+  body.dragging{cursor:grabbing}
+  /* The gap left behind while the card is being carried around. */
+  .kcard.picked{opacity:.22; filter:grayscale(.6)}
+
+  /* The card actually being carried: a real, solid card under the pointer
+     rather than the browser's washed-out drag image. */
+  #dragGhost{
+    position:fixed; left:0; top:0; z-index:200; pointer-events:none;
+    width:52px; height:70px; border-radius:7px; border:1px solid var(--accent);
+    background:linear-gradient(160deg,#2c3444,#1c222c);
+    box-shadow:0 18px 40px #000e; will-change:transform;
+    transform-origin:center center;
+    display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px;
+  }
+  #dragGhost img{position:absolute; inset:0; width:100%; height:100%;
+                 object-fit:cover; border-radius:6px}
+  #dragGhost .kn{position:relative; z-index:1; font-size:9px; line-height:1.1;
+                 text-align:center; text-shadow:0 1px 3px #000; padding:0 2px}
+  #dragGhost.over{border-color:#8fe0a0; box-shadow:0 18px 40px #000e, 0 0 0 3px #8fe0a055}
+
+  /* Where a dragged card may be dropped. */
+  body.dragging .pcard.droppable{outline:2px dashed var(--accent); outline-offset:2px}
+  body.dragging .ev.droppable{outline:2px dashed var(--accent); outline-offset:1px}
+  body.dragging #boardArea.droppable{outline:2px dashed var(--accent); outline-offset:-6px}
+  body.dragging .hand.droppable{outline:2px dashed #7f8ba0; outline-offset:3px; border-radius:8px}
+  .ev.dropping, .pcard.dropping{background:#2a3320}
+  .kcard .kn{position:relative; z-index:1; font-size:9px; line-height:1.1; text-align:center;
+             text-shadow:0 1px 3px #000; padding:0 2px}
+  .kcard.playable{border-color:#5a8f68}
+  .kcard.playable:hover{border-color:#7fc48f}
+  .kcard.locked{opacity:.42; cursor:not-allowed}
+  .kcard.reaction{border-color:#6b5a8f}
+  .kcard.offturn{border-color:#c76b6b}
+  .kcard.offturn:hover{border-color:#e08a8a}
+  /* A reaction that could be spent on the newest log entry right now. */
+  .kcard.armedreact{border-color:#4bb1d9; box-shadow:0 0 0 2px #4bb1d955}
+  .kcard .pip.now{background:#a33; color:#fff}
+  .kcard .pip{position:absolute; top:2px; right:3px; z-index:2; font-size:8px; color:#fff;
+              background:#0009; border-radius:3px; padding:0 3px}
+  .emptyhand{color:var(--dim); font-size:12px; padding:0 6px; white-space:nowrap}
+  .bside{flex:1 1 0; min-width:0; display:flex; align-items:center}
+  .bside.right{justify-content:flex-end}
+  .bcentre{display:flex; align-items:center; gap:10px; flex:0 0 auto}
+  .actions-bar{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end}
+  .actions-bar button{padding:9px 15px}
+
+  /* ── Log / dice modals ───────────────────────────────────────────── */
+  .logbox{max-height:52vh; overflow-y:auto; font-size:12.5px; color:var(--dim);
+          background:#12151a; border:1px solid var(--line); border-radius:6px; padding:9px 11px}
+  .logbox div{margin-bottom:3px}
+  .logbox b{color:var(--ink); font-weight:600}
+  .dicerow{display:flex; align-items:center; gap:8px; font-size:12.5px; padding:2px 0}
+  .dicerow .dn{width:22px; text-align:right; font-variant-numeric:tabular-nums; color:var(--ink)}
+  .dicebar{height:12px; border-radius:3px; background:var(--accent); min-width:2px}
+  .dicerow .dc{width:26px; color:var(--dim); font-variant-numeric:tabular-nums}
+  .recent{display:flex; gap:4px; flex-wrap:wrap; margin-top:6px}
+  .recent span{background:#0004; border:1px solid var(--line); border-radius:4px;
+               padding:1px 6px; font-size:12px; font-variant-numeric:tabular-nums}
+  .recent span.seven{border-color:var(--danger); color:var(--danger)}
+
+  @media (max-width:900px){
+    #feed{width:150px}
+    .ev{font-size:11px; padding:4px 6px}
+    #leftbtns{flex-direction:column}
+    #feed{top:78px}
+  }
+  @media (max-width:820px){
+    .pcard{min-width:132px}
+    .pcard .pname{font-size:12px}
+    .stat b{font-size:12.5px}
+    .slot,.kcard{width:44px; height:60px}
+  }
+
+  .overlay{
+    position:fixed; inset:0; background:#000a; display:flex; align-items:center; justify-content:center;
+    z-index:50; padding:20px;
+  }
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    max-width:560px; width:100%; max-height:88vh; overflow-y:auto; padding:18px;
+    box-shadow:0 18px 50px #0008;
+  }
+  .modal h2{margin:0 0 4px; font-size:17px}
+  .modal p.sub{margin:0 0 14px; color:var(--dim); font-size:13px}
+  .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap}
+  .counter{display:flex; align-items:center; gap:8px; padding:5px 0}
+  .counter .lbl{flex:1; display:flex; align-items:center; gap:6px}
+  .counter .val{width:26px; text-align:center; font-variant-numeric:tabular-nums}
+  .pick{display:flex; gap:6px; flex-wrap:wrap}
+  .pick button.on{background:#2f5d3a; border-color:#4d8a5f}
+  .stack{background:#0003; border:1px solid var(--line); border-radius:6px; padding:8px; margin:8px 0; font-size:12.5px}
+  .stack div{padding:2px 0}
+  table.trade{width:100%; border-collapse:collapse; font-size:12.5px}
+  table.trade td{padding:3px 4px}
+  .warnbox{background:#4a2020; border:1px solid #7a3535; border-radius:6px; padding:8px 10px; font-size:12.5px; margin:8px 0}
+  .okbox{background:#1f3a28; border:1px solid #3a6b47; border-radius:6px; padding:8px 10px; font-size:12.5px; margin:8px 0}
+  .rules{font-size:12.5px; color:var(--dim)}
+  .rules h4{color:var(--ink); margin:12px 0 4px; font-size:13px}
+  .rules ul{margin:4px 0; padding-left:18px}
+  .rules li{margin-bottom:3px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Exploding <span>Catan</span></h1>
+  <div class="spacer"></div>
+  <button class="sm" onclick="onlineDialog()">Online</button>
+  <button class="sm" onclick="showArt()">Art</button>
+  <button class="sm" onclick="showRules()">Rules</button>
+  <button class="sm" onclick="newGameDialog()">New Game</button>
+</header>
+
+<div id="players"></div>
+
+<div id="stage">
+  <div id="boardArea">
+    <svg id="board"></svg>
+    <div id="diceWrap"></div>
+    <div id="zoomWrap">
+      <button class="sm" onclick="zoomBoard(0.12)" title="Zoom in">+</button>
+      <button class="sm" onclick="zoomBoard(-0.12)" title="Zoom out">−</button>
+      <button class="sm" onclick="resetZoom()" title="Reset view">⌂</button>
+    </div>
+    <div id="deckWrap"></div>
+  </div>
+  <div id="leftbtns">
+    <button class="sm on" id="logBtn" onclick="toggleFeed()">Game log</button>
+    <button class="sm" onclick="showDice()">Dice history</button>
+  </div>
+  <div id="feed"></div>
+</div>
+
+<div id="hintbar"></div>
+
+<div id="bottom"></div>
+
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════════════════
+   CONSTANTS
+   ══════════════════════════════════════════════════════════════════════ */
+
+const RES = ["wood","brick","sheep","wheat","ore"];
+const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
+const RES_COLOR = {wood:"#2f6b3a", brick:"#a4472a", sheep:"#7fb85c", wheat:"#dfae32", ore:"#78838f", desert:"#cdbb8e"};
+const PLAYER_COLORS = ["#d94b4b","#4b7fd9","#e08a2e","#e8e8e8","#59b364","#a86fd0"];
+const PLAYER_NAMES  = ["Red","Blue","Orange","White","Green","Purple"];
+
+const COST = {
+  road:       {wood:1, brick:1},
+  settlement: {wood:1, brick:1, sheep:1, wheat:1},
+  city:       {wheat:2, ore:3}
+};
+const LIMIT = {road:15, settlement:5, city:4};
+let BANK_PER_RES = 19;
+
+// ── Kitten deck (54 cards) ───────────────────────────────────────────────
+// Reverse count is inferred: the doc lists no number, and 54 − (all others) = 5.
+const KITTEN = {
+  implode: {name:"Imploding Kitten", count:1,  kind:"auto",
+    text:"When drawn, immediately take every other player's entire resource hand. It cannot be Noped, Defused or refuted in any way — even a cancelled turn does not undo it."},
+  vp:      {name:"Feral Kitten", count:3,  kind:"vp",
+    text:"Worth 1 victory point. Kept hidden until you win."},
+  skip:    {name:"Skip", count:5, kind:"target",
+    text:"Skip a chosen player's next turn."},
+  nope:    {name:"Nope", count:5, kind:"response",
+    text:"Two uses only: cancel an attack aimed at you, or cancel a player's whole turn. A cancelled turn destroys everything they gained that turn. If someone reaches 10 points, the next player in turn order holding a Nope must spend it."},
+  explode: {name:"Exploding Kitten", count:5, kind:"target",
+    text:"Return a chosen player's entire resource hand to the bank."},
+  defuse:  {name:"Defuse", count:5, kind:"response",
+    text:'"No you." Reflect an attack aimed at you back onto the player who played it.'},
+  alter:   {name:"Alter the Future", count:5, kind:"board",
+    text:"Swap any two number tokens on the board."},
+  attack:  {name:"Attack", count:5, kind:"target",
+    text:"A chosen player discards 3 resource cards of their choice."},
+  favor:   {name:"Favor", count:5, kind:"target",
+    text:"Name 3 resource cards. A chosen player gives you whichever of them they actually hold."},
+  reverse: {name:"Reverse", count:5, kind:"self",
+    text:"Take another turn immediately, then turn order reverses."},
+  knight:  {name:"Knight", count:10, kind:"knight",
+    text:"Move the robber and steal 1 resource from a player on that hex. Counts toward Largest Army."}
+};
+const KNIGHT_FLAVOR = ["Beard Cat","Watermelon Cat","Potato Cat","Rainbow Cat","Taco Cat"];
+
+/* Playable on anyone's turn, not just your own: a Nope to cancel the turn in
+   progress, and the two direct attacks. */
+const OFF_TURN = new Set(["nope","attack","explode"]);
+
+// Cards that name a player when played, and can therefore be Defused in the
+// response window. Knight is handled separately — it picks its victim later,
+// so its Defuse chance comes at the moment of the steal.
+const TARGETED = new Set(["skip","explode","attack","favor"]);
+
+/* ══════════════════════════════════════════════════════════════════════
+   CUSTOM ART
+   ══════════════════════════════════════════════════════════════════════
+   Drop files into ./art/ and they are picked up on load. Anything missing
+   falls back to the procedural drawing, so partial art sets work fine —
+   send one hex tile and only that hex changes.
+
+   Piece art (settlement/city/road/robber) is used as an ALPHA MASK and
+   flooded with the player's colour, so the colour you draw in is irrelevant;
+   only the silhouette matters. Hex art is clipped to the hexagon, so send
+   squares that bleed to the edges rather than pre-cut hexes.
+
+   Header → "Art" lists every expected file and whether it loaded.
+   ══════════════════════════════════════════════════════════════════════ */
+/* Bots deliberately move slowly. The window for a Nope or a Defuse now
+   closes as soon as the NEXT entry reaches the log, so a fast bot would slam
+   it shut before a human could reach for a card. */
+let AI_PACE = 3000;         // ms between visible bot actions
+const ART_DIR = "art/";
+const ART = { hex:{}, res:{}, piece:{}, token:{}, card:{} };
+const ART_MANIFEST = [];
+let artLoaded = 0, artTotal = 0;
+
+function buildArtManifest(){
+  for (const t of RES.concat(["desert"]))
+    ART_MANIFEST.push({ kind:"hex", key:t, file:`hex-${t}.png` });
+  for (const r of RES)
+    ART_MANIFEST.push({ kind:"res", key:r, file:`res-${r}.png` });
+  for (const p of ["settlement","city","road","robber"])
+    ART_MANIFEST.push({ kind:"piece", key:p, file:`piece-${p}.svg` });
+  ART_MANIFEST.push({ kind:"token", key:"blank", file:"token-blank.png" });
+  for (const k in KITTEN){
+    if (k === "knight") continue;
+    ART_MANIFEST.push({ kind:"card", key:k, file:`card-${k}.png` });
+  }
+  for (const f of KNIGHT_FLAVOR){
+    const slug = f.split(" ")[0].toLowerCase();
+    ART_MANIFEST.push({ kind:"card", key:"knight-" + slug, file:`card-knight-${slug}.png` });
+  }
+  ART_MANIFEST.push({ kind:"card", key:"back", file:"card-back.png" });
+  artTotal = ART_MANIFEST.length;
+}
+
+/* Probing with <img> rather than fetch() on purpose: fetch() is blocked by
+   CORS on file:// pages, but image loads are not. Missing files log a 404 in
+   the console — harmless, and expected until the art folder is filled in. */
+function preloadArt(done){
+  buildArtManifest();
+  let pending = ART_MANIFEST.length;
+  for (const a of ART_MANIFEST){
+    const img = new Image();
+    img.onload  = () => { ART[a.kind][a.key] = a.file; artLoaded++; if (!--pending) done(); };
+    img.onerror = () => { ART[a.kind][a.key] = null;              if (!--pending) done(); };
+    img.src = ART_DIR + a.file;
+  }
+}
+
+function art(kind, key){
+  const f = ART[kind] && ART[kind][key];
+  return f ? ART_DIR + f : null;
+}
+function knightArtKey(c){
+  return c && c.flavor ? "knight-" + c.flavor.split(" ")[0].toLowerCase() : null;
+}
+function cardArt(c){
+  return c.key === "knight" ? art("card", knightArtKey(c)) : art("card", c.key);
+}
+
+let HEX_SIZE = 54;
+
+/* Base game: 19 hexes. The 5-6 player extension adds 11 more for a 30-hex
+   board laid out in rows of 3-4-5-6-5-4-3, with two deserts, 28 number
+   tokens, 11 ports and five extra of each resource in the bank. */
+const BOARD = {
+  small: {
+    rows: null,                       // radius-2 hexagon, generated directly
+    size: 54, ports: 9, bank: 19,
+    terrain: ["wood","wood","wood","wood","brick","brick","brick",
+              "sheep","sheep","sheep","sheep","wheat","wheat","wheat","wheat",
+              "ore","ore","ore","desert"],
+    numbers: [2,3,3,4,4,5,5,6,6,8,8,9,9,10,10,11,11,12]
+  },
+  large: {
+    rows: [3,4,5,6,5,4,3],
+    size: 44, ports: 11, bank: 24,
+    terrain: ["wood","wood","wood","wood","wood","wood",
+              "brick","brick","brick","brick","brick",
+              "sheep","sheep","sheep","sheep","sheep","sheep",
+              "wheat","wheat","wheat","wheat","wheat","wheat",
+              "ore","ore","ore","ore","ore",
+              "desert","desert"],
+    numbers: [2,2,3,3,3,4,4,4,5,5,5,6,6,6,8,8,8,9,9,9,10,10,10,11,11,11,12,12]
+  }
+};
+let BOARDSET = BOARD.small;
+let NUMBERS = BOARDSET.numbers;
+let TERRAIN = BOARDSET.terrain;
+let BANK_PER_RES_CUR = BOARDSET.bank;
+
+/* 5 or 6 players uses the extension board. */
+function boardFor(numPlayers){ return numPlayers >= 5 ? BOARD.large : BOARD.small; }
+
+/* Axial coordinates for whichever board is in play. */
+function hexLayout(set){
+  const out = [];
+  if (!set.rows){
+    for (let q = -2; q <= 2; q++)
+      for (let r = -2; r <= 2; r++)
+        if (Math.abs(q + r) <= 2) out.push({ q, r });
+    return out;
+  }
+  const mid = (set.rows.length - 1) / 2;
+  set.rows.forEach((n, i) => {
+    const r = i - mid;
+    // centre each row on the axis so the board comes out symmetric
+    const qmin = Math.round(-(n - 1) / 2 - r / 2);
+    for (let k = 0; k < n; k++) out.push({ q: qmin + k, r });
+  });
+  return out;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   BOARD GEOMETRY
+   ══════════════════════════════════════════════════════════════════════ */
+
+let hexes = [], vertices = [], edges = [];
+
+function axialCenter(q, r){
+  return { x: HEX_SIZE * Math.sqrt(3) * (q + r/2), y: HEX_SIZE * 1.5 * r };
+}
+function cornerPoints(cx, cy){
+  const pts = [];
+  for (let i = 0; i < 6; i++){
+    const a = Math.PI / 180 * (60 * i - 30);
+    pts.push({ x: cx + HEX_SIZE * Math.cos(a), y: cy + HEX_SIZE * Math.sin(a) });
+  }
+  return pts;
+}
+
+function buildGeometry(){
+  hexes = []; vertices = []; edges = [];
+  const vKey = new Map(), eKey = new Map();
+
+  for (const a of hexLayout(BOARDSET)){
+    const c = axialCenter(a.q, a.r);
+    hexes.push({ id: hexes.length, q: a.q, r: a.r, x: c.x, y: c.y,
+                 terrain: null, number: null, verts: [], edges: [] });
+  }
+
+  for (const h of hexes){
+    const pts = cornerPoints(h.x, h.y);
+    const ids = pts.map(p => {
+      // Distinct corners sit ~54px apart, so 1px quantization safely dedupes
+      // without ever merging two genuinely different vertices.
+      const k = Math.round(p.x) + "," + Math.round(p.y);
+      if (!vKey.has(k)){
+        vKey.set(k, vertices.length);
+        vertices.push({ id: vertices.length, x: p.x, y: p.y, hexes: [], edges: [], adj: [],
+                        owner: null, type: null, port: null });
+      }
+      return vKey.get(k);
+    });
+    h.verts = ids;
+    for (const vid of ids) vertices[vid].hexes.push(h.id);
+
+    for (let i = 0; i < 6; i++){
+      const a = ids[i], b = ids[(i + 1) % 6];
+      const k = Math.min(a, b) + "-" + Math.max(a, b);
+      if (!eKey.has(k)){
+        eKey.set(k, edges.length);
+        edges.push({ id: edges.length, v: [a, b], hexes: [], owner: null, port: null });
+      }
+      const eid = eKey.get(k);
+      edges[eid].hexes.push(h.id);
+      h.edges.push(eid);
+      if (!vertices[a].edges.includes(eid)) vertices[a].edges.push(eid);
+      if (!vertices[b].edges.includes(eid)) vertices[b].edges.push(eid);
+      if (!vertices[a].adj.includes(b)) vertices[a].adj.push(b);
+      if (!vertices[b].adj.includes(a)) vertices[b].adj.push(a);
+    }
+  }
+}
+
+function placePorts(){
+  // Coastal edges touch exactly one hex. Spread 9 ports around the ring.
+  const coast = edges.filter(e => e.hexes.length === 1);
+  coast.sort((a, b) => {
+    const am = midOf(a), bm = midOf(b);
+    return Math.atan2(am.y, am.x) - Math.atan2(bm.y, bm.x);
+  });
+  const n = BOARDSET.ports;
+  const kinds = ["wood","brick","sheep","wheat","ore"];
+  while (kinds.length < n) kinds.push("3:1");          // the rest are generic
+  shuffle(kinds);
+  // Spread them as evenly as the coastline allows.
+  for (let i = 0; i < n; i++){
+    const e = coast[Math.round(i * coast.length / n) % coast.length];
+    e.port = kinds[i];
+    for (const vid of e.v) vertices[vid].port = kinds[i];
+  }
+}
+function midOf(e){
+  const a = vertices[e.v[0]], b = vertices[e.v[1]];
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function dealTerrain(){
+  // Reshuffle until no two red numbers (6 / 8) sit on adjacent hexes. With six
+  // reds on the extension board this can take longer, so allow more attempts
+  // and fall through to the last shuffle rather than looping forever.
+  for (let attempt = 0; attempt < 3000; attempt++){
+    const terr = shuffle(TERRAIN.slice());
+    const nums = shuffle(NUMBERS.slice());
+    let n = 0;
+    hexes.forEach((h, i) => {
+      h.terrain = terr[i];
+      h.number  = terr[i] === "desert" ? null : nums[n++];
+    });
+    if (!hasAdjacentReds()) return;
+  }
+}
+function hasAdjacentReds(){
+  for (const h of hexes){
+    if (h.number !== 6 && h.number !== 8) continue;
+    for (const o of hexes){
+      if (o.id === h.id) continue;
+      if (o.number !== 6 && o.number !== 8) continue;
+      const shared = h.verts.filter(v => o.verts.includes(v)).length;
+      if (shared >= 2) return true;   // sharing an edge = adjacent
+    }
+  }
+  return false;
+}
+
+function shuffle(a){
+  for (let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   AGENTS
+   ══════════════════════════════════════════════════════════════════════
+   Seats can be driven by a bot instead of the UI. ai.js registers agents
+   here; every decision that would normally open a modal checks for one
+   first and asks it instead. With no ai.js present this is inert and the
+   game behaves exactly as the pure hot-seat game it was.
+   ══════════════════════════════════════════════════════════════════════ */
+window.AGENTS = window.AGENTS || {};
+function agentOf(pid){ return window.AGENTS ? (window.AGENTS[pid] || null) : null; }
+
+/* Online, a browser that is not the host decides nothing: it says what the
+   player did and waits to be told what came of it. Returns true when the
+   caller should stop here. Offline this is always false and costs nothing. */
+function netSend(type, args){
+  return !!(window.NET && NET.sendIntent && NET.sendIntent(type, args));
+}
+function isBot(pid){ return !!agentOf(pid); }
+function anyBots(){ return S && S.players.some(p => isBot(p.id)); }
+
+/* Which seat the bottom bar belongs to. In a bot game that is always the
+   human's own seat — never the current player, or a bot's hand would be on
+   screen (and clickable) whenever a prompt handed us control mid-bot-turn. */
+function viewSeat(){
+  // Online, the bottom bar is always your own seat, whoever is playing.
+  if (window.NET && NET.isOnline && NET.isOnline() && NET.mySeat() !== null) return NET.mySeat();
+  if (!anyBots()) return S.cur;
+  for (const p of S.players) if (!isBot(p.id)) return p.id;
+  return S.cur;
+}
+function viewPlayer(){ return S.players[viewSeat()]; }
+
+/* True when the UI must ignore board clicks because the active seat is a bot.
+   Exceptions: the bot driver itself (__botActing), and prompts a human owns —
+   for example the robber after we Defused a bot's knight. */
+function uiBlocked(){
+  if (window.NET && NET.isOnline && NET.isOnline()){
+    // A prompt handed to you is yours to answer even on somebody else's turn.
+    if (S.select && S.select.actor !== undefined) return S.select.actor !== viewSeat();
+    return S.cur !== viewSeat();
+  }
+  if (!anyBots()) return false;
+  if (window.__botActing) return false;
+  if (S.select && S.select.actor !== undefined && !isBot(S.select.actor)) return false;
+  return isBot(S.cur);
+}
+/* ai.js overrides this to drive a bot seat forward. */
+function botTick(){}
+
+/* ══════════════════════════════════════════════════════════════════════
+   GAME STATE
+   ══════════════════════════════════════════════════════════════════════ */
+
+let S = null;
+
+function newGame(numPlayers){
+  BOARDSET = boardFor(numPlayers);
+  HEX_SIZE = BOARDSET.size;
+  NUMBERS  = BOARDSET.numbers;
+  TERRAIN  = BOARDSET.terrain;
+  BANK_PER_RES = BOARDSET.bank;
+  buildGeometry();
+  dealTerrain();
+  placePorts();
+
+  const deck = [];
+  let knightN = 0;
+  for (const key in KITTEN){
+    for (let i = 0; i < KITTEN[key].count; i++){
+      const c = { key, id: deck.length, flavor: null };
+      if (key === "knight") c.flavor = KNIGHT_FLAVOR[Math.floor(knightN++ / 2)];
+      deck.push(c);
+    }
+  }
+  shuffle(deck);
+
+  const players = [];
+  for (let i = 0; i < numPlayers; i++){
+    players.push({
+      id: i, name: PLAYER_NAMES[i], color: PLAYER_COLORS[i],
+      res: { wood:0, brick:0, sheep:0, wheat:0, ore:0 },
+      cards: [], knights: 0, skipTokens: 0,
+      roads: 0, settlements: 0, cities: 0
+    });
+  }
+
+  const desert = hexes.find(h => h.terrain === "desert");   // either one, on the large board
+  const first = Math.floor(Math.random() * numPlayers);   // nobody always leads
+
+  S = {
+    players, deck, discard: [],
+    bank: { wood:BANK_PER_RES, brick:BANK_PER_RES, sheep:BANK_PER_RES, wheat:BANK_PER_RES, ore:BANK_PER_RES },
+    robber: desert.id,
+    cur: first, dir: 1, turnCounter: 0, firstPlayer: first,
+    phase: "setup1",          // setup1 | setup2 | roll | main | over
+    setupNeed: "settlement",
+    setupLastVertex: null,
+    setupOrder: buildSetupOrder(numPlayers, first),
+    setupIdx: 0,
+    rolled: null,
+    extraTurn: false,
+    roadLens: S_zeroLens(numPlayers),
+    longestRoad: { owner:null, len:0 },
+    largestArmy: { owner:null, n:0 },
+    select: null,             // {kind, ...} forced board interaction
+    armed: null,              // {kind, id} spot awaiting a confirming second click
+    diceLog: [],              // every roll this game, for the history panel
+    pending: null,            // response-window stack
+    turnRec: null,            // what the active player gained this turn
+    zoom: 1, panX: 0, panY: 0,   // board view
+    journal: [],              // every action, with the state that preceded it
+    revealed: false,          // hands are face up once somebody has won
+    unstoppable: null,        // a win the table had no legal way to deny
+    sweeping: false,          // re-entrancy guard for the turn-start win sweep
+    implodeTurn: -1,          // turn number made Nope-proof by an Imploding Kitten
+    implodeBy: null,          // who drew it, so the seal outlives their turn
+    implodeUntil: 0,          // wall-clock deadline for that turn
+    reactUntil: 0,            // hand-over window: nobody rolls until this passes
+    feed: [],                 // the on-screen event list, so it can be sent online
+    log: [],
+    winner: null
+  };
+  S.turnRec = freshTurnRecord();
+  clearReactClock();
+  clearFeed();
+  logMsg("New game — " + numPlayers + " players. Deck: 54 kitten cards.");
+  logMsg("<b>" + S.players[first].name + "</b> goes first.");
+  logMsg("Setup: place your first settlement.");
+  render();
+}
+
+function S_zeroLens(n){ const a = []; for (let i = 0; i < n; i++) a.push(0); return a; }
+
+function buildSetupOrder(n, start){
+  const fwd = [];
+  for (let i = 0; i < n; i++) fwd.push((start + i) % n);
+  return fwd.concat(fwd.slice().reverse());   // snake order from the first player
+}
+
+function cur(){ return S.players[S.cur]; }
+
+/* ── Turn record (used by Nope-the-turn) ─────────────────────────────────
+   A Noped turn is not rewound to a snapshot — everything the player gained
+   that turn is DELETED FROM PLAY. Drawn kitten cards do not go back into the
+   deck, a knight played that turn stops counting toward Largest Army, and
+   roads laid that turn are lifted (so a Longest Road earned that turn is
+   lost with them). Resources spent are still never refunded.
+
+   Only the active player's own record is touched, so reaction cards other
+   players spent answering the turn stay spent.                            */
+function freshTurnRecord(){
+  return {
+    edges: [],                       // edge ids built this turn
+    verts: [],                       // {vid, prevType} — null prevType = new settlement
+    drawn: [],                       // kitten card objects drawn this turn
+    knights: 0,                      // knights played this turn
+    gained: { wood:0, brick:0, sheep:0, wheat:0, ore:0 }   // excl. Imploding Kitten
+  };
+}
+
+/* Record resources flowing to the active player so a Nope can strip them.
+   The Imploding Kitten is explicitly immune, so its haul is never recorded. */
+function noteGain(p, r, n){
+  if (!S.turnRec || !p || p.id !== S.cur || n <= 0) return;
+  S.turnRec.gained[r] += n;
+}
+
+function wipeNopedTurn(){
+  const p = cur(), rec = S.turnRec;
+  const lost = [];
+
+  for (const eid of rec.edges){ edges[eid].owner = null; p.roads--; }
+  if (rec.edges.length) lost.push(rec.edges.length + " road" + (rec.edges.length === 1 ? "" : "s"));
+
+  // Undo newest-first so a settlement→city upgrade unwinds before the build.
+  for (let i = rec.verts.length - 1; i >= 0; i--){
+    const { vid, prevType } = rec.verts[i];
+    if (prevType === null){ vertices[vid].owner = null; vertices[vid].type = null; p.settlements--; }
+    else { vertices[vid].type = "settlement"; p.cities--; p.settlements++; }
+  }
+  if (rec.verts.length) lost.push(rec.verts.length + " building" + (rec.verts.length === 1 ? "" : "s"));
+
+  // Cards drawn this turn are destroyed, not returned to the deck.
+  let vp = 0;
+  for (const c of rec.drawn){
+    const i = p.cards.indexOf(c);
+    if (i >= 0) p.cards.splice(i, 1);
+    if (c.key === "vp") vp++;
+  }
+  if (rec.drawn.length) lost.push(rec.drawn.length + " kitten card" + (rec.drawn.length === 1 ? "" : "s")
+                                  + (vp ? " (incl. " + vp + " Feral)" : ""));
+
+  if (rec.knights){ p.knights -= rec.knights; lost.push(rec.knights + " knight" + (rec.knights === 1 ? "" : "s")); }
+
+  // Resources collected this turn go back to the bank.
+  let res = 0;
+  for (const r of RES){
+    const n = Math.min(rec.gained[r], p.res[r]);
+    if (n > 0){ p.res[r] -= n; S.bank[r] += n; res += n; }
+  }
+  if (res) lost.push(res + " resource" + (res === 1 ? "" : "s"));
+
+  updateLongestRoad();
+  updateLargestArmy();
+  announce("🚫 " + pdot(p) + "'s turn is <b>cancelled</b>" +
+           (lost.length ? " — lost " + lost.join(", ") : ""), "big", 5200);
+  logMsg(`<span style="color:#d98b4b"><b>${p.name}</b>'s turn is cancelled — `
+       + (lost.length ? "lost " + lost.join(", ") : "nothing to lose")
+       + `. Resources already spent are gone too.</span>`);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   RESOURCES / BANK
+   ══════════════════════════════════════════════════════════════════════ */
+
+function totalRes(p){ return RES.reduce((s, r) => s + p.res[r], 0); }
+
+function give(p, r, n){
+  const actual = Math.min(n, S.bank[r]);
+  p.res[r] += actual; S.bank[r] -= actual;
+  noteGain(p, r, actual);
+  return actual;
+}
+function take(p, r, n){
+  const actual = Math.min(n, p.res[r]);
+  p.res[r] -= actual; S.bank[r] += actual;
+  return actual;
+}
+function canAfford(p, cost){ return Object.keys(cost).every(r => p.res[r] >= cost[r]); }
+function pay(p, cost){ for (const r in cost) take(p, r, cost[r]); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   VICTORY POINTS / LONGEST ROAD / LARGEST ARMY
+   ══════════════════════════════════════════════════════════════════════ */
+
+function vpCards(p){ return p.cards.filter(c => c.key === "vp").length; }
+function publicVP(p){
+  return p.settlements + p.cities * 2
+       + (S.longestRoad.owner === p.id ? 2 : 0)
+       + (S.largestArmy.owner === p.id ? 2 : 0);
+}
+function totalVP(p){ return publicVP(p) + vpCards(p); }
+
+/* Longest continuous road. A path may END on a vertex holding an opponent's
+   building but may not pass THROUGH it. */
+function longestRoadFor(pid){
+  let best = 0;
+  const walk = (at, used, isStart) => {
+    const v = vertices[at];
+    if (!isStart && v.owner !== null && v.owner !== pid) return 0;  // broken here
+    let local = 0;
+    for (const eid of v.edges){
+      const e = edges[eid];
+      if (e.owner !== pid || used.has(eid)) continue;
+      used.add(eid);
+      const other = e.v[0] === at ? e.v[1] : e.v[0];
+      local = Math.max(local, 1 + walk(other, used, false));
+      used.delete(eid);
+    }
+    return local;
+  };
+  for (const v of vertices){
+    if (!v.edges.some(eid => edges[eid].owner === pid)) continue;
+    best = Math.max(best, walk(v.id, new Set(), true));
+  }
+  return best;
+}
+
+function updateLongestRoad(){
+  let bestPid = S.longestRoad.owner, bestLen = S.longestRoad.owner === null ? 4 : S.longestRoad.len;
+  const lens = S.players.map(p => longestRoadFor(p.id));
+  // The current holder keeps it on ties; a challenger must strictly exceed.
+  if (S.longestRoad.owner !== null){
+    bestLen = lens[S.longestRoad.owner];
+    bestPid = S.longestRoad.owner;
+    if (bestLen < 5){ bestPid = null; bestLen = 4; }
+  }
+  for (const p of S.players){
+    if (lens[p.id] >= 5 && lens[p.id] > bestLen){ bestLen = lens[p.id]; bestPid = p.id; }
+  }
+  if (bestPid !== S.longestRoad.owner && bestPid !== null)
+  {
+    logMsg(`<b>${S.players[bestPid].name}</b> takes Longest Road (${bestLen}).`);
+    announce(pdot(S.players[bestPid]) + " takes <b>Longest Road</b> (" + bestLen + ")", "big");
+  }
+  S.roadLens = lens;              // cached so the player strip need not recompute
+  S.longestRoad = { owner: bestPid, len: bestPid === null ? 0 : lens[bestPid] };
+}
+
+function updateLargestArmy(){
+  let bestPid = S.largestArmy.owner;
+  let bestN = S.largestArmy.owner === null ? 2 : S.players[S.largestArmy.owner].knights;
+  // The holder loses the card if a cancelled turn drops them under three.
+  if (bestPid !== null && bestN < 3){ bestPid = null; bestN = 2; }
+  for (const p of S.players){
+    if (p.knights >= 3 && p.knights > bestN){ bestN = p.knights; bestPid = p.id; }
+  }
+  if (bestPid !== S.largestArmy.owner && bestPid !== null)
+  {
+    logMsg(`<b>${S.players[bestPid].name}</b> takes Largest Army (${bestN} knights).`);
+    announce(pdot(S.players[bestPid]) + " takes <b>Largest Army</b> (" + bestN + ")", "big");
+  }
+  S.largestArmy = { owner: bestPid, n: bestN };
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   BUILD LEGALITY
+   ══════════════════════════════════════════════════════════════════════ */
+
+function canPlaceSettlement(vid, pid, setup){
+  const v = vertices[vid];
+  if (v.owner !== null) return false;
+  for (const a of v.adj) if (vertices[a].owner !== null) return false;   // distance rule
+  if (setup) return true;
+  return v.edges.some(eid => edges[eid].owner === pid);                  // must touch own road
+}
+function canPlaceRoad(eid, pid, setupVertex){
+  const e = edges[eid];
+  if (e.owner !== null) return false;
+  if (setupVertex !== null && setupVertex !== undefined) return e.v.includes(setupVertex);
+  return e.v.some(vid => {
+    const v = vertices[vid];
+    if (v.owner === pid) return true;
+    if (v.owner !== null) return false;   // opponent building blocks pass-through
+    return v.edges.some(x => edges[x].owner === pid);
+  });
+}
+function canPlaceCity(vid, pid){
+  const v = vertices[vid];
+  return v.owner === pid && v.type === "settlement";
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TRADE RATES
+   ══════════════════════════════════════════════════════════════════════ */
+
+function tradeRate(p, r){
+  let rate = 4;
+  for (const v of vertices){
+    if (v.owner !== p.id || !v.port) continue;
+    if (v.port === "3:1") rate = Math.min(rate, 3);
+    else if (v.port === r) rate = Math.min(rate, 2);
+  }
+  return rate;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   RENDERING
+   ══════════════════════════════════════════════════════════════════════ */
+
+function render(){
+  if (!S) return;
+  drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
+  refreshFeedMarks();
+  // A repaint in the middle of a drag (a bot moving, say) wipes the outlines
+  // showing where the card may go. Put them straight back.
+  if (dragCard) markDropTargets();
+  placeDeck();
+  // Replacing the board's markup can leave measurements momentarily stale, so
+  // always settle the deck again on the next frame.
+  requestAnimationFrame(placeDeck);
+  // Online: anything that redrew the host's screen is news. Debounced, so the
+  // burst of renders one action causes goes out as a single state.
+  if (window.NET && NET.publishSoon) NET.publishSoon();
+}
+
+const PORT_OUT = 1.075;     // how far outside the ring a port marker sits
+function portPos(e){
+  const m = midOf(e);
+  return { x: m.x * PORT_OUT, y: m.y * PORT_OUT };
+}
+
+function drawBoard(){
+  const svg = document.getElementById("board");
+  // Bounds must include the port markers and their labels, not just the
+  // hex ring — otherwise the outermost ports get clipped.
+  const xs = vertices.map(v => v.x), ys = vertices.map(v => v.y);
+  for (const e of edges){
+    if (!e.port) continue;
+    const p = portPos(e);
+    xs.push(p.x - 15, p.x + 15);
+    ys.push(p.y - 15, p.y + 15);
+  }
+  const pad = 16;
+  const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
+  const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
+  // Zoom shrinks the viewBox about the centre; pan slides that window.
+  const z = S.zoom || 1;
+  const vw = (maxX - minX) / z, vh = (maxY - minY) / z;
+  const cx = (minX + maxX) / 2 + (S.panX || 0);
+  const cy = (minY + maxY) / 2 + (S.panY || 0);
+  S.viewW = vw;                              // used to scale drag distances
+  svg.setAttribute("viewBox", `${cx - vw / 2} ${cy - vh / 2} ${vw} ${vh}`);
+
+  const uiHidden = uiBlocked();
+  let h = artDefs();
+  h += `<rect x="${minX}" y="${minY}" width="${maxX - minX}" height="${maxY - minY}"
+          fill="transparent" onclick="disarm()"/>`;
+  const sel = S.select;
+
+  // Ports
+  for (const e of edges){
+    if (!e.port) continue;
+    const m = midOf(e);
+    const pp = portPos(e);
+    const px = pp.x, py = pp.y;
+    const generic = e.port === "3:1";
+    const col = generic ? "#95a1b3" : RES_COLOR[e.port];
+    // 2:1 ports are identified by colour alone; 3:1s just show "?".
+    h += `<line x1="${m.x}" y1="${m.y}" x2="${px}" y2="${py}" stroke="${col}" stroke-width="3" opacity=".6"/>`;
+    h += `<circle cx="${px}" cy="${py}" r="13" fill="#1a1e25" stroke="${col}" stroke-width="2.5"/>`;
+    h += `<title>${generic ? "3:1 — any resource" : "2:1 " + RES_NAME[e.port]}</title>`;
+    h += `<text x="${px}" y="${py + 4}" text-anchor="middle" font-size="${generic ? 13 : 10}"
+             font-weight="700" fill="${col}" pointer-events="none">${generic ? "?" : "2:1"}</text>`;
+  }
+
+  // Hexes
+  for (const hx of hexes){
+    const pts = cornerPoints(hx.x, hx.y).map(p => `${p.x},${p.y}`).join(" ");
+    const hot = sel && (sel.kind === "robber" || sel.kind === "alter");
+    const altPicked = sel && sel.kind === "alter" && sel.first === hx.id;
+    const click = hot ? ` style="cursor:pointer" onclick="hexClick(${hx.id})"` : "";
+    const tile = art("hex", hx.terrain);
+    if (tile){
+      // Square source, cropped to cover the hex's bounding box.
+      const w = HEX_SIZE * Math.sqrt(3), ht = HEX_SIZE * 2;
+      h += `<g transform="translate(${hx.x},${hx.y})" clip-path="url(#hexclip)"${click}>
+              <image href="${tile}" x="${-w/2}" y="${-ht/2}" width="${w}" height="${ht}"
+                     preserveAspectRatio="xMidYMid slice"/>
+            </g>`;
+      h += `<polygon points="${pts}" fill="none" stroke="#0b0d10" stroke-width="2.5" pointer-events="none"/>`;
+    } else {
+      h += `<polygon points="${pts}" fill="${RES_COLOR[hx.terrain]}" stroke="#0b0d10" stroke-width="2.5"${click}/>`;
+    }
+    if (hot){
+      const ok = sel.kind === "robber" ? hx.id !== S.robber : hx.number !== null;
+      if (ok) h += `<polygon points="${pts}" fill="${altPicked ? "#ffffff33" : "#ffffff14"}"
+                      stroke="${altPicked ? "#fff" : "#ffffff66"}" stroke-width="3"
+                      style="cursor:pointer" onclick="hexClick(${hx.id})"/>`;
+    }
+    if (hx.number !== null){
+      const red = hx.number === 6 || hx.number === 8;
+      const blank = art("token", "blank");
+      // The number and pips stay procedural so they remain legible.
+      if (blank) h += `<image href="${blank}" x="${hx.x - 21}" y="${hx.y - 21}" width="42" height="42"
+                              pointer-events="none"/>`;
+      else h += `<circle cx="${hx.x}" cy="${hx.y}" r="19" fill="#f2ead6" stroke="#0b0d10" stroke-width="1.5"/>`;
+      h += `<text x="${hx.x}" y="${hx.y + 6}" text-anchor="middle" font-size="18" font-weight="700"
+              fill="${red ? "#b3261e" : "#242424"}">${hx.number}</text>`;
+      const pips = 6 - Math.abs(7 - hx.number);
+      let dots = "";
+      for (let i = 0; i < pips; i++)
+        dots += `<circle cx="${hx.x - (pips - 1) * 2.6 + i * 5.2}" cy="${hx.y + 13}" r="1.5"
+                   fill="${red ? "#b3261e" : "#242424"}"/>`;
+      h += dots;
+    } else {
+      h += `<text x="${hx.x}" y="${hx.y + 5}" text-anchor="middle" font-size="12" fill="#8a7a52">DESERT</text>`;
+    }
+    if (S.robber === hx.id){
+      const rb = art("piece", "robber");
+      if (rb){
+        h += `<image href="${rb}" x="${hx.x + 22 - 17}" y="${hx.y - 20 - 17}" width="34" height="34"
+                     filter="url(#tintRobber)" pointer-events="none"/>`;
+      } else {
+        h += `<g transform="translate(${hx.x + 22},${hx.y - 20})">
+                <ellipse cx="0" cy="9" rx="10" ry="8" fill="#15181d" stroke="#000" stroke-width="1"/>
+                <circle cx="0" cy="-3" r="6.5" fill="#15181d" stroke="#000" stroke-width="1"/>
+              </g>`;
+      }
+    }
+  }
+
+  // Roads (edges)
+  for (const e of edges){
+    const a = vertices[e.v[0]], b = vertices[e.v[1]];
+    if (e.owner !== null){
+      const rd = art("piece", "road");
+      if (rd){
+        // Stretch a horizontal road tile along the edge.
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        const ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+        const th  = 18;
+        h += `<g transform="translate(${(a.x+b.x)/2},${(a.y+b.y)/2}) rotate(${ang})">
+                <image href="${rd}" x="${-len/2}" y="${-th/2}" width="${len}" height="${th}"
+                       preserveAspectRatio="none" filter="url(#tint${e.owner})"/>
+              </g>`;
+      } else {
+        h += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
+                stroke="#0b0d10" stroke-width="12" stroke-linecap="round"/>`;
+        h += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
+                stroke="${S.players[e.owner].color}" stroke-width="8" stroke-linecap="round"/>`;
+      }
+    } else if (!uiHidden && roadSpotShown(e.id)){
+      const on = armed("road", e.id) || armed("free", e.id);
+      // Halo + dashed fill so the target stays legible over any terrain colour.
+      h += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#fff"
+              stroke-width="${on ? 16 : 12}" stroke-linecap="round" opacity="${on ? ".85" : ".3"}"
+              style="cursor:pointer" onclick="edgeClick(${e.id})"/>`;
+      h += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${cur().color}"
+              stroke-width="${on ? 9 : 7}" stroke-linecap="round"
+              ${on ? "" : 'stroke-dasharray="7 5"'} opacity=".95"
+              style="cursor:pointer" onclick="edgeClick(${e.id})"/>`;
+    }
+  }
+
+  // Buildings (vertices)
+  for (const v of vertices){
+    if (v.owner !== null){
+      const col = S.players[v.owner].color;
+      const pieceArt = art("piece", v.type);
+      if (pieceArt){
+        const sz = v.type === "city" ? 34 : 28;
+        h += `<image href="${pieceArt}" x="${v.x - sz/2}" y="${v.y - sz/2}" width="${sz}" height="${sz}"
+                     filter="url(#tint${v.owner})" pointer-events="none"/>`;
+      } else if (v.type === "settlement"){
+        h += `<g transform="translate(${v.x},${v.y})">
+                <path d="M-9,4 L-9,-2 L0,-9 L9,-2 L9,4 Z" fill="${col}" stroke="#0b0d10" stroke-width="2"/>
+              </g>`;
+      } else {
+        h += `<g transform="translate(${v.x},${v.y})">
+                <path d="M-12,6 L-12,-3 L-4,-9 L-4,-3 L4,-3 L12,-3 L12,6 Z" fill="${col}"
+                      stroke="#0b0d10" stroke-width="2"/>
+              </g>`;
+      }
+    }
+    const spot = uiHidden ? null : vertexSpotShown(v.id);
+    if (spot){
+      const on = armed(spot, v.id) || armed("free", v.id);
+      const r  = on ? 17 : (spot === "city" ? 15 : 13);
+      h += `<circle cx="${v.x}" cy="${v.y}" r="${r}" fill="${cur().color}" opacity="${on ? ".9" : ".55"}"
+              stroke="#fff" stroke-width="${on ? 3.5 : 2.5}" ${on ? "" : 'stroke-dasharray="4 3"'}
+              style="cursor:pointer" onclick="vertexClick(${v.id})"/>`;
+      if (spot === "city" && !on)
+        h += `<text x="${v.x}" y="${v.y + 4}" text-anchor="middle" font-size="11" font-weight="700"
+                fill="#fff" pointer-events="none">+</text>`;
+      if (on)
+        h += `<circle cx="${v.x}" cy="${v.y}" r="${r + 6}" fill="none" stroke="#fff"
+                stroke-width="1.5" opacity=".7" pointer-events="none"/>`;
+    }
+  }
+  svg.innerHTML = h;
+}
+
+/* One hex-shaped clip (all tiles share it) plus a tint filter per player.
+   The tint floods the player's colour through the art's alpha and lays a dark
+   dilated outline behind it, matching the look of the procedural pieces. */
+/* Which build spots the board offers right now. During setup the forced
+   placement wins; otherwise anything legal and affordable is shown. */
+function roadSpotShown(eid){
+  const sel = S.select;
+  if (sel && sel.kind === "road") return canPlaceRoad(eid, S.cur, sel.fromVertex);
+  if (S.select || S.pending || S.phase !== "main") return false;
+  return buildableNow("road") && canPlaceRoad(eid, S.cur, null);
+}
+function vertexSpotShown(vid){
+  const sel = S.select;
+  if (sel && sel.kind === "settlement" && sel.setup)
+    return canPlaceSettlement(vid, S.cur, true) ? "settlement" : null;
+  if (S.select || S.pending || S.phase !== "main") return null;
+  if (canPlaceCity(vid, S.cur) && buildableNow("city")) return "city";
+  if (canPlaceSettlement(vid, S.cur, false) && buildableNow("settlement")) return "settlement";
+  return null;
+}
+
+function artDefs(){
+  const pts = cornerPoints(0, 0).map(p => `${p.x},${p.y}`).join(" ");
+  let d = `<defs><clipPath id="hexclip"><polygon points="${pts}"/></clipPath>`;
+  S.players.forEach(p => {
+    d += `<filter id="tint${p.id}" x="-25%" y="-25%" width="150%" height="150%">
+            <feFlood flood-color="${p.color}" result="col"/>
+            <feComposite in="col" in2="SourceGraphic" operator="in" result="body"/>
+            <feMorphology in="SourceGraphic" operator="dilate" radius="1.3" result="fat"/>
+            <feFlood flood-color="#0b0d10" result="dark"/>
+            <feComposite in="dark" in2="fat" operator="in" result="edge"/>
+            <feMerge><feMergeNode in="edge"/><feMergeNode in="body"/></feMerge>
+          </filter>`;
+  });
+  d += `<filter id="tintRobber" x="-25%" y="-25%" width="150%" height="150%">
+          <feFlood flood-color="#15181d" result="col"/>
+          <feComposite in="col" in2="SourceGraphic" operator="in"/>
+        </filter>`;
+  return d + `</defs>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PLAYER STRIP (top)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* One entry per roll: who rolled what, and exactly who collected. */
+function rollSummary(p, d1, d2, out){
+  const sum = d1 + d2;
+  let h = pdot(p) + " rolls <b>" + sum + "</b> " +
+          "<span style='opacity:.55'>(" + d1 + "+" + d2 + ")</span>";
+  const lines = [];
+  for (const q of S.players){
+    const g = out.paid[q.id];
+    if (RES.some(r => g[r] > 0)) lines.push(pdot(q) + " " + resList(g));
+  }
+  h += lines.length ? "<br>" + lines.join("<br>")
+                    : "<br><span style='opacity:.55'>nobody collects</span>";
+  for (const n of out.notes) h += "<br><span style='opacity:.55'>" + n + "</span>";
+  return h;
+}
+
+/* ── board view controls ─────────────────────────────────────────────── */
+const ZOOM_MIN = 0.85, ZOOM_MAX = 1.6;
+
+function zoomBoard(delta){
+  if (!S) return;
+  const before = S.zoom || 1;
+  S.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, before + delta));
+  if (S.zoom <= 1.001){ S.panX = 0; S.panY = 0; }   // nothing to pan when it fits
+  drawBoard();
+}
+function resetZoom(){
+  if (!S) return;
+  S.zoom = 1; S.panX = 0; S.panY = 0;
+  drawBoard();
+}
+
+/* Wheel to zoom, drag to pan. The drag only counts once the pointer has moved
+   a few pixels, so an ordinary click still builds where you clicked. */
+function initBoardControls(){
+  const svg = document.getElementById("board");
+  if (!svg || svg.__wired) return;
+  svg.__wired = true;
+
+  svg.addEventListener("wheel", function(e){
+    if (!S) return;
+    e.preventDefault();
+    zoomBoard(e.deltaY < 0 ? 0.1 : -0.1);
+  }, { passive:false });
+
+  let down = null;
+  svg.addEventListener("pointerdown", function(e){
+    if (!S || (S.zoom || 1) <= 1.001) return;      // only pan when zoomed in
+    down = { x:e.clientX, y:e.clientY, panX:S.panX || 0, panY:S.panY || 0, moved:false };
+  });
+  svg.addEventListener("pointermove", function(e){
+    if (!down) return;
+    const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (!down.moved && Math.hypot(dx, dy) < 5) return;
+    down.moved = true;
+    const scale = (S.viewW || 600) / Math.max(1, svg.clientWidth);
+    S.panX = down.panX - dx * scale;
+    S.panY = down.panY - dy * scale;
+    drawBoard();
+  });
+  svg.addEventListener("pointerup", function(){
+    // Suppress the click that follows a real drag so it does not place a piece.
+    if (down && down.moved) window.__panDragged = true;
+    down = null;
+  });
+  svg.addEventListener("pointerleave", function(){ down = null; });
+}
+
+/* Board clicks arriving straight after a pan are swallowed. */
+function swallowedByPan(){
+  if (window.__panDragged){ window.__panDragged = false; return true; }
+  return false;
+}
+
+function drawPlayers(){
+  let h = "";
+  for (const p of S.players){
+    const active = p.id === S.cur && S.phase !== "over";
+    h += `<div class="pcard ${active ? "active" : ""} ${p.skipTokens ? "done" : ""}"
+                data-pid="${p.id}">
+            <div class="phead">
+              <span class="dot" style="background:${p.color}"></span>
+              <span class="pname">${p.name}${!isBot(p.id) && anyBots() ? " <span class=\"you\">you</span>" : ""}</span>
+              ${p.skipTokens ? `<span class="pskip">skip ×${p.skipTokens}</span>` : ""}
+            </div>
+            <div class="stats">
+              <div class="stat vp" title="Victory points (public — Feral Kittens stay hidden)">
+                <b>${publicVP(p)}</b><span>VP</span></div>
+              <div class="stat" title="Resource cards"><b>${totalRes(p)}</b><span>Res</span></div>
+              <div class="stat" title="Kitten cards in hand"><b>${p.cards.length}</b><span>Kit</span></div>
+              <div class="stat" title="Longest unbroken road (${p.roads} built)${
+                    S.longestRoad.owner === p.id ? " — holds Longest Road" : ""}">
+                <b${S.longestRoad.owner === p.id ? ' style="color:var(--accent)"' : ""}>${
+                  (S.roadLens && S.roadLens[p.id] !== undefined) ? S.roadLens[p.id] : 0
+                }</b><span>Rd</span></div>
+              <div class="stat" title="Knights played"><b>${p.knights}</b><span>Knt</span></div>
+            </div>`;
+    if (S.revealed){
+      const counts = {};
+      for (const c of p.cards){
+        const nm = KITTEN[c.key].name;
+        counts[nm] = (counts[nm] || 0) + 1;
+      }
+      const names = Object.keys(counts).map(nm =>
+        `<span class="revcard">${counts[nm] > 1 ? counts[nm] + "\u00d7 " : ""}${nm}</span>`);
+      h += `<div class="reveal">${names.length ? names.join("") :
+            "<span style='color:var(--dim)'>no cards</span>"}</div>`;
+    }
+    h += `</div>`;
+  }
+  document.getElementById("players").innerHTML = h;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   KITTEN DECK (bottom-right of the board)
+   ══════════════════════════════════════════════════════════════════════ */
+
+function canBuyKitten(){
+  return S.phase === "main" && S.deck.length > 0 &&
+         RES.filter(r => cur().res[r] > 0).length >= 3;
+}
+
+/* Is the seat the UI belongs to the one actually playing right now? Anything
+   the human can click has to be gated on this, or a stray click acts for a
+   bot — which is how the deck was letting you buy cards on their behalf. */
+function myTurnNow(){
+  if (window.NET && NET.isOnline && NET.isOnline()) return S.cur === viewSeat();
+  if (!anyBots()) return true;
+  return S.cur === viewSeat() && !uiBlocked();
+}
+
+/* Where the board's artwork actually sits inside the SVG, in pixels relative
+   to #boardArea. The SVG fills the pane but the drawing is letterboxed inside
+   it, so anything that should hug the board has to be placed from this. */
+function boardContentRect(){
+  const svg  = document.getElementById("board");
+  const area = document.getElementById("boardArea");
+  if (!svg || !area) return null;
+  const vb = (svg.getAttribute("viewBox") || "").split(" ").map(Number);
+  if (vb.length !== 4 || !vb[2] || !vb[3]) return null;
+  const sr = svg.getBoundingClientRect(), ar = area.getBoundingClientRect();
+  if (!sr.width || !sr.height) return null;
+  const scale = Math.min(sr.width / vb[2], sr.height / vb[3]);   // xMidYMid meet
+  const w = vb[2] * scale, h = vb[3] * scale;
+  return {
+    left:   sr.left - ar.left + (sr.width  - w) / 2,
+    top:    sr.top  - ar.top  + (sr.height - h) / 2,
+    width:  w, height: h
+  };
+}
+
+/* Where a point in board coordinates lands on screen, relative to #boardArea. */
+function svgToScreen(x, y){
+  const svg  = document.getElementById("board");
+  const area = document.getElementById("boardArea");
+  if (!svg || !area) return null;
+  const vb = (svg.getAttribute("viewBox") || "").split(" ").map(Number);
+  if (vb.length !== 4 || !vb[2] || !vb[3]) return null;
+  const sr = svg.getBoundingClientRect(), ar = area.getBoundingClientRect();
+  if (!sr.width || !sr.height) return null;
+  const scale = Math.min(sr.width / vb[2], sr.height / vb[3]);
+  return {
+    x: sr.left - ar.left + (sr.width  - vb[2] * scale) / 2 + (x - vb[0]) * scale,
+    y: sr.top  - ar.top  + (sr.height - vb[3] * scale) / 2 + (y - vb[1]) * scale,
+    scale
+  };
+}
+
+/* The tiles alone, ignoring the port markers that ring them. */
+function hexFieldBounds(){
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const h of hexes){
+    for (const p of cornerPoints(h.x, h.y)){
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+/* Park the deck off the board's bottom-right corner, roughly 70px clear of the
+   nearest tile, and never hanging below the board itself. It is absolutely
+   positioned, so it can never take space from the board or resize it. */
+const DECK_GAP = 50;      // per axis — about 70px on the diagonal
+
+function placeDeck(){
+  const el = document.getElementById("deckWrap");
+  if (!el) return;
+  const card = el.querySelector(".deck");
+  const area = document.getElementById("boardArea");
+  const content = boardContentRect();
+  if (!card || !area || !content){ el.style.left = ""; el.style.top = ""; return; }
+
+  const hb = hexFieldBounds();
+  const corner = svgToScreen(hb.maxX, hb.maxY);
+  if (!corner){ el.style.left = ""; el.style.top = ""; return; }
+
+  const ar = area.getBoundingClientRect();
+  const cardH = card.offsetHeight || 104;
+  const wrapW = el.offsetWidth  || 86;
+  const wrapH = el.offsetHeight || 122;
+
+  // Bottom edge of the card sits level with the board's lowest point at most.
+  const boardBottom = content.top + content.height;
+  const bottom = Math.min(corner.y + DECK_GAP, boardBottom);
+  let left = corner.x + DECK_GAP;
+  let top  = bottom - cardH;
+
+  left = Math.max(6, Math.min(left, ar.width  - wrapW - 6));
+  top  = Math.max(6, Math.min(top,  ar.height - wrapH - 6));
+
+  el.style.left = left + "px";
+  el.style.top = top + "px";
+  el.style.right = "auto";
+  el.style.bottom = "auto";
+}
+
+function drawDeck(){
+  const el = document.getElementById("deckWrap");
+  if (S.phase === "over" || S.phase.startsWith("setup")){ el.innerHTML = ""; return; }
+  const buyable = canBuyKitten() && myTurnNow();
+  const back = art("card", "back");
+  el.innerHTML = `
+    <div class="deck ${buyable ? "buyable" : "dim"}" ${buyable ? `onclick="buyKittenDialog()"` : ""}
+         title="${buyable ? "Buy a kitten card — any 3 different resources"
+                       : myTurnNow() ? "Needs 3 different resources" : "Not your turn"}">
+      ${back ? `<img src="${back}" alt="">` : ""}
+      <span class="cnt">${S.deck.length}</span>
+    </div>
+    <div class="deckcost">any 3 unique</div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   BOTTOM BAR — resources, hand, actions
+   ══════════════════════════════════════════════════════════════════════ */
+
+function drawBottom(){
+  const p = viewPlayer();
+  const netOn = !!(window.NET && NET.isOnline && NET.isOnline());
+  const myTurn = netOn ? S.cur === p.id
+                       : (!anyBots() || (S.cur === p.id && !uiBlocked()));
+  let h = `<div class="bside"></div><div class="bcentre"><div class="group">`;
+  for (const r of RES){
+    const face = art("res", r);
+    h += `<div class="slot ${p.res[r] ? "" : "zero"}" title="${RES_NAME[r]}">
+            ${face ? `<img src="${face}" alt="">`
+                   : `<span class="swatchbig" style="background:${RES_COLOR[r]}"></span>`}
+            <span class="n">${p.res[r]}</span>
+            <span class="rn">${RES_NAME[r]}</span>
+          </div>`;
+  }
+  h += `</div><div class="sep"></div>`;
+
+  // ── kitten hand ──
+  h += `<div class="group hand" data-hand="${p.id}">`;
+  if (!p.cards.length){
+    h += `<span class="emptyhand">No kitten cards</span>`;
+  } else {
+    // The one entry still open to a reaction, so a Nope or Defuse that has
+    // something to answer right now can light up in your hand.
+    const live = openEntry();
+    p.cards.forEach((c, i) => {
+      const def = KITTEN[c.key];
+      const locked = c.boughtTurn === S.turnCounter;
+      const reaction = def.kind === "response";
+      const isVP = def.kind === "vp";
+      const offTurn  = OFF_TURN.has(c.key) && !locked && !isVP && !S.pending &&
+                        S.phase !== "over" && !S.phase.startsWith("setup") &&
+                        S.cur !== p.id;
+      const playable = (myTurn && !locked && !isVP && !S.pending &&
+                        (def.kind !== "response" || c.key === "nope") &&
+                        (S.phase === "main" || S.phase === "roll")) || offTurn;
+      const canAnswer = !!live && !locked &&
+                        ((c.key === "defuse" && canDefuseEntry(live, p.id)) ||
+                         (c.key === "nope"   && canNopeEntry(live) && live.actor !== p.id));
+      const held = dragCard && dragCard.ownerId === p.id && dragCard.idx === i;
+      const face = cardArt(c);
+      let cls = offTurn ? "playable offturn" : playable ? "playable"
+              : reaction ? "reaction" : locked ? "locked" : "";
+      if (canAnswer) cls += " armedreact";
+      if (held) cls += " picked";
+      const tip = esc(def.name + (c.flavor ? " · " + c.flavor : "") + " — " + def.text) +
+                  (locked ? "" : "\nDrag it where it should go.");
+      h += `<div class="kcard ${cls}" title="${tip}"
+                 data-idx="${i}" data-owner="${p.id}"
+                 onpointerdown="cardPointerDown(event,${i},${p.id})">
+              ${face ? `<img src="${face}" alt="" draggable="false">` : ""}
+              ${locked ? `<span class="pip">next turn</span>` : ""}
+              ${isVP ? `<span class="pip">1 VP</span>` : ""}
+              ${canAnswer ? `<span class="pip now">answer</span>`
+                : offTurn ? `<span class="pip now">now</span>`
+                : reaction ? `<span class="pip">react</span>` : ""}
+              ${face ? "" : `<span class="kn">${def.name}${c.flavor ? "<br>" + c.flavor.split(" ")[0] : ""}</span>`}
+            </div>`;
+    });
+  }
+  h += `</div></div>`;
+
+  // ── actions ──
+  h += `<div class="bside right"><div class="actions-bar">`;
+  if (!myTurn && S.phase !== "over"){
+    const who = S.players[S.cur];
+    h += `<span class="thinking"><span class="dot" style="background:${who.color}"></span>
+            ${who.name} is thinking…</span>`;
+  } else if (S.phase === "roll"){
+    const waiting = reactWindowOpen();
+    h += `<button class="primary" id="rollBtn" ${waiting ? "disabled" : ""} onclick="rollDice()">${
+            waiting ? "Reactions open — " + reactSecondsLeft() + "s" : "Roll Dice"}</button>`;
+  } else if (S.phase === "main"){
+    h += `<button onclick="bankTradeDialog()">Bank / Port</button>`;
+    h += `<button onclick="playerTradeDialog()">Trade</button>`;
+    h += `<button class="warn" onclick="requestEndTurn()">End Turn</button>`;
+  } else if (S.phase.startsWith("setup")){
+    h += `<span class="emptyhand">Setup — place your ${S.setupNeed}</span>`;
+  } else if (S.phase === "over"){
+    h += `<button class="primary" onclick="showStandings()">Final standings</button>`;
+    h += `<button onclick="newGameDialog()">New Game</button>`;
+  }
+  h += `</div></div>`;
+
+  document.getElementById("bottom").innerHTML = h;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   HINT BAR
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* On-screen event feed. The game log keeps everything; these surface the
+   things you would otherwise miss while the bots take their turns. */
+/* Events append to the feed and stay there. Older ones are pushed up out of
+   view rather than deleted, so the list can be scrolled back through. The `ms`
+   argument is accepted for compatibility with the old toast calls and ignored.
+*/
+function announce(html, kind, entry){
+  const box = document.getElementById("feed");
+  if (!box) return;
+  const el = document.createElement("div");
+  el.className = "ev " + (kind || "info");
+  if (entry && entry.id) el.dataset.jid = entry.id;
+  const turn = (S && S.turnCounter) ? "Turn " + S.turnCounter : "Setup";
+  el.innerHTML = '<span class="evturn">' + turn + "</span>" + html;
+  // Kept on the state as well as in the DOM: online, the feed has to travel to
+  // players whose browser never saw the action happen.
+  if (S){
+    if (!S.feed) S.feed = [];
+    S.feed.push({ jid: (entry && entry.id) || null, kind: kind || "info",
+                  html: html, turn: S.turnCounter || 0 });
+    while (S.feed.length > 160) S.feed.shift();
+  }
+  // Follow the newest entry only if the reader is already at the bottom, so
+  // scrolling back through the game is not interrupted.
+  const following = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.appendChild(el);
+  while (box.children.length > 250) box.removeChild(box.firstChild);
+  if (following) box.scrollTop = box.scrollHeight;
+  refreshFeedMarks();
+}
+
+/* ── "you can answer this" markers ─────────────────────────────────
+   A card badge pinned to a log entry saying "this one is yours to answer".
+   It is drawn for the seat at the keyboard and nobody else: it only appears
+   when YOU are holding the card that would answer it, so it tells the rest of
+   the table nothing. Because the window is one entry wide the badge also
+   vanishes the instant the next thing happens — which is the point. The
+   badge IS the countdown. */
+function markFace(key, cls, tip){
+  const face = art("card", key);
+  const glyph = key === "defuse" ? "🛡" : "🚫";
+  return '<span class="evmark ' + cls + '" title="' + esc(tip) + '">' +
+         (face ? '<img src="' + face + '" alt="">' : glyph) + '</span>';
+}
+
+function refreshFeedMarks(){
+  const box = document.getElementById("feed");
+  if (!box || !S) return;
+  const me = viewSeat();
+  const p = S.players[me];
+  const live = openEntry();
+  const hasDefuse = p && p.cards.some(c => c.key === "defuse" && c.boughtTurn !== S.turnCounter);
+  const hasNope   = p && p.cards.some(c => c.key === "nope"   && c.boughtTurn !== S.turnCounter);
+
+  box.querySelectorAll(".ev[data-jid]").forEach(el => {
+    const jid = +el.dataset.jid;
+    // A rewound entry stays on screen — the feed is a record of what was said,
+    // not of what survived — but it is struck through so the log still reads
+    // straight after a Nope has erased something out of the middle of it.
+    const gone = !S.journal.some(x => x.id === jid);
+    el.classList.toggle("undone", gone);
+    const isLive = !!live && live.id === jid;
+    el.classList.toggle("livewindow", isLive);
+    const old = el.querySelector(".evmarks");
+    if (old) old.remove();
+    el.classList.remove("answerable");
+    if (!isLive) return;
+
+    let marks = "";
+    if (hasDefuse && canDefuseEntry(live, me))
+      marks += markFace("defuse", "defuse", "You can Defuse this — drag your Defuse onto this line");
+    if (hasNope && live.actor !== me)
+      marks += markFace("nope", "nope", "You can Nope this — drag your Nope onto this line");
+    if (!marks) return;
+    el.classList.add("answerable");
+    const wrap = document.createElement("div");
+    wrap.className = "evmarks";
+    wrap.innerHTML = marks;
+    el.appendChild(wrap);
+  });
+}
+
+/* Cleared with the board when a new game starts. */
+function clearFeed(){
+  const box = document.getElementById("feed");
+  if (box) box.innerHTML = "";
+  if (S) S.feed = [];
+}
+/* Resources as coloured chips, so a trade shows what actually moved. */
+function resList(o){
+  const parts = RES.filter(r => o[r] > 0)
+    .map(r => '<span class="rchip" style="border-left-color:' + RES_COLOR[r] + '">' +
+              o[r] + "× " + RES_NAME[r] + "</span>");
+  return parts.length ? parts.join(" ") : "<i>nothing</i>";
+}
+function tradeToast(a, b, gave, got){
+  announce(pdot(a) + " → " + resList(gave) + "<br>" + pdot(b) + " → " + resList(got),
+           "info", 5200);
+}
+
+function pdot(p){
+  return '<span class="dot" style="background:' + p.color +
+         ';display:inline-block;vertical-align:-2px;margin-right:5px"></span><b>' + p.name + '</b>';
+}
+
+let hintTimer = null;
+function hint(msg, sticky){
+  const el = document.getElementById("hintbar");
+  if (!el) return;
+  clearTimeout(hintTimer);
+  if (!msg){ el.className = ""; el.textContent = ""; return; }
+  el.textContent = msg;
+  el.className = "on";
+  if (!sticky) hintTimer = setTimeout(() => { el.className = ""; }, 2600);
+}
+
+const DIE_PIPS = {1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8]};
+function dieHTML(n, animate){
+  const on = DIE_PIPS[n] || [];
+  let cells = "";
+  for (let i = 0; i < 9; i++) cells += `<i class="${on.includes(i) ? "" : "off"}"></i>`;
+  return `<div class="die ${animate ? "roll" : ""}" title="${n}">${cells}</div>`;
+}
+
+function drawDice(){
+  const el = document.getElementById("diceWrap");
+  if (!el) return;
+  if (!S.rolled || S.phase.startsWith("setup") || S.phase === "over"){ el.innerHTML = ""; return; }
+  const [a, b] = S.rolled, sum = a + b;
+  const fresh = S.diceFresh;
+  S.diceFresh = false;
+  el.innerHTML = dieHTML(a, fresh) + dieHTML(b, fresh) +
+                 `<span class="dicesum ${sum === 7 ? "seven" : ""}">${sum}</span>`;
+}
+
+function drawHint(){
+  // Advice is for whoever is actually playing. During a bot's turn the strip
+  // stays empty unless a prompt has handed us control.
+  const ours = !anyBots() || myTurnNow() ||
+               (S.select && S.select.actor !== undefined && !isBot(S.select.actor));
+  if (!ours){ hint(null); return; }
+  if (S.armed){
+    const what = S.armed.kind;
+    const cost = what === "free" ? "" :
+      " — " + Object.entries(COST[what]).map(([r, n]) => n + " " + RES_NAME[r]).join(", ");
+    hint(`Click again to confirm ${what === "free" ? "placement" : "the " + what + cost}, or click elsewhere to cancel.`, true);
+  } else if (S.select && S.select.kind === "robber"){
+    hint("Click a hex to move the robber onto it.", true);
+  } else if (S.select && S.select.kind === "alter"){
+    hint(S.select.first === null ? "Pick the first number token to swap."
+                                 : "Now pick the second number token.", true);
+  } else if (S.phase.startsWith("setup")){
+    hint(`Place your ${S.setupNeed} — click a highlighted spot.`, true);
+  } else if (S.phase === "roll"){
+    hint("Roll the dice to begin your turn.", true);
+  } else {
+    hint(null);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   LOG / DICE HISTORY
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Imploding Kitten clock ──────────────────────────────────────────── */
+let implodeTimer = null;
+
+function implodeActive(){ return S && S.implodeTurn === S.turnCounter; }
+
+function clearImplodeClock(){
+  if (implodeTimer){ clearTimeout(implodeTimer); implodeTimer = null; }
+  const el = document.getElementById("implodeClock");
+  if (el) el.remove();
+}
+
+function startImplodeClock(){
+  clearImplodeClock();
+  S.implodeUntil = Date.now() + 20000;
+  implodeClockTick();
+}
+
+function implodeClockTick(){
+  implodeTimer = null;
+  if (!S || !implodeActive() || S.phase === "over"){ clearImplodeClock(); return; }
+  const left = Math.max(0, Math.ceil((S.implodeUntil - Date.now()) / 1000));
+
+  let el = document.getElementById("implodeClock");
+  if (!el){
+    el = document.createElement("div");
+    el.id = "implodeClock";
+    const area = document.getElementById("boardArea");
+    if (area) area.appendChild(el);
+  }
+  el.className = left <= 5 ? "urgent" : "";
+  el.innerHTML = "💥 <b>" + S.players[S.cur].name + "</b> imploded — un-Nopeable<br><span>" +
+                 left + "s left in this turn</span>";
+
+  if (left <= 0){
+    clearImplodeClock();
+    // Only the host ends the turn. A terminal just stops showing the clock and
+    // waits to be told, or two browsers would end the same turn twice.
+    if (window.NET && NET.isGuest && NET.isGuest()) return;
+    logMsg("<span style='color:#d98b4b'>The Imploding Kitten's 20 seconds are up.</span>");
+    announce("⏳ " + pdot(S.players[S.cur]) + "'s imploded turn runs out", "big");
+    S.implodeTurn = -1;
+    S.armed = null;
+    if (!S.pending && !S.select && (S.phase === "main" || S.phase === "roll")) doEndTurn();
+    return;
+  }
+  implodeTimer = setTimeout(implodeClockTick, 250);
+}
+
+/* ══ HAND-OVER WINDOW ══════════════════════════════════════════
+   A Nope may be played at any time, including after the turn it answers has
+   already ended — which is the only way a Nope can itself be Noped, since
+   being Noped ends your turn on the spot. So every turn hands over through a
+   few seconds in which nobody may roll and the last entry in the log is still
+   live. Playing a Nope inside the window starts it again, so a chain of them
+   can run as long as people keep answering.
+   ═══════════════════════════════════════════════════════════════════ */
+/* Tunable from the console if three seconds is too brisk or too slow:
+   REACT_WINDOW = 2000 (it is read fresh every time a window opens). */
+let REACT_WINDOW = 3000;        // ms of answering room at every hand-over
+let reactTimer = null;
+
+function reactWindowOpen(){
+  return !!S && S.phase !== "over" && !S.phase.startsWith("setup") &&
+         S.reactUntil > Date.now();
+}
+function reactSecondsLeft(){
+  if (!S) return 0;
+  return Math.max(0, Math.ceil((S.reactUntil - Date.now()) / 1000));
+}
+
+function clearReactClock(){
+  if (reactTimer){ clearTimeout(reactTimer); reactTimer = null; }
+  const el = document.getElementById("reactClock");
+  if (el) el.remove();
+}
+
+/* Open the window, or push it back out to full length if it is already
+   running — a Nope played inside the window buys everyone another go. */
+function openReactWindow(bumped){
+  if (!S || S.phase === "over" || S.phase.startsWith("setup")) return;
+  S.reactUntil = Date.now() + REACT_WINDOW;
+  if (reactTimer){ clearTimeout(reactTimer); reactTimer = null; }
+  reactClockTick(bumped);
+}
+
+function reactClockTick(bumped){
+  reactTimer = null;
+  if (!S || S.phase === "over" || S.phase.startsWith("setup")){ clearReactClock(); return; }
+  const left = reactSecondsLeft();
+
+  if (left <= 0){
+    clearReactClock();
+    S.reactUntil = 0;
+    render();
+    botTick();
+    return;
+  }
+
+  let el = document.getElementById("reactClock");
+  if (!el){
+    el = document.createElement("div");
+    el.id = "reactClock";
+    const area = document.getElementById("boardArea");
+    if (area) area.appendChild(el);
+  }
+  el.className = bumped ? "bumped" : "";
+  el.innerHTML = "↩︎ last call — Nope, Attack or Defuse<br><span>" + left +
+                 "s</span> before " + esc(cur().name) + " rolls";
+  const rb = document.getElementById("rollBtn");
+  if (rb) rb.textContent = "Reactions open — " + left + "s";
+
+  reactTimer = setTimeout(function(){ reactClockTick(bumped); }, 200);
+}
+
+/* A terminal is sent how much of each clock is still to run rather than being
+   trusted to keep time; this starts and stops the two banners to match. */
+function mirrorClocks(){
+  if (!S) return;
+  if (S.reactUntil > Date.now()){ if (!reactTimer) reactClockTick(false); }
+  else clearReactClock();
+  if (S.implodeUntil > Date.now() && S.implodeTurn === S.turnCounter){
+    if (!implodeTimer) implodeClockTick();
+  } else if (S.implodeTurn !== S.turnCounter){
+    clearImplodeClock();
+  }
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
+
+function logMsg(msg){
+  S.log.push(msg);
+  if (S.log.length > 500) S.log.shift();
+}
+
+/* The running feed is the game log now, so the button shows and hides it
+   rather than opening a separate window. */
+function toggleFeed(){
+  const box = document.getElementById("feed");
+  const btn = document.getElementById("logBtn");
+  if (!box) return;
+  const hidden = box.classList.toggle("hidden");
+  if (btn) btn.classList.toggle("on", !hidden);
+  if (!hidden) box.scrollTop = box.scrollHeight;
+}
+function showLog(){ toggleFeed(); }
+
+function showDice(){
+  const rolls = S.diceLog || [];
+  const tally = {};
+  for (let n = 2; n <= 12; n++) tally[n] = 0;
+  for (const r of rolls) tally[r]++;
+  const max = Math.max(1, ...Object.values(tally));
+
+  let h = `<p class="sub">${rolls.length} roll${rolls.length === 1 ? "" : "s"} this game.</p>`;
+  h += `<div class="vchart">`;
+  for (let n = 2; n <= 12; n++){
+    const pct = (tally[n] / max) * 100;
+    h += `<div class="vcol ${n === 7 ? "seven" : ""}">
+            <span class="vc">${tally[n] || ""}</span>
+            <span class="vb" style="height:${pct}%"></span>
+            <span class="vn">${n}</span>
+          </div>`;
+  }
+  h += `</div>`;
+  if (rolls.length){
+    h += `<h4 style="margin:14px 0 4px;font-size:13px">Most recent (newest first)</h4><div class="recent">`;
+    for (const r of rolls.slice(-40).reverse())
+      h += `<span class="${r === 7 ? "seven" : ""}">${r}</span>`;
+    h += `</div>`;
+  }
+  openModal("Dice history", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SETUP PHASE
+   ══════════════════════════════════════════════════════════════════════ */
+
+function beginSetupStep(){
+  S.cur = S.setupOrder[S.setupIdx];
+  S.phase = S.setupIdx < S.players.length ? "setup1" : "setup2";
+  S.setupNeed = "settlement";
+  S.setupLastVertex = null;
+  S.armed = null;
+  S.select = { kind:"settlement", setup:true };
+  render();
+  botTick();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   BUILDING BY CLICKING THE BOARD
+   ══════════════════════════════════════════════════════════════════════
+   There is no "pick a build mode" step. During your turn every spot you can
+   legally afford is shown on the board; click it once to arm it, click again
+   to confirm, click anywhere else to cancel.
+
+   Setup placements work the same way, which also guards against a misclick
+   putting your opening settlement somewhere you did not intend.
+   ══════════════════════════════════════════════════════════════════════ */
+
+function countPieces(p, kind){
+  return kind === "road" ? p.roads : kind === "settlement" ? p.settlements : p.cities;
+}
+function hasSpotFor(kind){
+  if (kind === "road")       return edges.some(e => canPlaceRoad(e.id, S.cur, null));
+  if (kind === "settlement") return vertices.some(v => canPlaceSettlement(v.id, S.cur, false));
+  return vertices.some(v => canPlaceCity(v.id, S.cur));
+}
+
+function armed(kind, id){ return S.armed && S.armed.kind === kind && S.armed.id === id; }
+function arm(kind, id){ S.armed = { kind, id }; render(); }
+function disarm(){ if (S.armed){ S.armed = null; render(); } }
+
+/* What can the active player afford and still has pieces for? */
+function affordable(kind){
+  const p = cur();
+  return canAfford(p, COST[kind]) && countPieces(p, kind) < LIMIT[kind];
+}
+/* During setup the placement is free, so only the piece limit applies. */
+function buildableNow(kind){
+  if (S.phase.startsWith("setup")) return true;
+  return S.phase === "main" && !S.select && !S.pending && affordable(kind);
+}
+
+function vertexClick(vid){
+  if (netSend("vertex", [vid])) return;
+  if (swallowedByPan() || uiBlocked()) return;
+  const sel = S.select;
+
+  // ── setup: forced settlement placement ──
+  if (sel && sel.kind === "settlement" && sel.setup){
+    if (!canPlaceSettlement(vid, S.cur, true)) return;
+    if (!armed("free", vid)){ arm("free", vid); return; }
+    S.armed = null;
+    placeSettlement(vid, true);
+    return;
+  }
+
+  // ── normal play ──
+  if (S.select || S.pending || S.phase !== "main") return;
+
+  if (canPlaceCity(vid, S.cur) && buildableNow("city")){
+    if (!armed("city", vid)){ arm("city", vid); return; }
+    S.armed = null;
+    placeCity(vid);
+    return;
+  }
+  if (canPlaceSettlement(vid, S.cur, false) && buildableNow("settlement")){
+    if (!armed("settlement", vid)){ arm("settlement", vid); return; }
+    S.armed = null;
+    placeSettlement(vid, false);
+    return;
+  }
+  disarm();
+}
+
+function edgeClick(eid){
+  if (netSend("edge", [eid])) return;
+  if (swallowedByPan() || uiBlocked()) return;
+  const sel = S.select;
+
+  // ── setup: forced road placement ──
+  if (sel && sel.kind === "road"){
+    if (!canPlaceRoad(eid, S.cur, sel.fromVertex)) return;
+    if (!armed("free", eid)){ arm("free", eid); return; }
+    S.armed = null;
+    placeRoad(eid, true);
+    return;
+  }
+
+  if (S.select || S.pending || S.phase !== "main") return;
+  if (!canPlaceRoad(eid, S.cur, null) || !buildableNow("road")){ disarm(); return; }
+  if (!armed("road", eid)){ arm("road", eid); return; }
+  S.armed = null;
+  placeRoad(eid, false);
+}
+
+/* ── the placements themselves ─────────────────────────────────────── */
+
+function placeSettlement(vid, setup){
+  const snapBefore = snapAll();
+  vertices[vid].owner = S.cur;
+  vertices[vid].type = "settlement";
+  cur().settlements++;
+
+  if (setup){
+    S.setupLastVertex = vid;
+    logMsg(`<b>${cur().name}</b> settles.`);
+    if (S.phase === "setup2"){
+      // The second settlement pays out immediately.
+      const got = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
+      for (const hid of vertices[vid].hexes){
+        const hx = hexes[hid];
+        if (hx.terrain !== "desert") got[hx.terrain] += give(cur(), hx.terrain, 1);
+      }
+      logMsg(`<b>${cur().name}</b> starts with ` +
+             RES.filter(r => got[r] > 0).map(r => got[r] + " " + RES_NAME[r]).join(", ") + ".");
+      announce(pdot(cur()) + " settles and starts with<br>" + resList(got), "buy");
+    } else {
+      announce(pdot(cur()) + " places their first settlement", "info");
+    }
+    S.setupNeed = "road";
+    S.select = { kind:"road", fromVertex: vid };
+    render();
+    return;
+  }
+
+  pay(cur(), COST.settlement);
+  if (S.turnRec) S.turnRec.verts.push({ vid, prevType: null });
+  logMsg(`<b>${cur().name}</b> builds a settlement.`);
+  logAction(pdot(cur()) + " builds a <b>settlement</b>", "buy", { snap: snapBefore });
+  updateLongestRoad();          // an opponent's settlement can cut a road
+  afterBuild();
+}
+
+function placeCity(vid){
+  const snapBefore = snapAll();
+  pay(cur(), COST.city);
+  vertices[vid].type = "city";
+  cur().settlements--; cur().cities++;
+  if (S.turnRec) S.turnRec.verts.push({ vid, prevType: "settlement" });
+  logMsg(`<b>${cur().name}</b> upgrades to a city.`);
+  logAction(pdot(cur()) + " upgrades to a <b>city</b>", "buy", { snap: snapBefore });
+  afterBuild();
+}
+
+function placeRoad(eid, setup){
+  const snapBefore = snapAll();
+  edges[eid].owner = S.cur;
+  cur().roads++;
+
+  if (setup){
+    logMsg(`<b>${cur().name}</b> lays a road.`);
+    S.select = null;
+    S.setupIdx++;
+    if (S.setupIdx >= S.setupOrder.length){
+      S.phase = "roll";
+      S.cur = S.firstPlayer;
+      S.turnCounter = 1;
+      S.turnRec = freshTurnRecord();
+      logMsg("Setup complete. <b>" + cur().name + "</b> to roll.");
+      updateLongestRoad();
+      render();
+      botTick();
+    } else {
+      beginSetupStep();
+    }
+    return;
+  }
+
+  pay(cur(), COST.road);
+  if (S.turnRec) S.turnRec.edges.push(eid);
+  logMsg(`<b>${cur().name}</b> builds a road.`);
+  logAction(pdot(cur()) + " builds a <b>road</b>", "buy", { snap: snapBefore });
+  updateLongestRoad();
+  afterBuild();
+}
+
+function hexClick(hid){
+  if (netSend("hex", [hid])) return;
+  if (swallowedByPan() || uiBlocked()) return;
+  const sel = S.select;
+  if (!sel){ disarm(); return; }
+
+  if (sel.kind === "robber"){
+    if (hid === S.robber) return;
+    S.robber = hid;
+    S.select = null;
+    logMsg(`<b>${S.players[sel.actor].name}</b> moves the robber onto the ` +
+           `${hexes[hid].terrain}${hexes[hid].number ? " " + hexes[hid].number : ""}.`);
+    announce(pdot(S.players[sel.actor]) + " moves the robber onto the " +
+             hexes[hid].terrain + " " + (hexes[hid].number || "") , "attack");
+    const victims = S.players.filter(q =>
+      q.id !== sel.actor &&
+      totalRes(q) > 0 &&
+      hexes[hid].verts.some(v => vertices[v].owner === q.id));
+    if (victims.length === 0){ finishRobber(sel); return; }
+    chooseVictim(victims, sel);
+    return;
+  }
+
+  if (sel.kind === "alter"){
+    if (hexes[hid].number === null) return;
+    if (sel.first === null){ sel.first = hid; render(); return; }
+    if (sel.first === hid){ sel.first = null; render(); return; }   // click again to deselect
+    const a = sel.first, b = hid, cb = sel.onPick;
+    S.select = null;
+    cb(a, b);
+    return;
+  }
+}
+
+function afterBuild(){
+  S.armed = null;
+  checkVictory();
+  render();
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !S) return;
+  if (dragCard || pressPend){ cancelCardDrag(); return; }   // drop the card
+  if (S.armed){ disarm(); return; }
+  if (S.select && !S.phase.startsWith("setup") && S.select.kind !== "robber"){
+    S.select = null; render();
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   DICE / PRODUCTION / ROBBER
+   ══════════════════════════════════════════════════════════════════════ */
+
+function rollDice(){
+  if (netSend("roll")) return;
+  if (reactWindowOpen()){
+    hint("Hold on — " + reactSecondsLeft() + "s left for anyone to react.");
+    return;
+  }
+  const snapBefore = snapAll();
+  const d1 = 1 + Math.floor(Math.random() * 6);
+  const d2 = 1 + Math.floor(Math.random() * 6);
+  S.rolled = [d1, d2];
+  S.diceFresh = true;
+  const sum = d1 + d2;
+  S.diceLog.push(sum);
+  logMsg(`<b>${cur().name}</b> rolls <b>${sum}</b> (${d1}+${d2}).`);
+
+  if (sum === 7){
+    logAction(pdot(cur()) + " rolls <b>7</b> <span style='opacity:.55'>(" + d1 + "+" + d2 +
+             ")</span><br><span style='opacity:.75'>robber moves — hands over 7 are cut</span>",
+             "roll", { snap: snapBefore });
+    S.phase = "main"; startSevenSequence(S.cur); return;
+  }
+
+  const out = produce(sum);
+  logAction(rollSummary(cur(), d1, d2, out), "roll", { snap: snapBefore });
+  S.phase = "main";
+  render();
+}
+
+function produce(sum){
+  // Tally first: if the bank can't pay everyone for a resource, nobody gets it.
+  const owed = S.players.map(() => ({ wood:0, brick:0, sheep:0, wheat:0, ore:0 }));
+  const paid = S.players.map(() => ({ wood:0, brick:0, sheep:0, wheat:0, ore:0 }));
+  for (const hx of hexes){
+    if (hx.number !== sum || hx.id === S.robber || hx.terrain === "desert") continue;
+    for (const vid of hx.verts){
+      const v = vertices[vid];
+      if (v.owner === null) continue;
+      owed[v.owner][hx.terrain] += v.type === "city" ? 2 : 1;
+    }
+  }
+  const notes = [];
+  for (const r of RES){
+    const claimants = S.players.filter(p => owed[p.id][r] > 0);
+    const demand = claimants.reduce((s, p) => s + owed[p.id][r], 0);
+    if (demand === 0) continue;
+    if (demand > S.bank[r]){
+      if (claimants.length > 1){ notes.push(`bank is short on ${RES_NAME[r]} — nobody collects it`); continue; }
+      paid[claimants[0].id][r] += give(claimants[0], r, S.bank[r]);
+      notes.push(`${claimants[0].name} takes the last ${RES_NAME[r]}`);
+      continue;
+    }
+    for (const p of claimants) paid[p.id][r] += give(p, r, owed[p.id][r]);
+  }
+  const gains = S.players
+    .map(p => { const g = RES.filter(r => owed[p.id][r] > 0).map(r => owed[p.id][r] + " " + RES_NAME[r]);
+                return g.length ? `${p.name}: ${g.join(", ")}` : null; })
+    .filter(Boolean);
+  if (gains.length) logMsg(gains.join(" · "));
+  else logMsg("<span style='opacity:.7'>Nobody produces.</span>");
+  for (const n of notes) logMsg(`<span style='opacity:.7'>${n}</span>`);
+  return { paid, notes };
+}
+
+/* ── 7: discard, then robber ─────────────────────────────────────────── */
+function startSevenSequence(actor){
+  const queue = S.players.filter(p => totalRes(p) > 7).map(p => p.id);
+  processDiscards(queue, () => beginRobberMove(actor));
+}
+
+function processDiscards(queue, done){
+  if (!queue.length){ done(); return; }
+  const p = S.players[queue[0]];
+  const n = Math.floor(totalRes(p) / 2);
+  discardDialog(p, n, () => processDiscards(queue.slice(1), done));
+}
+
+function beginRobberMove(actor){
+  S.select = { kind:"robber", actor, knight:false };
+  setTimeout(botTick, 0);
+  logMsg(`<b>${S.players[actor].name}</b> must move the robber.`);
+  render();
+}
+
+function chooseVictim(victims, sel){
+  promptFor(sel.actor);
+  const vag = agentOf(sel.actor);
+  let html = `<p class="sub">Steal one random resource card.</p><div class="pick">`;
+  victims.forEach(v => {
+    html += `<button onclick="window.__pickVictim(${v.id})">${v.name} (${totalRes(v)} cards)</button>`;
+  });
+  html += `</div>`;
+  if (vag && vag.chooseVictim){
+    const pickId = vag.chooseVictim(victims, sel).id;
+    setTimeout(function(){ window.__pickVictim(pickId); }, AI_PACE);
+  } else {
+    openModal("Choose a victim", html, []);
+  }
+  window.__pickVictim = (vid) => {
+    closeModal();
+    const victim = S.players[vid], thief = S.players[sel.actor];
+
+    // A Knight played "on you" can be turned around with Defuse. A robbery
+    // caused by rolling a 7 is not a card play, so nothing to answer there.
+    const di = victim.cards.findIndex(c => c.key === "defuse");
+    const dag = agentOf(victim.id);
+    if (sel.knight && di >= 0 && !sel.defused && dag && dag.defuseKnight){
+      if (dag.defuseKnight(thief, victim, sel)){
+        S.discard.push(victim.cards.splice(di, 1)[0]);
+        logMsg("<b>" + victim.name + "</b> plays <b>Defuse</b> — they seize the robber from <b>" + thief.name + "</b>.");
+        S.select = { kind:"robber", actor: victim.id, knight: sel.knight,
+                     credit: sel.actor, defused: true };
+        render(); botTick();
+      } else {
+        doSteal(thief, victim, sel);
+      }
+      return;
+    }
+    if (sel.knight && di >= 0 && !sel.defused && !dag){
+      promptFor(victim.id);
+      openModal("Defuse?", `<p class="sub"><b>${thief.name}</b>'s Knight is stealing from
+        <b>${victim.name}</b>. ${victim.name} holds a Defuse — say "no you" and take
+        control of the robber?</p>
+        <div class="okbox">You move the robber wherever you like and steal from whoever
+        is there. ${thief.name} still gets credit for the knight toward Largest Army.</div>`, [
+        { label:"Take the hit", fn: () => { closeModal(); doSteal(thief, victim, sel); } },
+        { label:'"No you" — take the robber', cls:"primary", fn: () => {
+            closeModal();
+            S.discard.push(victim.cards.splice(di, 1)[0]);
+            logMsg(`<b>${victim.name}</b> plays <b>Defuse</b> — they seize the robber from <b>${thief.name}</b>.`);
+            // Hand the placement to the defuser. `credit` keeps the knight on the
+            // original player's army; `defused` stops a second Defuse chaining.
+            S.select = { kind:"robber", actor: victim.id, knight: sel.knight,
+                         credit: sel.actor, defused: true };
+            render();
+          } }
+      ]);
+      return;
+    }
+    doSteal(thief, victim, sel);
+  };
+}
+
+function doSteal(thief, victim, sel){
+  const pool = [];
+  for (const r of RES) for (let i = 0; i < victim.res[r]; i++) pool.push(r);
+  if (pool.length){
+    const r = pool[Math.floor(Math.random() * pool.length)];
+    victim.res[r]--; thief.res[r]++; noteGain(thief, r, 1);
+    logMsg(`<b>${thief.name}</b> steals ${RES_NAME[r]} from <b>${victim.name}</b>.`);
+    // The card taken is private; only the two of them see which it was.
+    const reveal = (!isBot(thief.id) || !isBot(victim.id)) ? " " + RES_NAME[r] : "";
+    announce(pdot(thief) + " steals" + reveal + " from " + pdot(victim), "attack");
+  } else {
+    logMsg(`<b>${victim.name}</b> has nothing to steal.`);
+  }
+  finishRobber(sel);
+}
+
+function finishRobber(sel){
+  S.select = null;
+  if (sel.knight){
+    // The knight counts for whoever played the card, even if it was Defused.
+    const p = S.players[sel.credit !== undefined ? sel.credit : sel.actor];
+    p.knights++;
+    if (S.turnRec && p.id === S.cur) S.turnRec.knights++;
+    updateLargestArmy();
+    checkVictory();
+  }
+  render();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   KITTEN CARDS
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* How many cards a pool of resources can buy: each card wants three DIFFERENT
+   types, so repeatedly spend one each from the three deepest piles. */
+function cardsFromPool(pool){
+  const left = { wood:pool.wood, brick:pool.brick, sheep:pool.sheep,
+                 wheat:pool.wheat, ore:pool.ore };
+  let n = 0;
+  for (;;){
+    const have = RES.filter(r => left[r] > 0).sort((a, b) => left[b] - left[a]);
+    if (have.length < 3) break;
+    left[have[0]]--; left[have[1]]--; left[have[2]]--;
+    n++;
+  }
+  const spent = {};
+  for (const r of RES) spent[r] = pool[r] - left[r];
+  return { cards: n, spent, left };
+}
+
+function buyKittenDialog(){
+  if (netSend("buy")) return;
+  promptFor(S.cur);
+  if (!myTurnNow()) return;
+  const p = cur();
+  const pool = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
+
+  const refresh = () => {
+    const res = cardsFromPool(pool);
+    const capped = Math.min(res.cards, S.deck.length);
+    const leftover = RES.filter(r => res.left[r] > 0);
+
+    let h = `<p class="sub">A kitten card costs <b>any 3 different resources</b>.
+             Click resources to pile them up — every three different ones buys another
+             card, so you can take several at once.</p><div class="pick">`;
+    for (const r of RES){
+      const spare = p.res[r] - pool[r];
+      h += `<button ${spare > 0 ? "" : "disabled"} onclick="window.__poolAdd('${r}')"
+              title="${RES_NAME[r]} — ${spare} left">
+              <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:5px"></span>
+              ${RES_NAME[r]} <b>+${pool[r]}</b> <span style="opacity:.55">/${p.res[r]}</span></button>`;
+    }
+    h += `</div>`;
+    h += `<div class="stack" style="margin-top:10px">
+            <div>Buying <b>${capped}</b> card${capped === 1 ? "" : "s"}${
+              res.cards > capped ? " <span style='opacity:.6'>(deck only has " + S.deck.length + ")</span>" : ""}</div>
+            <div style="opacity:.7">Spending ${resList(res.spent)}</div>
+            ${leftover.length ? `<div style="opacity:.55">Not enough to pair up: ${resList(res.left)}</div>` : ""}
+          </div>`;
+
+    openModal("Buy Kitten Cards", h, [
+      { label:"Clear", fn: () => { for (const r of RES) pool[r] = 0; refresh(); } },
+      { label:"Cancel", fn: () => { closeModal(); render(); } },
+      { label: capped > 1 ? `Buy ${capped} cards` : "Buy", cls:"primary", disabled: capped < 1,
+        fn: () => {
+          closeModal();
+          for (const r of RES) take(p, r, res.spent[r]);
+          for (let k = 0; k < capped; k++) drawKitten(p);
+          hint(`Bought ${capped} kitten card${capped === 1 ? "" : "s"}.`);
+          render();
+        } }
+    ]);
+  };
+
+  window.__poolAdd = (r) => {
+    if (p.res[r] - pool[r] > 0) pool[r]++;
+    refresh();
+  };
+  if (RES.filter(r => p.res[r] > 0).length < 3 || !S.deck.length) return;
+  refresh();
+}
+
+function drawKitten(p){
+  if (!S.deck.length){ logMsg("The kitten deck is empty."); return; }
+  const snapBefore = snapAll();
+  const c = S.deck.pop();
+
+  if (c.key === "implode"){
+    // Fires the instant it is drawn — never enters a hand.
+    logMsg(`<b>${p.name}</b> draws the <b>Imploding Kitten</b>!`);
+    let stolen = 0;
+    for (const q of S.players){
+      if (q.id === p.id) continue;
+      for (const r of RES){ p.res[r] += q.res[r]; stolen += q.res[r]; q.res[r] = 0; }
+    }
+    S.discard.push(c);
+    // Nothing this player does for the rest of the turn can be Noped. The
+    // 20 second clock is the counterweight — the turn ends when it runs out.
+    S.implodeTurn = S.turnCounter;
+    S.implodeBy = p.id;
+    startImplodeClock();
+    logMsg(`Every other player's hand implodes into <b>${p.name}</b> — ${stolen} cards taken.`);
+    logMsg(`<b>${p.name}</b>'s turn cannot be Noped, but ends in 20 seconds.`);
+    announce("💥 " + pdot(p) + " draws the <b>Imploding Kitten</b> — takes " + stolen +
+             " resources from everyone", "big", 5200);
+    checkVictory();
+    return;
+  }
+
+  c.boughtTurn = S.turnCounter;
+  p.cards.push(c);
+  if (S.turnRec && p.id === S.cur) S.turnRec.drawn.push(c);
+  logMsg(`<b>${p.name}</b> buys a kitten card.`);
+  // Only the buyer learns what it was; everyone sees that a card was bought.
+  logAction(pdot(p) + " buys a kitten card" +
+           (isBot(p.id) ? "" : " — <b>" + KITTEN[c.key].name + "</b>") +
+           ' <span style="opacity:.6">(' + S.deck.length + ' left)</span>', "buy",
+            { actor: p.id, snap: snapBefore });
+  if (c.key === "vp"){ checkVictory(); }
+}
+
+/* Plays a card that resolves on the board rather than at a player: dropped
+   onto the board by a human, or chosen outright by a bot. Everything aimed at
+   a person is played by dragging the card onto them, which is why there is no
+   target picker and no confirmation prompt left in here. */
+function playCard(idx, ownerId){
+  const p = ownerId === undefined ? cur() : S.players[ownerId];
+  const c = p.cards[idx];
+  if (!c) return;
+  const def = KITTEN[c.key];
+  if (def.kind === "vp" || def.kind === "response") return;
+  if (c.boughtTurn === S.turnCounter) return;
+  if (p.id !== S.cur) return;                  // board plays are on-turn only
+
+  if (def.kind === "target"){
+    hint("Drag " + def.name + " onto the player you want to hit.");
+  } else if (def.kind === "board"){
+    // The two tokens must be named before anyone can react — whether a player
+    // may Defuse depends on which hexes are being swapped.
+    beginAlterPick(p.id, (a, b) => {
+      proposeAction({ type:"card", card:c, idx, actor:p.id, target:null, payload:{ hexes:[a, b] } });
+    });
+  } else {
+    proposeAction({ type:"card", card:c, idx, actor:p.id, target:null, payload:{} });
+  }
+}
+
+/* The confirmation prompts that used to stand between a click and a card
+   — "Nope this turn?", "Play Attack now?" — are gone along with clicking.
+   A card is played by dragging it where it should go, so the drop IS the
+   confirmation, and nobody watching sees you hesitate over a reaction. */
+
+function beginAlterPick(actorId, onPick){
+  S.select = { kind:"alter", actor: actorId, first:null, onPick };
+  logMsg(`<b>${S.players[actorId].name}</b> is choosing two number tokens to swap.`);
+  render();
+}
+
+function favorGuessDialog(c, idx, tid, ownerId){
+  const asker = ownerId === undefined ? S.cur : ownerId;
+  promptFor(asker);
+  const want = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
+  const refresh = () => {
+    const total = RES.reduce((s, r) => s + want[r], 0);
+    let h = `<p class="sub">Name 3 resource cards. <b>${S.players[tid].name}</b> hands over whichever
+             of them they actually hold — you get nothing for the ones they don't have.</p>`;
+    for (const r of RES){
+      h += `<div class="counter">
+              <span class="lbl"><span class="swatch" style="background:${RES_COLOR[r]}"></span>${RES_NAME[r]}</span>
+              <button class="sm" onclick="window.__fv('${r}',-1)">−</button>
+              <span class="val">${want[r]}</span>
+              <button class="sm" onclick="window.__fv('${r}',1)">+</button>
+            </div>`;
+    }
+    h += `<div class="stack">Naming ${total} of 3</div>`;
+    openModal("Favor — name 3 cards", h, [
+      { label:"Cancel", fn: closeModal },
+      { label:"Demand", cls:"primary", disabled: total !== 3, fn: () => {
+          closeModal();
+          proposeAction({ type:"card", card:c, idx, actor:asker, target:tid,
+                          payload:{ want:{ ...want } }, quiet: !!c.synthetic });
+        } }
+    ]);
+  };
+  window.__fv = (r, d) => {
+    const total = RES.reduce((s, x) => s + want[x], 0);
+    if (d > 0 && total >= 3) return;
+    want[r] = Math.max(0, want[r] + d);
+    refresh();
+  };
+  refresh();
+}
+
+/* ── Resolution: apply a card's effect ──────────────────────────────── */
+function resolveCard(action){
+  const c = action.card;
+  const actor = S.players[action.actor];
+  const target = action.target === null ? null : S.players[action.target];
+  const def = KITTEN[c.key];
+
+
+  switch (c.key){
+    case "skip":
+      target.skipTokens++;
+      logMsg(`<b>${actor.name}</b> skips <b>${target.name}</b>'s next turn.`);
+      break;
+
+    case "explode": {
+      let n = 0;
+      for (const r of RES){ n += target.res[r]; S.bank[r] += target.res[r]; target.res[r] = 0; }
+      logMsg(`💥 <b>${actor.name}</b> explodes <b>${target.name}</b> — ${n} resources returned to the bank.`);
+      break;
+    }
+
+    case "attack": {
+      const n = Math.min(3, totalRes(target));
+      if (n === 0){ logMsg(`<b>${target.name}</b> has nothing to drop.`); break; }
+      logMsg(`<b>${target.name}</b> must drop ${n} resource${n === 1 ? "" : "s"}.`);
+      discardDialog(target, n, () => { render(); });
+      break;
+    }
+
+    case "favor": {
+      const want = action.payload.want;
+      const got = [];
+      for (const r of RES){
+        const n = Math.min(want[r], target.res[r]);
+        if (n > 0){ target.res[r] -= n; actor.res[r] += n; noteGain(actor, r, n); got.push(n + " " + RES_NAME[r]); }
+      }
+      logMsg(got.length
+        ? `<b>${target.name}</b> owes <b>${actor.name}</b> a favor: ${got.join(", ")}.`
+        : `<b>${target.name}</b> had none of what <b>${actor.name}</b> asked for.`);
+      break;
+    }
+
+    case "knight":
+      S.select = { kind:"robber", actor: actor.id, knight:true };
+      break;
+
+    case "alter": {
+      const [ha, hb] = action.payload.hexes;
+      const na = hexes[ha].number, nb = hexes[hb].number;
+      hexes[ha].number = nb; hexes[hb].number = na;
+      logMsg(`The swap takes effect: <b>${na}</b> ⇄ <b>${nb}</b>.`);
+      break;
+    }
+
+    case "reverse":
+      S.dir *= -1;
+      S.extraTurn = true;
+      logMsg(`<b>${actor.name}</b> plays Reverse — another turn, then order flips to ${S.dir === 1 ? "clockwise" : "counter-clockwise"}.`);
+      break;
+  }
+  checkVictory();
+  render();
+  // Attack already has a window of its own — the discard prompt carries the
+  // same two buttons — so it is the one card that does not open a second.
+  if (c.key !== "attack") offerTargetResponse(action);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ACTION JOURNAL
+   ══════════════════════════════════════════════════════════════════════
+   Nothing waits for permission any more. Every action resolves at once and
+   is recorded here together with a snapshot of the state immediately before
+   it. A Nope played later simply rewinds to that snapshot, which is what
+   lets a player answer without first announcing that they hold the card.
+
+   Rewinding to an entry also discards whatever happened after it — the Nope
+   erases that action and everything that followed from it in the same turn.
+   In practice you are answering the newest entry, so this rarely bites.
+   ══════════════════════════════════════════════════════════════════════ */
+
+let journalId = 0;
+
+/* Everything a rewind has to put back. Taken before each recorded action. */
+function snapAll(){
+  return {
+    res:     S.players.map(p => Object.assign({}, p.res)),
+    bank:    Object.assign({}, S.bank),
+    hands:   S.players.map(p => p.cards.slice()),      // refs, so identity survives
+    knights: S.players.map(p => p.knights),
+    skips:   S.players.map(p => p.skipTokens),
+    roads:   S.players.map(p => p.roads),
+    setts:   S.players.map(p => p.settlements),
+    cities:  S.players.map(p => p.cities),
+    vOwner:  vertices.map(v => v.owner),
+    vType:   vertices.map(v => v.type),
+    eOwner:  edges.map(e => e.owner),
+    numbers: hexes.map(h => h.number),
+    robber:  S.robber,
+    dir:     S.dir,
+    extra:   S.extraTurn,
+    rolled:  S.rolled ? S.rolled.slice() : null,
+    deck:    S.deck.slice(),
+    discard: S.discard.slice(),
+    lr:      Object.assign({}, S.longestRoad),
+    la:      Object.assign({}, S.largestArmy),
+    roadLens: (S.roadLens || []).slice(),
+    implodeTurn: S.implodeTurn,
+    rec: S.turnRec ? {
+      edges: S.turnRec.edges.slice(),
+      verts: S.turnRec.verts.map(v => Object.assign({}, v)),
+      drawn: S.turnRec.drawn.slice(),
+      knights: S.turnRec.knights,
+      gained: Object.assign({}, S.turnRec.gained)
+    } : null
+  };
+}
+
+function restoreAll(s){
+  S.players.forEach((p, i) => {
+    p.res = Object.assign({}, s.res[i]);
+    p.cards = s.hands[i].slice();
+    p.knights = s.knights[i];
+    p.skipTokens = s.skips[i];
+    p.roads = s.roads[i];
+    p.settlements = s.setts[i];
+    p.cities = s.cities[i];
+  });
+  S.bank = Object.assign({}, s.bank);
+  vertices.forEach((v, i) => { v.owner = s.vOwner[i]; v.type = s.vType[i]; });
+  edges.forEach((e, i) => { e.owner = s.eOwner[i]; });
+  hexes.forEach((h, i) => { h.number = s.numbers[i]; });
+  S.robber = s.robber;
+  S.dir = s.dir;
+  S.extraTurn = s.extra;
+  S.rolled = s.rolled ? s.rolled.slice() : null;
+  S.deck = s.deck.slice();
+  S.discard = s.discard.slice();
+  S.longestRoad = Object.assign({}, s.lr);
+  S.largestArmy = Object.assign({}, s.la);
+  S.roadLens = s.roadLens.slice();
+  S.implodeTurn = s.implodeTurn;
+  if (s.rec && S.turnRec){
+    S.turnRec.edges = s.rec.edges.slice();
+    S.turnRec.verts = s.rec.verts.map(v => Object.assign({}, v));
+    S.turnRec.drawn = s.rec.drawn.slice();
+    S.turnRec.knights = s.rec.knights;
+    S.turnRec.gained = Object.assign({}, s.rec.gained);
+  }
+}
+
+/* Record an action and show it in the log. Returns the entry. */
+function logAction(html, kind, opts){
+  opts = opts || {};
+  const e = {
+    id: ++journalId,
+    turn: S.turnCounter,
+    actor: opts.actor === undefined ? S.cur : opts.actor,
+    target: opts.target === undefined ? null : opts.target,
+    kind: kind,
+    card: opts.card || null,
+    payload: opts.payload || null,
+    snap: opts.snap || null,
+    turnBack: opts.turnBack || null,
+    spent: opts.spent || null,
+    redo: opts.redo || null,
+    nopeable: opts.nopeable !== false,
+    noped: false,
+    plain: String(html).replace(/<[^>]+>/g, "").trim()
+  };
+  S.journal.push(e);
+  while (S.journal.length > 240) S.journal.shift();
+  announce(html, kind, e);
+  return e;
+}
+
+/* The newest entry in the log — the only one still open to an answer. */
+function openEntry(){
+  if (!S || !S.journal.length) return null;
+  const e = S.journal[S.journal.length - 1];
+  return canNopeEntry(e) ? e : null;
+}
+
+/* May this entry still be answered?
+
+   The window used to stay open for the whole turn, which meant a stack of
+   answerable entries and no sense of urgency. It is now exactly one entry
+   wide: the moment the NEXT thing reaches the log, the one before it is
+   settled for good. Bot pacing was slowed to 3s to keep that window humane.
+
+   It is not, however, closed by the turn ending. A Nope may be played at any
+   time, and the hand-over window keeps the last entry of a finished turn live
+   for a few seconds — without which a Nope could never be Noped, since being
+   Noped ends your turn on the spot. */
+function canNopeEntry(e){
+  if (!e || e.noped || !e.nopeable || !e.snap) return false;
+  if (S.phase === "over" || S.phase.startsWith("setup")) return false;
+  // Only the newest entry. Anything older has been overtaken.
+  if (!S.journal.length || S.journal[S.journal.length - 1].id !== e.id) return false;
+  // From a turn that is already over: live only while the hand-over window is
+  // still counting down.
+  if (e.turn !== S.turnCounter && !reactWindowOpen()) return false;
+  // An Imploding Kitten seals its own turn for good, not just while it lasts.
+  if (e.turn === S.implodeTurn && e.actor === S.implodeBy) return false;
+  return true;
+}
+
+/* A Defuse only answers an attack that landed on you. */
+/* A Defuse only answers an attack that landed on you — and it cannot answer
+   another Defuse. Anything at all can be Noped, but "no you" does not stack
+   against itself: a Defuse entry carries no `card`, which is what rules it
+   out here while leaving it wide open to a Nope. */
+function canDefuseEntry(e, pid){
+  if (!canNopeEntry(e)) return false;
+  if (!e.card) return false;           // a reaction, not a card aimed at anyone
+  if (e.actor === pid) return false;
+  if (e.card.key === "alter"){
+    return (e.payload && e.payload.hexes || []).some(hid =>
+      hexes[hid].verts.some(v => vertices[v].owner === pid));
+  }
+  return TARGETED.has(e.card.key) && e.target === pid;
+}
+
+function spendCard(p, key){
+  const i = p.cards.findIndex(c => c.key === key);
+  if (i < 0) return false;
+  S.discard.push(p.cards.splice(i, 1)[0]);
+  return true;
+}
+
+/* ── Answering from inside a prompt ───────────────────────────────
+   A card that forces a window open used to make you pay first and react
+   afterwards — hand over the Favor, discard for the Attack, and only then go
+   hunting in the log for a line to drop a Defuse on. By then the window had
+   usually closed. The prompt now carries the answer itself.
+
+   These buttons only appear when the player is genuinely holding the card, so
+   a hand with nothing in it looks exactly like a hand that is holding back.
+   A modal covers the screen, which is what makes them necessary: no card can
+   be dragged anywhere while one is open. */
+function promptReactions(pid){
+  const out = [];
+  if (!S) return out;
+  const e = openEntry();
+  if (!e) return out;
+  if (e.kind === "roll") return out;     // a die roll is not a card; leave the 7 queue alone
+  const p = S.players[pid];
+  if (!p) return out;
+  const fresh = c => c.boughtTurn !== S.turnCounter;
+  if (p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, pid))
+    out.push({ label:"🛡 Defuse it", cls:"react",
+               fn: () => { closeModal(); defuseEntry(e.id, pid); } });
+  if (p.cards.some(c => c.key === "nope" && fresh(c)) && canNopeEntry(e) && e.actor !== pid)
+    out.push({ label:"🚫 Nope it", cls:"reactno",
+               fn: () => { closeModal(); nopeEntry(e.id, pid); } });
+  return out;
+}
+
+function reactNoteHTML(){
+  return `<div class="reactnote">You are holding an answer to this — spend it from
+          here. Once the next thing reaches the log the window is shut.</div>`;
+}
+
+/* A card aimed at a person opens a window of its own for them. Only when they
+   have something to answer with: no card, no window, so it is never a tell. */
+function offerTargetResponse(action){
+  const tid = action.target;
+  if (tid === null || tid === undefined || !S.players[tid]) return;
+  if (tid === action.actor || isBot(tid)) return;
+  const react = promptReactions(tid);
+  if (!react.length) return;
+  promptFor(tid);
+  const def = KITTEN[action.card.key];
+  const from = S.players[action.actor];
+  let what;
+  if (action.card.key === "favor"){
+    const want = (action.payload && action.payload.want) || {};
+    const named = RES.filter(r => want[r]).map(r => want[r] + " " + RES_NAME[r]);
+    what = `<b>${from.name}</b> named ${named.join(", ") || "nothing"}, and has taken
+            whichever of those you were holding.`;
+  } else if (action.card.key === "explode"){
+    what = `<b>${from.name}</b> has sent your whole resource hand back to the bank.`;
+  } else if (action.card.key === "skip"){
+    what = `<b>${from.name}</b> has skipped your next turn.`;
+  } else {
+    what = `<b>${from.name}</b> played it on you.`;
+  }
+  openModal(esc(def.name) + " — aimed at you",
+    `<p class="sub">${what}</p>` + reactNoteHTML(),
+    [{ label:"Take it", fn: closeModal }].concat(react));
+}
+
+/* ── Nope an entry ───────────────────────────────────────────────────── */
+function nopeEntry(id, noperId){
+  const idx = S.journal.findIndex(e => e.id === id);
+  if (idx < 0) return false;
+  const e = S.journal[idx];
+  if (!canNopeEntry(e)) return false;
+  const noper = S.players[noperId];
+  if (!noper.cards.some(c => c.key === "nope")) return false;
+
+  const label = e.plain;
+  // Whose turn is being cut short. Off-turn plays (an Attack thrown during
+  // somebody else's turn), and anything from a turn that has already handed
+  // over, have no turn of their own to end.
+  const victim = S.players[e.actor];
+  const wasNoperTurn = e.actor === S.cur && S.phase !== "over" &&
+                       !S.phase.startsWith("setup");
+  // Where the turn was standing when this Nope landed. Whose turn it is lives
+  // outside the snapshots — they carry the board, not the clock — so a
+  // counter-Nope needs this to undo the ending as well as the effect. Recorded
+  // for every Nope: putting it back is a no-op when nothing moved, and a turn
+  // can change hands with no journal entry to hang it off.
+  const turnBack = {
+    cur: S.cur, phase: S.phase, turnCounter: S.turnCounter,
+    rolled: S.rolled ? S.rolled.slice() : null, extraTurn: S.extraTurn
+  };
+
+  // Captured BEFORE the rewind: this is what a counter-Nope has to put back,
+  // and it still holds the Nope we are about to spend.
+  const undone = snapAll();
+
+  // Rewind first, then spend the card — the entry's own snapshot predates the
+  // Nope and would otherwise hand it straight back.
+  restoreAll(e.snap);
+  S.journal.splice(idx);
+  spendCard(noper, "nope");
+
+  // "The attack and the Nope are both spent." The rewind predates the card
+  // leaving its owner's hand, so without this it would be handed straight
+  // back and thrown again next turn.
+  if (e.card && !e.card.synthetic){
+    const owner = S.players[e.actor];
+    const oi = owner.cards.indexOf(e.card);
+    if (oi >= 0) S.discard.push(owner.cards.splice(oi, 1)[0]);
+  }
+  // Same rule one level up: a Nope that is itself Noped is still spent. The
+  // rewind predates the reaction, so it would otherwise come back for free.
+  if (e.spent && S.players[e.spent.pid]) spendCard(S.players[e.spent.pid], e.spent.key);
+  // Half-finished board business belongs to the action being undone — a
+  // robber still to place, two tokens still to name.
+  S.select = null;
+
+  // A Nope can be Noped. It is the one reaction that can, and the hand-over
+  // window is what makes it reachable.
+  logAction(pdot(noper) + " <b>Nopes</b> " + esc(label), "defend",
+            { actor: noperId, snap: undone, nopeable: true, turnBack: turnBack,
+              spent: { pid: noperId, key: "nope" } });
+  logMsg(`<b>${noper.name}</b> Nopes: ${esc(label)}`);
+
+  // Noping a Defuse cancels the "no you", so the original card is simply
+  // played again — at the target it was first aimed at, and by the player who
+  // first aimed it. Quietly: this Nope is the log entry for all of it.
+  if (e.redo){
+    playResolved({ type:"card", card: e.redo.card, actor: e.redo.actor,
+                   target: e.redo.target, payload: e.redo.payload, quiet: true });
+  }
+
+  // Did undoing this entry move the turn back to somebody else? Only then is
+  // the turn "handed back" — and only then does the usual end-your-turn
+  // penalty step aside, because there is already a turn change in flight.
+  const handedBack = !!e.turnBack &&
+        (e.turnBack.cur !== S.cur || e.turnBack.turnCounter !== S.turnCounter);
+  if (e.turnBack) restoreTurnPointer(e.turnBack);
+
+  if (handedBack){
+    // This was a Nope that ended somebody's turn. Undoing it gives the turn
+    // back rather than ending another one — the interrupted player picks up
+    // exactly where they were standing.
+    const back = S.players[S.cur];
+    announce(pdot(back) + " gets their turn back", "defend");
+    logMsg(`<b>${back.name}</b> gets their turn back.`);
+  } else if (wasNoperTurn){
+    // Being Noped costs you the rest of your turn, whatever you were doing.
+    // A Noped roll is therefore not rerolled — there is no turn left to roll
+    // for — which is a good part of why a Nope is worth holding on to.
+    announce(pdot(victim) + " is Noped — their turn ends", "attack");
+    logMsg(`<b>${victim.name}</b>'s turn ends.`);
+    endTurnAfterNope();
+  }
+  // Whatever just happened, everyone gets a fresh few seconds to answer it.
+  openReactWindow(true);
+  render();
+  botTick();
+  return true;
+}
+
+/* Put the turn pointer back where a Nope found it. Only the counter-Nope path
+   uses this; every other rewind leaves whose turn it is alone. */
+function restoreTurnPointer(t){
+  if (!t) return;
+  clearImplodeClock();
+  S.cur = t.cur;
+  S.phase = t.phase;
+  S.turnCounter = t.turnCounter;
+  S.rolled = t.rolled ? t.rolled.slice() : null;
+  S.extraTurn = t.extraTurn;
+  S.select = null;
+  S.armed = null;
+}
+
+/* A Noped player's turn is over immediately. Anything half-finished — a
+   robber waiting to be placed, an armed build — is dropped on the way out. */
+function endTurnAfterNope(){
+  S.select = null;
+  S.armed = null;
+  clearImplodeClock();
+  closeModal();
+  doEndTurn();
+}
+
+/* ── Defuse an entry ─────────────────────────────────────────────────── */
+function defuseEntry(id, defuserId){
+  const idx = S.journal.findIndex(e => e.id === id);
+  if (idx < 0) return false;
+  const e = S.journal[idx];
+  if (!canDefuseEntry(e, defuserId)) return false;
+  const d = S.players[defuserId];
+  if (!d.cards.some(c => c.key === "defuse")) return false;
+
+  const card = e.card, payload = e.payload, victimId = e.actor;
+  const key = card.key;
+
+  /* What a Nope aimed at this Defuse has to put back. Not "the state just
+     before the Defuse" — that would leave the original card already resolved
+     and any prompt it owed already dismissed, so an Attack Defused from its
+     own discard window would end up costing nobody anything. Instead the
+     Defuse is journalled against the state before the ORIGINAL card, with the
+     original play recorded alongside it. Undo the Defuse and the card is
+     simply played again, at the target it was first aimed at. */
+  const preCard = e.snap;
+  const redo = { card: card, actor: victimId, target: e.target, payload: payload };
+  const answerable = { snap: preCard, redo: redo, nopeable: true,
+                       spent: { pid: defuserId, key: "defuse" } };
+
+  restoreAll(e.snap);
+  S.journal.splice(idx);
+  spendCard(d, "defuse");
+
+  // The rewind put the defused card back in its owner's hand. It is spent
+  // whichever way it ends up pointing, so take it out again here — otherwise
+  // Defusing an Alter or a Favor handed the attacker their card back, and
+  // Defusing anything else left a copy of it sitting in the discard pile as
+  // well as in their hand.
+  const origOwner = S.players[victimId];
+  const oi = origOwner.cards.indexOf(card);
+  if (oi >= 0) S.discard.push(origOwner.cards.splice(oi, 1)[0]);
+
+  logMsg(`<b>${d.name}</b> Defuses <b>${KITTEN[key].name}</b>.`);
+
+  // Alter the Future and Favor hand the card's power over rather than simply
+  // reflecting it — the defuser names their own numbers or their own demand.
+  if (key === "alter"){
+    logAction(pdot(d) + " <b>Defuses</b> Alter the Future — they swap instead", "defend",
+              Object.assign({ actor: defuserId }, answerable));
+    beginAlterPick(defuserId, (a, b) => playResolved(
+      { type:"card", card:{ key:"alter", synthetic:true }, actor:defuserId,
+        target:null, payload:{ hexes:[a, b] }, quiet:true }));
+    render();
+    return true;
+  }
+  if (key === "favor"){
+    logAction(pdot(d) + " <b>Defuses</b> the Favor — " + pdot(S.players[victimId]) +
+              " owes them instead", "defend", Object.assign({ actor: defuserId }, answerable));
+    const ag = agentOf(defuserId);
+    const synth = { key:"favor", synthetic:true };
+    if (ag && ag.favorWant){
+      playResolved({ type:"card", card:synth, actor:defuserId, target:victimId,
+                     payload:{ want: ag.favorWant(S.players[victimId]) }, quiet:true });
+    } else {
+      favorGuessDialog(synth, -1, victimId, defuserId);
+    }
+    render();
+    return true;
+  }
+
+  // Everything else bounces straight back at whoever played it.
+  logAction(pdot(d) + " <b>Defuses</b> " + KITTEN[key].name + " — it hits " +
+            pdot(S.players[victimId]) + " instead", "defend",
+            Object.assign({ actor: defuserId }, answerable));
+  playResolved({ type:"card", card:{ key: key, flavor: card.flavor, synthetic:true },
+                 actor:defuserId, target:victimId, payload:payload, quiet:true });
+  render();
+  return true;
+}
+
+
+/* One line describing a card being played. */
+function describeCard(base){
+  const who = S.players[base.actor];
+  if (base.card.key === "alter" && base.payload && base.payload.hexes){
+    const [ha, hb] = base.payload.hexes;
+    return pdot(who) + " plays <b>Alter the Future</b>: swap <b>" + hexes[ha].number +
+           "</b> (" + hexes[ha].terrain + ") ⇄ <b>" + hexes[hb].number + "</b> (" +
+           hexes[hb].terrain + ")";
+  }
+  const flav = base.card.flavor ? " (" + base.card.flavor + ")" : "";
+  const tgt = base.target === null || base.target === undefined
+            ? "" : " on " + pdot(S.players[base.target]);
+  return pdot(who) + " plays <b>" + KITTEN[base.card.key].name + "</b>" + flav + tgt;
+}
+
+/* Play a card. Nothing pauses: it resolves now and is journalled so that a
+   Nope or Defuse can undo it afterwards. */
+/* Play a card. Nothing pauses: it resolves now and is journalled so that a
+   Nope or Defuse can undo it afterwards.
+
+   `base.quiet` resolves the card without writing a journal entry of its own.
+   That is how a Defuse turns a card around: the whole "no you" is ONE
+   answerable line in the log rather than two, so a Nope aimed at it undoes
+   the reflection and the Defuse together instead of picking one apart. */
+function playResolved(base){
+  const snap = base.quiet ? null : snapAll();   // taken while the card is still held
+  const owner = S.players[base.actor];
+  if (base.card && !base.card.synthetic){
+    const i = owner.cards.indexOf(base.card);
+    if (i >= 0) owner.cards.splice(i, 1);
+    S.discard.push(base.card);
+  }
+  const aggressive = TARGETED.has(base.card.key) || base.card.key === "alter";
+  if (!base.quiet){
+    logAction(describeCard(base), aggressive ? "attack" : "info",
+              { actor: base.actor, target: base.target, card: base.card,
+                payload: base.payload, snap: snap });
+  }
+  logMsg(describeCard(base).replace(/<span[^>]*><\/span>/g, "") + ".");
+  resolveCard(base);
+}
+
+/* Older call sites still say proposeAction. */
+function proposeAction(base){ playResolved(base); }
+
+/* Shared by a voluntary turn-Nope and the forced one after a win. */
+function cancelTurn(actorId, wasWin){
+  S.winner = null;
+  if (S.phase === "over") S.phase = "main";
+  S.select = null;
+  const onTheirTurn = actorId === S.cur;
+  if (onTheirTurn){
+    wipeNopedTurn();                       // rewind the turn that earned it
+  } else {
+    // They crossed 10 on somebody else's turn, so there is no turn of theirs
+    // to rewind — the Nope simply takes the points back.
+    logMsg(`<b>${S.players[actorId].name}</b> reached 10 on another player's turn.`);
+  }
+  stripWinningPoints(S.players[actorId], wasWin);
+
+  // The denial could not reduce them below 10 — their points are buildings and
+  // Longest Road from earlier turns, which a Nope may not touch. Rather than
+  // let them carry a silent win into the next turn, the win stands.
+  if (S.unstoppable !== null && S.unstoppable !== undefined){
+    const w = S.unstoppable;
+    S.unstoppable = null;
+    declareWinner(w);
+    return;
+  }
+  if (onTheirTurn) advancePlayer();
+  else { S.armed = null; render(); botTick(); }
+}
+
+/* Rewinding the turn is not always enough: a player sitting on 8 points with a
+   Feral Kitten in hand is still on 10 the moment the settlement comes down,
+   and would simply win again next turn. A cancelled win therefore destroys the
+   points that carried them over — hidden Feral Kittens first, then the knights
+   propping up Largest Army — until they are actually short of the target. */
+function stripWinningPoints(p, wasWin){
+  let ferals = 0;
+  let guard = 0;
+  // Noping a win costs a Feral Kitten outright, even when rewinding the turn
+  // already dropped them under 10 — otherwise a player holding one simply
+  // rebuilds the settlement next turn and wins again with the same card.
+  //
+  // Knights are deliberately NOT taken. One played on the cancelled turn is
+  // already undone by wipeNopedTurn; knights from earlier turns, and the
+  // Largest Army resting on them, were never part of what is being cancelled.
+  let owed = wasWin ? 1 : 0;
+  while ((owed > 0 || totalVP(p) >= 10) && guard++ < 25){
+    if (owed > 0) owed--;
+    const vi = p.cards.findIndex(c => c.key === "vp");
+    if (vi < 0) break;                        // nothing left that can be taken
+    p.cards.splice(vi, 1);                    // out of the game, not discarded
+    ferals++;
+  }
+  if (totalVP(p) >= 10){
+    // Their 10 points are buildings and Longest Road from earlier turns —
+    // there is nothing a Nope is allowed to destroy. Let it stand rather
+    // than leave them parked on 10 forever.
+    logMsg(`<span style="color:#d98b4b"><b>${p.name}</b> is still on ` +
+           `${totalVP(p)} — nothing left that a Nope can take.</span>`);
+    S.unstoppable = p.id;
+  }
+  if (ferals){
+    const what = ferals === 1 ? "a Feral Kitten" : ferals + " Feral Kittens";
+    logMsg(`<span style="color:#d98b4b">The cancelled win costs <b>${p.name}</b> ${what}.</span>`);
+    announce(pdot(p) + " loses " + what + " to the cancelled win", "big", 5600);
+  }
+}
+
+/* ── Forced Nope on a win ────────────────────────────────────────────────
+   If someone hits 10 VP, the next player in turn order who holds a Nope must
+   spend it. Without that, everyone sits on their Nopes waiting for somebody
+   else to spend theirs first.                                             */
+function forcedNoperFor(winnerId){
+  const n = S.players.length;
+  for (let i = 1; i < n; i++){
+    const id = (winnerId + S.dir * i + n * n) % n;
+    if (id === winnerId) continue;
+    if (S.players[id].cards.some(c => c.key === "nope")) return id;
+  }
+  return null;
+}
+
+function forcedWinNope(winner, pid){
+  promptFor(pid);
+  const p = S.players[pid];
+  const i = p.cards.findIndex(c => c.key === "nope");
+  S.discard.push(p.cards.splice(i, 1)[0]);
+  logMsg(`<b>${winner.name}</b> reaches 10 VP — <b>${p.name}</b> is forced to Nope it.`);
+  announce("🏆 " + pdot(winner) + " reached 10 VP — " + pdot(p) +
+           " is <b>forced to Nope</b> it", "big", 6000);
+  // Only the player being forced gets a prompt. Everyone else just sees it
+  // happen — being asked to confirm somebody else's obligation is noise.
+  if (isBot(pid)){ cancelTurn(winner.id, true); return; }
+  openModal("Forced Nope", `
+    <div class="warnbox"><b>${winner.name}</b> just reached 10 victory points.
+    <b>${p.name}</b> is the next player in turn order holding a Nope, so they must
+    spend it — no choice. ${winner.name}'s turn is cancelled and everything they
+    gained this turn is destroyed, including whatever took them to 10.</div>`,
+    [{ label:`Cancel ${winner.name}'s turn`, cls:"warn",
+       fn: () => { closeModal(); cancelTurn(winner.id, true); } }]);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TURN FLOW
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Ending a turn no longer polls the table for Nopes. A Nope must be played
+   during the turn it is meant to cancel — once the turn is over it is too
+   late, which also removes the prompt that fired after every single turn. */
+function requestEndTurn(){
+  if (netSend("endTurn")) return;
+  if (S.select){ hint("Finish or cancel the current board action first."); return; }
+  doEndTurn();
+}
+
+function doEndTurn(){
+  if (S.extraTurn){
+    S.extraTurn = false;
+    S.phase = "roll";
+    S.rolled = null;
+    S.turnCounter++;
+    S.turnRec = freshTurnRecord();
+    logMsg(`<b>${cur().name}</b> takes another turn.`);
+    openReactWindow();
+    render();
+    botTick();
+    return;
+  }
+  advancePlayer();
+}
+
+function advancePlayer(){
+  const n = S.players.length;
+  let guard = 0;
+  do {
+    S.cur = (S.cur + S.dir + n) % n;
+    guard++;
+    if (cur().skipTokens > 0){
+      cur().skipTokens--;
+      logMsg(`<b>${cur().name}</b>'s turn is skipped.`);
+      continue;
+    }
+    break;
+  } while (guard < n * 3);
+
+  S.phase = "roll";
+  S.rolled = null;
+  S.armed = null;
+  S.turnCounter++;
+  S.turnRec = freshTurnRecord();
+  clearImplodeClock();
+  // A few seconds of answering room before the new player may roll. The last
+  // entry of the turn just ended stays live for exactly this long.
+  openReactWindow();
+  render();
+  botTick();
+
+  // Final sweep. A crossing can happen while the PREVIOUS turn was resolving —
+  // cancelling a turn recomputes Longest Road, which can hand it to a third
+  // player who was not being examined at the time. Guarded because resolving
+  // that win re-enters this function.
+  if (!S.sweeping){
+    S.sweeping = true;
+    try { checkVictory(); } finally { S.sweeping = false; }
+  }
+}
+
+/* A win does not always land on the player whose turn it is. Building a
+   settlement can cut someone's road and hand Longest Road to a THIRD player,
+   and a cancelled turn can shift Longest Road or Largest Army the same way.
+   Checking only the current player let those crossings pass unnoticed, so the
+   player carried 10+ into their own turn — and a Nope there could not undo a
+   win that had been earned on somebody else's turn. Every player is checked. */
+function checkVictory(){
+  if (S.winner !== null || S.phase === "over") return;
+  let claimant = totalVP(cur()) >= 10 ? cur() : null;
+  if (!claimant){
+    for (const q of S.players)
+      if (totalVP(q) >= 10 && (!claimant || totalVP(q) > totalVP(claimant))) claimant = q;
+  }
+  if (!claimant) return;
+  // An Imploding Kitten makes its turn un-Nopeable, and that includes the win
+  // it produces. The forced-Nope rule used to bypass this entirely.
+  if (implodeActive() && claimant.id === S.cur){
+    logMsg(`<b>${claimant.name}</b> wins on an imploded turn — no Nope can touch it.`);
+    announce("\ud83d\udca5 " + pdot(claimant) + " wins on an <b>imploded turn</b> — un-Nopeable", "big");
+    declareWinner(claimant.id);
+    return;
+  }
+  // Not optional: the next player in turn order holding a Nope must spend it.
+  const forced = forcedNoperFor(claimant.id);
+  if (forced !== null) forcedWinNope(claimant, forced);
+  else declareWinner(claimant.id);
+}
+
+function declareWinner(pid){
+  const p = S.players[pid];
+  S.winner = pid;
+  S.phase = "over";
+  S.select = null;
+  S.armed = null;
+  S.reactUntil = 0;
+  clearReactClock();
+  S.revealed = true;              // every hand is face up once the game is done
+  clearImplodeClock();
+  logMsg(`🏆 <b>${p.name}</b> wins with ${totalVP(p)} victory points!`);
+  announce("🏆 " + pdot(p) + " wins with <b>" + totalVP(p) + "</b> victory points", "big");
+  render();
+  showStandings();
+}
+
+/* The final table, rebuilt on demand so it can be reopened after closing. */
+function standingsHTML(){
+  const p = S.players[S.winner];
+  const rest = S.players.filter(q => q.id !== p.id)
+                        .sort((a, b) => totalVP(b) - totalVP(a) ||
+                                        (b.cities * 2 + b.settlements) - (a.cities * 2 + a.settlements));
+  const order = [p].concat(rest);
+
+  let h = `<p class="sub">Final standings — every hand is revealed.</p>
+    <table class="rank"><tr><th></th><th>Player</th><th>Breakdown</th><th style="text-align:right">VP</th></tr>`;
+  order.forEach((q, i) => {
+    const bits = [];
+    if (q.settlements) bits.push(`${q.settlements} settlement${q.settlements === 1 ? "" : "s"}`);
+    if (q.cities)      bits.push(`${q.cities} cit${q.cities === 1 ? "y" : "ies"} (+${q.cities * 2})`);
+    if (vpCards(q))    bits.push(`${vpCards(q)} Feral`);
+    if (S.longestRoad.owner === q.id) bits.push("Longest Road +2");
+    if (S.largestArmy.owner === q.id) bits.push(`Largest Army +2 (${q.knights}⚔)`);
+    h += `<tr class="${i === 0 ? "win" : ""}">
+            <td class="pl">${i + 1}</td>
+            <td><span class="who"><span class="dot" style="background:${q.color}"></span>${q.name}</span></td>
+            <td class="brk">${bits.length ? bits.join(" · ") : "—"}</td>
+            <td class="tot">${totalVP(q)}</td>
+          </tr>`;
+  });
+  h += `</table>`;
+
+  // What everyone was still holding at the end.
+  h += `<h4 style="margin:14px 0 6px;font-size:13px">Kitten cards still in hand</h4>`;
+  for (const q of order){
+    const counts = {};
+    for (const c of q.cards){
+      const nm = KITTEN[c.key].name;
+      counts[nm] = (counts[nm] || 0) + 1;
+    }
+    const names = Object.keys(counts)
+      .map(nm => `<span class="rchip">${counts[nm] > 1 ? counts[nm] + "× " : ""}${nm}</span>`);
+    h += `<div class="artrow" style="align-items:flex-start">
+            <span class="dot" style="background:${q.color};margin-top:4px"></span>
+            <span class="f" style="color:var(--ink)">${
+              names.length ? names.join(" ") : "<i style='color:var(--dim)'>nothing</i>"}</span>
+          </div>`;
+  }
+  return h;
+}
+
+function showStandings(){
+  if (S.winner === null) return;
+  openModal(`${S.players[S.winner].name} wins`, standingsHTML(), [
+    { label:"Review board", fn: () => { closeModal(); render(); } },
+    { label:"New Game", cls:"primary", fn: () => { closeModal(); newGameDialog(); } }
+  ]);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TRADING
+   ══════════════════════════════════════════════════════════════════════ */
+
+function bankTradeDialog(){
+  if (netSend("bankTrade")) return;
+  promptFor(S.cur);
+  if (!myTurnNow()) return;
+  const p = cur();
+  const give_ = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };   // in LOTS, not cards
+  const get_  = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };   // in single cards
+
+  const lots  = () => RES.reduce((n, r) => n + give_[r], 0);
+  const units = () => RES.reduce((n, r) => n + get_[r], 0);
+  const cost  = (r) => give_[r] * tradeRate(p, r);
+
+  const refresh = () => {
+    const spend = {};
+    for (const r of RES) spend[r] = cost(r);
+
+    let h = `<p class="sub">Click to stack up as many exchanges as you like, then make
+             them all at once. Each click on the left is one lot at your rate for that
+             resource; each click on the right is one card back.</p>`;
+
+    h += `<div style="margin-bottom:5px;color:var(--dim);font-size:12.5px">Give — click to add a lot</div><div class="pick">`;
+    for (const r of RES){
+      const rate = tradeRate(p, r);
+      const room = p.res[r] - cost(r) >= rate;
+      h += `<button ${room ? "" : "disabled"} onclick="window.__bGive('${r}')"
+              title="${rate}:1 — you hold ${p.res[r]}">
+              <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:5px"></span>
+              ${rate}× ${RES_NAME[r]}${give_[r] ? ` <b>×${give_[r]}</b>` : ""}
+              <span style="opacity:.55">(${p.res[r]})</span></button>`;
+    }
+    h += `</div>`;
+
+    h += `<div style="margin:10px 0 5px;color:var(--dim);font-size:12.5px">Receive — click to add one</div><div class="pick">`;
+    for (const r of RES){
+      const room = S.bank[r] - get_[r] > 0;
+      h += `<button ${room ? "" : "disabled"} onclick="window.__bGet('${r}')"
+              title="bank has ${S.bank[r]}">
+              <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:5px"></span>
+              ${RES_NAME[r]}${get_[r] ? ` <b>×${get_[r]}</b>` : ""}
+              <span style="opacity:.55">(${S.bank[r]})</span></button>`;
+    }
+    h += `</div>`;
+
+    const bal = lots() === units() && lots() > 0;
+    h += `<div class="stack" style="margin-top:10px">
+            <div>Give ${resList(spend)}</div>
+            <div>Take ${resList(get_)}</div>
+            ${lots() !== units()
+               ? `<div style="color:var(--accent);margin-top:4px">${lots()} lot${lots() === 1 ? "" : "s"}
+                  given vs ${units()} card${units() === 1 ? "" : "s"} taken — these must match.</div>`
+               : ""}
+          </div>`;
+
+    openModal("Bank / Port Trade", h, [
+      { label:"Clear", fn: () => { for (const r of RES){ give_[r] = 0; get_[r] = 0; } refresh(); } },
+      { label:"Cancel", fn: () => { closeModal(); render(); } },
+      { label:"Trade", cls:"primary", disabled: !bal, fn: () => {
+          closeModal();
+          for (const r of RES) if (spend[r]) take(p, r, spend[r]);
+          for (const r of RES) if (get_[r])  give(p, r, get_[r]);
+          logMsg(`<b>${p.name}</b> trades with the bank.`);
+          announce(pdot(p) + " banks " + resList(spend) + " → " + resList(get_), "info");
+          render();
+        } }
+    ]);
+  };
+
+  window.__bGive = (r) => {
+    if (p.res[r] - cost(r) >= tradeRate(p, r)) give_[r]++;
+    refresh();
+  };
+  window.__bGet = (r) => {
+    if (S.bank[r] - get_[r] > 0) get_[r]++;
+    refresh();
+  };
+  refresh();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   OPEN TRADE
+   ══════════════════════════════════════════════════════════════════════
+   Build one offer, put it to the whole table at once, then pick from
+   whoever accepted. Bots answer immediately; other humans (hot-seat) get
+   Accept / Decline buttons in the same list.
+   ══════════════════════════════════════════════════════════════════════ */
+function playerTradeDialog(){
+  if (netSend("playerTrade")) return;
+  // The whole negotiation sits on the offering player's screen: they click
+  // Accept or Decline as the table answers out loud. A hot-seat habit, but it
+  // survives going online intact, and you will be on a call anyway.
+  promptFor(S.cur);
+  const p = cur();
+  const offer = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
+  const want  = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
+  let replies = null;                 // playerId -> "yes" | "no" | "wait"
+
+  const fmt = o => RES.filter(r => o[r] > 0).map(r => o[r] + " " + RES_NAME[r]).join(", ") || "nothing";
+  const others = () => S.players.filter(q => q.id !== p.id);
+  const anyOffer = () => RES.some(r => offer[r] > 0) || RES.some(r => want[r] > 0);
+
+  function counterRow(label, obj, fn){
+    let h = `<div style="margin-bottom:4px;color:var(--dim);font-size:12.5px">${label}</div>`;
+    for (const r of RES){
+      h += `<div class="counter">
+              <span class="lbl"><span class="swatch" style="background:${RES_COLOR[r]}"></span>${RES_NAME[r]}</span>
+              <button class="sm" onclick="window.${fn}('${r}',-1)">−</button>
+              <span class="val">${obj[r]}</span>
+              <button class="sm" onclick="window.${fn}('${r}',1)">+</button>
+            </div>`;
+    }
+    return h;
+  }
+
+  /* ── stage 1: compose ── */
+  function compose(){
+    let h = `<p class="sub">Put one offer to the whole table. Everyone answers, then you
+             choose who to deal with.</p>
+             <table class="trade"><tr><td style="vertical-align:top;width:50%">
+             ${counterRow("You give", offer, "__tof")}
+             </td><td style="vertical-align:top">
+             ${counterRow("You want", want, "__twa")}
+             </td></tr></table>`;
+    openModal("Open Trade", h, [
+      { label:"Cancel", fn: closeModal },
+      { label:"Ask everyone", cls:"primary", disabled: !anyOffer(), fn: ask }
+    ]);
+  }
+
+  /* ── stage 2: collect answers ── */
+  function ask(){
+    replies = {};
+    for (const q of others()){
+      const canPay = RES.every(r => q.res[r] >= want[r]);
+      if (!canPay){ replies[q.id] = "cant"; continue; }
+      const ag = agentOf(q.id);
+      if (ag && ag.considerTrade) replies[q.id] = ag.considerTrade(p, q, offer, want) ? "yes" : "no";
+      else replies[q.id] = "wait";        // a human at this table must answer
+    }
+    logMsg(`<b>${p.name}</b> offers ${fmt(offer)} for ${fmt(want)}.`);
+    announce(pdot(p) + " offers a trade to the table", "info");
+    results();
+  }
+
+  function results(){
+    const list = others();
+    const waiting = list.some(q => replies[q.id] === "wait");
+    let h = `<div class="stack"><div>You give: <b>${fmt(offer)}</b></div>
+             <div>You want: <b>${fmt(want)}</b></div></div>`;
+    h += `<div style="margin-top:10px">`;
+    for (const q of list){
+      const st = replies[q.id];
+      h += `<div class="counter">
+              <span class="lbl"><span class="dot" style="background:${q.color}"></span><b>${q.name}</b></span>`;
+      if (st === "wait"){
+        h += `<button class="sm" onclick="window.__ans(${q.id},'yes')">Accept</button>
+              <button class="sm" onclick="window.__ans(${q.id},'no')">Decline</button>`;
+      } else if (st === "yes"){
+        h += `<span style="color:#6fbf7a;font-size:12px;margin-right:8px">accepted</span>
+              <button class="sm primary" onclick="window.__deal(${q.id})">Trade</button>`;
+      } else if (st === "cant"){
+        h += `<span style="color:var(--dim);font-size:12px">can't pay</span>`;
+      } else {
+        h += `<span style="color:#b06a6a;font-size:12px">declined</span>`;
+      }
+      h += `</div>`;
+    }
+    h += `</div>`;
+    if (!waiting && !list.some(q => replies[q.id] === "yes"))
+      h += `<div class="warnbox">Nobody took it. Try a different offer.</div>`;
+
+    openModal("Open Trade", h, [
+      { label:"New offer", fn: compose },
+      { label:"Done", cls:"primary", fn: () => { closeModal(); render(); } }
+    ]);
+  }
+
+  window.__tof = (r, d) => { offer[r] = Math.max(0, Math.min(p.res[r], offer[r] + d)); compose(); };
+  window.__twa = (r, d) => { want[r]  = Math.max(0, want[r] + d); compose(); };
+  window.__ans = (qid, a) => { replies[qid] = a; results(); };
+  window.__deal = (qid) => {
+    const q = S.players[qid];
+    if (!RES.every(r => q.res[r] >= want[r])){ replies[qid] = "cant"; results(); return; }
+    for (const r of RES){
+      p.res[r] -= offer[r]; q.res[r] += offer[r]; noteGain(q, r, offer[r]);
+      q.res[r] -= want[r];  p.res[r] += want[r];  noteGain(p, r, want[r]);
+    }
+    logMsg(`<b>${p.name}</b> ⇄ <b>${q.name}</b>: gave ${fmt(offer)} for ${fmt(want)}.`);
+    tradeToast(p, q, offer, want);
+    closeModal();
+    render();
+  };
+
+  compose();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DISCARD DIALOG (used by the 7-roll and by Attack)
+   ══════════════════════════════════════════════════════════════════════ */
+
+function discardDialog(p, n, done){
+  promptFor(p.id);
+  const ag = agentOf(p.id);
+  if (ag && ag.chooseDiscard){
+    const pick = ag.chooseDiscard(p, n);
+    for (const r of RES) take(p, r, pick[r] || 0);
+    logMsg("<b>" + p.name + "</b> discards " + n + ".");
+    render();
+    setTimeout(done, AI_PACE);
+    return;
+  }
+  const pick = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
+  const refresh = () => {
+    const total = RES.reduce((s, r) => s + pick[r], 0);
+    let h = `<p class="sub"><b>${p.name}</b> must discard <b>${n}</b> resource card${n === 1 ? "" : "s"}.</p>`;
+    for (const r of RES){
+      h += `<div class="counter">
+              <span class="lbl"><span class="swatch" style="background:${RES_COLOR[r]}"></span>${RES_NAME[r]} — has ${p.res[r]}</span>
+              <button class="sm" onclick="window.__dc('${r}',-1)">−</button>
+              <span class="val">${pick[r]}</span>
+              <button class="sm" onclick="window.__dc('${r}',1)">+</button>
+            </div>`;
+    }
+    h += `<div class="stack">Discarding ${total} of ${n}</div>`;
+    // An Attack can be Defused or Noped from right here, instead of being paid
+    // for first. A discard forced by a 7 cannot — a die roll is not a card,
+    // so promptReactions returns nothing and the queue is left alone.
+    const react = promptReactions(p.id);
+    openModal("Discard", h + (react.length ? reactNoteHTML() : ""), [
+      { label:"Confirm", cls:"primary", disabled: total !== n, fn: () => {
+          closeModal();
+          for (const r of RES) take(p, r, pick[r]);
+          logMsg(`<b>${p.name}</b> discards ${n}.`);
+          render();
+          done();
+        } }
+    ].concat(react));
+  };
+  window.__dc = (r, d) => {
+    const total = RES.reduce((s, x) => s + pick[x], 0);
+    if (d > 0 && (total >= n || pick[r] >= p.res[r])) return;
+    pick[r] = Math.max(0, pick[r] + d);
+    refresh();
+  };
+  refresh();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MODAL PLUMBING
+   ══════════════════════════════════════════════════════════════════════ */
+
+let modalEl = null;
+
+/* Drawing and dismissing are split out from openModal/closeModal so that
+   online play can hand a whole dialog to the browser it actually belongs to,
+   and so that a dialog redrawing itself (every +/− on a counter reopens it)
+   does not read as the dialog being dismissed. */
+function drawLocalModal(title, bodyHTML, btnsHTML){
+  dismissLocalModal();
+  modalEl = document.createElement("div");
+  modalEl.className = "overlay";
+  modalEl.innerHTML = `<div class="modal"><h2>${title}</h2>${bodyHTML}
+    ${btnsHTML ? `<div class="actions">${btnsHTML}</div>` : ""}</div>`;
+  document.body.appendChild(modalEl);
+}
+function dismissLocalModal(){
+  if (modalEl){ modalEl.remove(); modalEl = null; }
+}
+
+/* Tag the dialog about to be opened as belonging to one seat. Online, that is
+   what sends it to the right person instead of drawing it on the host's
+   screen; offline it does nothing at all. */
+function promptFor(pid){ if (window.NET) NET.promptSeat = pid; }
+
+function openModal(title, bodyHTML, buttons){
+  dismissLocalModal();
+  if (window.NET && NET.shipModal && NET.shipModal(title, bodyHTML, buttons)) return;
+  let btns = "";
+  (buttons || []).forEach((b, i) => {
+    btns += `<button class="${b.cls || ""}" ${b.disabled ? "disabled" : ""} onclick="window.__mb(${i})">${b.label}</button>`;
+  });
+  drawLocalModal(title, bodyHTML, btns);
+  window.__mb = (i) => buttons[i].fn();
+}
+function closeModal(){
+  dismissLocalModal();
+  if (window.NET && NET.clearRemote) NET.clearRemote();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MENUS
+   ══════════════════════════════════════════════════════════════════════ */
+
+function newGameDialog(){
+  const haveAI = typeof window.AI !== "undefined";
+  let h = "";
+  if (haveAI){
+    h += `<p class="sub">The other seats are played by bots — they build, trade with everyone,
+          and target whoever is closest to winning. Turn order is drawn at random, so you will
+          not always lead.</p>
+          <div class="pick">
+            <button class="primary" onclick="window.__ng(4,true)">You + 3 bots</button>
+            <button onclick="window.__ng(3,true)">You + 2 bots</button>
+            <button onclick="window.__ng(2,true)">You + 1 bot</button>
+            <button onclick="window.__ng(5,true)">You + 4 bots</button>
+            <button onclick="window.__ng(6,true)">You + 5 bots</button>
+          </div>
+          <div class="rules" style="margin-top:6px">5 and 6 players use the larger
+          extension board — 30 hexes, two deserts, 11 ports.</div>
+          <div style="height:14px"></div>`;
+  }
+  h += `<p class="sub">Hot-seat — one screen, you play every seat in turn.</p><div class="pick">`;
+  for (let n = 2; n <= 6; n++)
+    h += `<button onclick="window.__ng(${n},false)">${n} players${n === 2 ? " (test)" : ""}</button>`;
+  h += `</div>`;
+  openModal("New Game", h, []);
+  window.__ng = (n, bots) => {
+    closeModal();
+    window.AGENTS = {};
+    newGame(n);
+    if (bots && typeof window.AI !== "undefined") window.AI.enable([0]);
+    beginSetupStep();
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DRAGGING CARDS
+   ══════════════════════════════════════════════════════════════════════
+   Cards are carried with plain pointer events, not HTML5 drag-and-drop. The
+   browser's version kept grabbing the card's <img> instead of the card: that
+   is where the washed-out duplicate under the cursor came from, and why a
+   miss offered to open the picture in its own window. Here the thing under
+   the pointer is a real card element we own, the card in hand greys out where
+   it came from, and a drop that lands nowhere simply puts it back.
+
+   Drop a card on the board to play it, on a player to aim it at them, on a
+   log entry to answer that specific action, or anywhere in your own hand to
+   move it about. Dragging is the ONLY way to play a card — there is no
+   click-to-play and no prompt, so holding a Nope never gives you away, and a
+   card can no longer be fired twice by a stray second click.
+   ══════════════════════════════════════════════════════════════════════ */
+
+let dragCard  = null;     // the card in flight
+let dragGhost = null;     // the element following the pointer
+let dragHot   = null;     // element highlighted underneath right now
+let pressPend = null;     // a press that has not moved far enough to be a drag
+
+const DRAG_SLOP = 5;      // px of travel before a press becomes a drag
+
+/* Cards that resolve on the board rather than at a player. */
+const BOARD_PLAY = new Set(["knight", "alter", "reverse"]);
+
+function cardPointerDown(ev, idx, ownerId){
+  if (ev.button) return;                       // left button / touch only
+  const p = S && S.players[ownerId];
+  const c = p && p.cards[idx];
+  if (!c) return;
+  ev.preventDefault();                         // no selection, no native drag
+  pressPend = { idx, ownerId, x: ev.clientX, y: ev.clientY };
+}
+
+function onCardPointerMove(ev){
+  if (pressPend && !dragCard){
+    if (Math.abs(ev.clientX - pressPend.x) < DRAG_SLOP &&
+        Math.abs(ev.clientY - pressPend.y) < DRAG_SLOP) return;
+    beginCardDrag(ev);
+    if (!dragCard) return;
+  }
+  if (!dragCard) return;
+  ev.preventDefault();
+  moveGhost(ev.clientX, ev.clientY);
+  highlightUnder(ev.clientX, ev.clientY);
+}
+
+function onCardPointerUp(ev){
+  const tapped = pressPend;
+  pressPend = null;
+  if (!dragCard){
+    // A click no longer fires a card — that is what made it possible to play
+    // the same one twice. Say so rather than doing nothing at all.
+    if (tapped && S){
+      const c = S.players[tapped.ownerId] && S.players[tapped.ownerId].cards[tapped.idx];
+      if (c) hint(cardDestinationHint(c));
+    }
+    return;
+  }
+  const info = dragCard;                       // endCardDrag clears it
+  const drop = dropTargetAt(ev.clientX, ev.clientY);
+  endCardDrag();
+  if (drop && dropAllowed(info, drop)) performDrop(info, drop);
+  else render();                               // the card goes back where it was
+}
+
+/* Where this card wants to be dropped, in one line. */
+function cardDestinationHint(c){
+  const def = KITTEN[c.key];
+  if (c.boughtTurn === S.turnCounter) return def.name + " was bought this turn — it plays next turn.";
+  if (def.kind === "vp") return "Feral Kittens are never played — they are points in your hand.";
+  if (c.key === "defuse") return "Drag Defuse onto the log entry you want to turn around.";
+  if (c.key === "nope") return "Drag Nope onto a log entry to cancel it, or onto the player whose turn it is to cancel the whole turn.";
+  if (BOARD_PLAY.has(c.key)) return "Drag " + def.name + " onto the board.";
+  return "Drag " + def.name + " onto the player you want to hit.";
+}
+
+function beginCardDrag(ev){
+  const pp = pressPend;
+  pressPend = null;
+  if (!pp || !S) return;
+  const p = S.players[pp.ownerId];
+  const c = p && p.cards[pp.idx];
+  if (!c) return;
+
+  const src = document.querySelector(
+    '.kcard[data-owner="' + pp.ownerId + '"][data-idx="' + pp.idx + '"]');
+  const r = src ? src.getBoundingClientRect() : { width:52, height:70 };
+
+  dragCard = { idx: pp.idx, ownerId: pp.ownerId, key: c.key, card: c,
+               w: r.width, h: r.height };
+  if (src) src.classList.add("picked");
+  document.body.classList.add("dragging");
+
+  const face = cardArt(c), def = KITTEN[c.key];
+  dragGhost = document.createElement("div");
+  dragGhost.id = "dragGhost";
+  dragGhost.style.width  = r.width + "px";
+  dragGhost.style.height = r.height + "px";
+  dragGhost.innerHTML = face ? '<img src="' + face + '" alt="">'
+                             : '<span class="kn">' + esc(def.name) + '</span>';
+  document.body.appendChild(dragGhost);
+
+  moveGhost(ev.clientX, ev.clientY);
+  markDropTargets();
+}
+
+/* The carried card sits centred on the pointer and a little oversized, so it
+   stays readable while you look for somewhere to put it. */
+function moveGhost(x, y){
+  if (!dragGhost || !dragCard) return;
+  dragGhost.style.transform =
+    "translate(" + (x - dragCard.w / 2) + "px," + (y - dragCard.h / 2) + "px)" +
+    " scale(1.9) rotate(-3deg)";
+}
+
+function endCardDrag(){
+  if (dragGhost){ dragGhost.remove(); dragGhost = null; }
+  dragCard = null;
+  dragHot = null;
+  pressPend = null;
+  document.body.classList.remove("dragging");
+  document.querySelectorAll(".picked").forEach(el => el.classList.remove("picked"));
+  document.querySelectorAll(".droppable,.dropping")
+          .forEach(el => el.classList.remove("droppable", "dropping"));
+}
+
+/* Escape, a lost pointer, or the window going away all just drop the card. */
+function cancelCardDrag(){
+  if (!dragCard && !pressPend) return;
+  endCardDrag();
+  if (S) render();
+}
+
+/* ── what is under the pointer ───────────────────────────────────────── */
+function dropTargetAt(x, y){
+  const el = document.elementFromPoint(x, y);
+  if (!el || !el.closest) return null;
+  const evEl = el.closest(".ev[data-jid]");
+  if (evEl) return { kind:"entry", jid: +evEl.dataset.jid, el: evEl };
+  const pc = el.closest(".pcard[data-pid]");
+  if (pc) return { kind:"player", pid: +pc.dataset.pid, el: pc };
+  const hand = el.closest(".hand[data-hand]");
+  if (hand){
+    const over = el.closest(".kcard");
+    return { kind:"hand", owner: +hand.dataset.hand, el: hand,
+             overIdx: over ? +over.dataset.idx : null };
+  }
+  const board = el.closest("#boardArea");
+  if (board) return { kind:"board", el: board };
+  return null;
+}
+
+/* A card may only be played the turn after it was bought, and never during
+   setup or after the game is decided. Rearranging your hand is always fine. */
+function cardIsPlayable(info){
+  const c = info && info.card;
+  if (!c || !S) return false;
+  if (c.boughtTurn === S.turnCounter) return false;
+  if (KITTEN[c.key].kind === "vp") return false;
+  if (S.phase === "over" || S.phase.startsWith("setup")) return false;
+  return true;
+}
+
+function dropAllowed(info, drop){
+  if (!info || !drop || !S) return false;
+  const key = info.key, me = info.ownerId;
+
+  if (drop.kind === "hand") return drop.owner === me;
+  if (!cardIsPlayable(info)) return false;
+
+  if (drop.kind === "entry"){
+    const e = S.journal.find(x => x.id === drop.jid);
+    if (!e) return false;
+    if (key === "nope")   return canNopeEntry(e) && e.actor !== me;
+    if (key === "defuse") return canDefuseEntry(e, me);
+    return false;
+  }
+  if (drop.kind === "player") return pcardAccepts(key, me, drop.pid);
+  if (drop.kind === "board")  return BOARD_PLAY.has(key) && me === S.cur && !S.pending;
+  return false;
+}
+
+function highlightUnder(x, y){
+  const drop = dropTargetAt(x, y);
+  const el = (drop && dropAllowed(dragCard, drop)) ? drop.el : null;
+  if (el === dragHot) return;
+  if (dragHot) dragHot.classList.remove("dropping");
+  dragHot = el;
+  if (dragHot) dragHot.classList.add("dropping");
+  if (dragGhost) dragGhost.classList.toggle("over", !!dragHot);
+}
+
+/* Outline everywhere this particular card could legally go. */
+function markDropTargets(){
+  if (!dragCard) return;
+  const me = dragCard.ownerId;
+  const area = document.getElementById("boardArea");
+  if (area && dropAllowed(dragCard, { kind:"board", el:area })) area.classList.add("droppable");
+  document.querySelectorAll(".pcard[data-pid]").forEach(el => {
+    if (dropAllowed(dragCard, { kind:"player", pid:+el.dataset.pid, el })) el.classList.add("droppable");
+  });
+  document.querySelectorAll(".ev[data-jid]").forEach(el => {
+    if (dropAllowed(dragCard, { kind:"entry", jid:+el.dataset.jid, el })) el.classList.add("droppable");
+  });
+  const hand = document.querySelector('.hand[data-hand="' + me + '"]');
+  if (hand) hand.classList.add("droppable");
+}
+
+function pcardAccepts(key, me, pid){
+  if (!S || S.phase === "over" || S.phase.startsWith("setup")) return false;
+  if (key === "nope") return pid === S.cur && pid !== me && !implodeActive();
+  if (key === "defuse") return false;                  // Defuse answers an entry
+  if (key === "vp") return false;
+  const def = KITTEN[key];
+  if (!def || def.kind !== "target") return false;
+  if (pid === me || S.pending) return false;
+  // On your own turn you may aim any targeted card. Off your turn only the two
+  // direct attacks may be thrown — the same cards the rules already let you
+  // interrupt with, and exactly the ones that could not be dragged before.
+  return me === S.cur ? true : OFF_TURN.has(key);
+}
+
+/* ── doing the drop ──────────────────────────────────────────────────── */
+function performDrop(info, drop){
+  const { idx, ownerId, key, card } = info;
+  if (netSend("drop", [idx, drop.kind,
+        drop.kind === "entry"  ? drop.jid :
+        drop.kind === "player" ? drop.pid :
+        drop.kind === "hand"   ? drop.overIdx : null])) return;
+
+  if (drop.kind === "hand"){ reorderHand(ownerId, idx, drop.overIdx); return; }
+
+  if (drop.kind === "entry"){
+    if (key === "nope") nopeEntry(drop.jid, ownerId);
+    else if (key === "defuse") defuseEntry(drop.jid, ownerId);
+    return;
+  }
+
+  if (drop.kind === "board"){ playCard(idx, ownerId); return; }
+
+  const pid = drop.pid;
+  if (key === "nope"){ nopeWholeTurn(ownerId, pid); return; }
+  if (key === "favor"){ favorGuessDialog(card, idx, pid, ownerId); return; }
+  playResolved({ type:"card", card, actor:ownerId, target:pid, payload:{} });
+  render();
+}
+
+/* Dropping a Nope on whoever is playing cancels their whole turn — the second
+   of the card's two uses, and the only one that is not answering a log entry. */
+function nopeWholeTurn(ownerId, pid){
+  const victim = S.players[pid], noper = S.players[ownerId];
+  spendCard(noper, "nope");
+  logMsg("<b>" + noper.name + "</b> Nopes <b>" + victim.name + "</b>'s turn.");
+  // Snapshot and turn pointer both taken before cancelTurn tears the turn
+  // down, so a counter-Nope can put the whole thing back.
+  const turnBack = { cur: S.cur, phase: S.phase, turnCounter: S.turnCounter,
+                     rolled: S.rolled ? S.rolled.slice() : null, extraTurn: S.extraTurn };
+  logAction(pdot(noper) + " <b>Nopes</b> " + pdot(victim) + "'s turn",
+            "defend", { actor: ownerId, snap: snapAll(), nopeable: true, turnBack: turnBack,
+                        spent: { pid: ownerId, key: "nope" } });
+  clearImplodeClock();
+  cancelTurn(pid, totalVP(victim) >= 10);     // cancelTurn ends the turn itself
+  openReactWindow(true);
+}
+
+/* Cards can be shuffled around in your own hand at will; where a card sits is
+   nobody's business but yours. Dropped on empty space it goes to the end. */
+function reorderHand(ownerId, from, to){
+  const p = S.players[ownerId];
+  if (!p || from < 0 || from >= p.cards.length) return;
+  const c = p.cards.splice(from, 1)[0];
+  if (to === null || to === undefined || to > p.cards.length) p.cards.push(c);
+  else p.cards.splice(to > from ? to - 1 : to, 0, c);
+  render();
+}
+
+window.addEventListener("pointermove",   onCardPointerMove, { passive:false });
+window.addEventListener("pointerup",     onCardPointerUp);
+window.addEventListener("pointercancel", cancelCardDrag);
+window.addEventListener("blur",          cancelCardDrag);
+/* Belt and braces: if anything ever does manage to start a native drag on this
+   page, swallow it rather than let the browser open the card art in a window
+   of its own. */
+window.addEventListener("dragstart", function(e){ e.preventDefault(); });
+window.addEventListener("dragover",  function(e){ e.preventDefault(); });
+window.addEventListener("drop",      function(e){ e.preventDefault(); });
+
+
+/* Which art files were found. I cannot verify file:// loading from outside
+   the game, so this is the ground truth — open it after dropping files in. */
+function showArt(){
+  const groups = { hex:"Hex terrain", res:"Resource cards", piece:"Pieces (tinted per player)",
+                   token:"Number token", card:"Kitten card faces" };
+  let h = `<p class="sub">Looking in <b>./${ART_DIR}</b> next to this HTML file.
+           <b>${artLoaded}</b> of <b>${artTotal}</b> found — anything missing just uses the built-in drawing.</p>`;
+  for (const g in groups){
+    const rows = ART_MANIFEST.filter(a => a.kind === g);
+    if (!rows.length) continue;
+    h += `<h4 style="margin:12px 0 4px;font-size:13px">${groups[g]}</h4>`;
+    for (const a of rows){
+      const ok = !!ART[a.kind][a.key];
+      h += `<div class="artrow"><span class="${ok ? "ok" : "no"}">${ok ? "✓" : "✗"}</span>
+              <span class="f">${ART_DIR}${a.file}</span></div>`;
+    }
+  }
+  h += `<div class="okbox" style="margin-top:14px">Pieces are used as a silhouette and flooded with the
+        player's colour, so whatever colour you draw them in makes no difference — only the transparent
+        background matters. Hex tiles should be squares that bleed to the edges; the hexagon is clipped
+        out of the middle for you.</div>`;
+  h += `<p class="rules">Reload the page after adding files. 404s in the console for missing art are
+        expected and harmless.</p>`;
+  openModal("Custom art", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
+}
+
+function showRules(){
+  let h = `<div class="rules">
+    <h4>This is Catan — with one swap</h4>
+    <p>Every base Catan rule applies: settlements, cities, roads, the robber on a 7, ports,
+    Longest Road (5+, 2 VP), Largest Army (3+ knights, 2 VP), first to <b>10 VP</b> wins.
+    The development deck is gone. In its place: <b>54 kitten cards</b>.</p>
+
+    <h4>Changed rules</h4>
+    <ul>
+      <li>A kitten card costs <b>any 3 different resources</b> (not wheat + sheep + ore).</li>
+      <li>You may play <b>as many kitten cards per turn as you like</b>, starting the turn after you buy them.</li>
+      <li>Knights still count toward Largest Army — there are 10 of them.</li>
+      <li><b>5 and 6 players</b> use the extension board: 30 hexes in rows of 3-4-5-6-5-4-3,
+          two deserts, 28 number tokens, 11 ports, and 24 of each resource in the bank.
+          Piece limits, the 10-point target and the 54-card kitten deck are unchanged.</li>
+    </ul>
+
+    <h4>The deck (54)</h4><ul>`;
+  for (const k in KITTEN){
+    h += `<li><b>${KITTEN[k].name} ×${KITTEN[k].count}</b> — ${esc(KITTEN[k].text)}</li>`;
+  }
+  h += `</ul>
+    <h4>Playing a card</h4>
+    <p>Every kitten card is played by <b>dragging it</b> out of your hand and dropping it where it
+    should go. Nothing is played by clicking, so a card can never go off twice by accident, and
+    nobody watching learns anything from you picking one up.</p>
+    <ul>
+      <li><b>Onto another player</b> — Skip, Attack, Exploding Kitten and Favor.</li>
+      <li><b>Onto the board</b> — Knight, Alter the Future and Reverse.</li>
+      <li><b>Onto a line in the game log</b> — Nope and Defuse, to answer that exact action.</li>
+      <li><b>Anywhere in your own hand</b> — to move the card about. The order is yours to keep.</li>
+    </ul>
+    <p>Hover a card to blow it up and read it. Dropping it somewhere it cannot go simply puts it
+    back, and Escape drops it mid-drag.</p>
+
+    <h4>Nope &amp; Defuse</h4>
+    <p>Both are reactions, played out of turn, and the card is always expended.
+    <b>Anything can be Noped</b>, including another Nope and including a Defuse — as many times
+    over as people are willing to spend cards, with the last one standing settling it. Noping a
+    Defuse cancels the "no you": the original card is simply played again, at whoever it was first
+    aimed at. A <b>Defuse</b> cannot answer another Defuse, though — "no you" does not stack
+    against itself.</p>
+    <p><b>The window is one entry wide.</b> Anything in the game log can be answered, but only while
+    it is the <i>newest</i> line: the moment the next thing happens, the line before it is settled
+    for good. When you are holding the card that would answer the live line, a small badge of that
+    card appears on it — that badge is your countdown, and only you can see it. Bots deliberately
+    take three seconds between moves so the window is never a reflex test.</p>
+    <p><b>Being Noped ends your turn.</b> Whatever you were Noped for — a roll, a build, a card —
+    the rest of that turn goes with it. A counter-Nope hands that turn straight back: the
+    interrupted player picks up exactly where they were standing.</p>
+    <p><b>The hand-over window.</b> A Nope may be played at any time, including after the turn it
+    answers has ended — without that, a Nope could never be Noped, since being Noped ends your
+    turn on the spot. So every turn hands over through <b>three seconds</b> in which nobody may
+    roll and the last line of the log is still live. Playing a Nope inside that window starts it
+    again, so a chain runs for as long as people keep answering.</p>
+    <p>When a card forces a window open on you — the discard from an Attack, the handover from a
+    Favor — <b>Defuse</b> and <b>Nope</b> sit in that window next to the usual buttons, so you can
+    answer before you pay rather than afterwards. They only appear when you are actually holding
+    the card, so an empty hand looks exactly like a hand that is holding back.</p>
+    <p><b>Nope</b> has exactly two uses:</p>
+    <ul>
+      <li><b>Cancel an attack aimed at you.</b> Drop it on that line in the log. The attack and the
+      Nope are both spent, and the attacker's turn is over.</li>
+      <li><b>Cancel a player's whole turn.</b> Drop it on the player themselves.
+      Everything they gained that turn is
+      <b>destroyed, not returned</b>: kitten cards drawn are removed from the game rather than
+      shuffled back, buildings put up that turn come down, resources collected that turn go back to
+      the bank — and resources they already spent are <i>still</i> not refunded. If a Feral Kitten or
+      a knight took them to 10 points that turn, it is gone from play, and a Longest Road earned that
+      turn goes down with the roads.</li>
+    </ul>
+    <p><b>Defuse</b> answers an attack aimed at you by turning it around. Alter the Future and
+    Favor hand you the card's power rather than simply reflecting it — you name the two tokens,
+    or your own three resources.</p>
+    <p><b>Forced Nope.</b> The moment someone reaches 10 points, the next player in turn order who
+    holds a Nope <i>must</i> spend it — no choice. Otherwise everyone would sit on their Nopes
+    waiting for somebody else to spend theirs first.</p>
+    <p>The <b>Imploding Kitten</b> is immune to all of it. It cannot be Noped or Defused, and its
+    haul survives even a cancelled turn.</p>
+  </div>`;
+  openModal("Exploding Catan — Rules", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
+}
+
+/* ══════════════════════════════════════════════════════════════════════ */
+// Art probing is async and never blocks: the game opens immediately with the
+// built-in drawing, then repaints once we know what actually loaded.
+preloadArt(() => {
+  if (artLoaded) logMsgSafe(`Custom art: ${artLoaded}/${artTotal} files loaded.`);
+  if (S) render();
+});
+/* Deferred to load: ai.js is a separate <script> that has not run yet at this
+   point in the file, so calling it inline would offer no bot options until the
+   player opened the dialog a second time. */
+window.addEventListener("load", function(){ initBoardControls(); newGameDialog(); });
+window.addEventListener("resize", function(){ if (S) render(); });
+
+function logMsgSafe(m){ if (S) logMsg(m); }
+</script>
+<script src="ai.js"></script>
+<!-- Online play. The two Firebase scripts are the only thing on this page that
+     comes off the network; if they fail to load (no internet, opened straight
+     off the disk) the Online button says so and the local game is untouched. -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="net.js"></script>
+</body>
+</html>

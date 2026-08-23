@@ -1,0 +1,9 @@
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# Working copies made while editing
+*.bak
+*.tmp
+*.orig
