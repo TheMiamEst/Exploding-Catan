@@ -560,8 +560,8 @@ function proposeToHuman(bot, human, offer, want){
   };
 
   openPanel(key, human.id, "Trade offer from " + esc(bot.name),
-    '<div class="stack"><div>You get: <b>' + esc(fmt(offer)) + '</b></div>' +
-    '<div>You give: <b>' + esc(fmt(want)) + '</b></div></div>',
+    '<div class="stack"><div class="tline"><span>You get</span>' + resList(offer) + '</div>' +
+    '<div class="tline"><span>You give</span>' + resList(want) + '</div></div>',
     [ { label:"Decline", fn: decline },
       { label:"Accept", cls:"primary", fn: accept } ]);
 }

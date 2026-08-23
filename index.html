@@ -68,8 +68,13 @@
     padding:3px 0; text-align:center; min-width:0;
   }
   .stat b{display:block; font-size:14px; line-height:1.15; font-variant-numeric:tabular-nums}
-  .stat span{display:block; font-size:8.5px; letter-spacing:.2px; color:var(--dim);
-             text-transform:uppercase; white-space:nowrap; overflow:hidden}
+  /* Icons rather than three-letter labels: at this size "Rd" and "Res" read
+     as noise, and a glyph is taken in without being read. Each stat keeps its
+     title attribute, so hovering still names it. */
+  .stat svg{display:block; margin:1px auto 0; width:11px; height:11px;
+            fill:none; stroke:var(--dim); stroke-width:1.7;
+            stroke-linecap:round; stroke-linejoin:round}
+  .stat.vp svg{stroke:var(--accent)}
   .stat.vp b{color:var(--accent)}
   .reveal{margin-top:6px; display:flex; flex-wrap:wrap; gap:3px}
   .revcard{
@@ -147,11 +152,18 @@
     text-transform:uppercase; margin-bottom:2px;
   }
   .toast b{font-weight:700}
+  /* Tinted with the resource's own colour rather than carrying a hairline of
+     it, so an offer can be judged without reading it. --rc is set per chip. */
   .rchip{
-    display:inline-block; border:1px solid #ffffff1a; border-left:3px solid var(--line);
-    border-radius:4px; padding:0 5px; margin:1px 1px; font-size:11.5px;
-    background:#0005; font-variant-numeric:tabular-nums; white-space:nowrap;
+    display:inline-block; border:1px solid var(--rc, var(--line));
+    border-left:4px solid var(--rc, var(--line));
+    border-radius:4px; padding:0 5px 0 4px; margin:1px 1px; font-size:11.5px;
+    background:color-mix(in srgb, var(--rc, #888) 22%, #0b0d10);
+    font-variant-numeric:tabular-nums; white-space:nowrap;
   }
+  .rchip .rdot{display:inline-block; width:7px; height:7px; border-radius:2px;
+               background:var(--rc); margin-right:4px; vertical-align:0}
+  .rchip.none{--rc:#5a6478; font-style:italic; opacity:.75}
   .ev.roll{border-left-color:#7f8ba0}
   .ev.buy{border-left-color:#5a8f68}
   .ev.attack{border-left-color:var(--danger)}
@@ -396,7 +408,7 @@
      reachable. Several can stand at once, one per seat, which is what lets a
      trade offer go to everybody together instead of round the table. */
   #panels{
-    position:absolute; right:12px; top:104px; bottom:132px;
+    position:absolute; right:12px; top:100px; bottom:130px;
     width:min(330px, 46%); z-index:6;
     display:flex; flex-direction:column; gap:8px; align-items:stretch;
     overflow-y:auto; scrollbar-width:none;
@@ -419,6 +431,16 @@
   .pick.tight button{padding:4px 6px; font-size:11.5px; line-height:1.2}
   .pick.tight .swatch{width:8px; height:8px; border-radius:2px}
   .panel .stack{font-size:12.5px}
+  /* An offer should be judgeable at a glance, so the resources are chips in
+     their own colours rather than a sentence to read. */
+  .tline{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px}
+  /* What the staged exchange comes to, on one line. */
+  .tsum{display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:8px;
+        padding-top:7px; border-top:1px solid var(--line); font-size:12px}
+  .tsum .arrow{color:var(--dim)}
+  .tsum .mismatch{color:var(--accent); font-size:11px; width:100%}
+  .tline > span:first-child{color:var(--dim); font-size:11px; min-width:52px}
+  .pick.tight .rate{opacity:.6; font-size:10.5px}
   .panel.forme{border-color:#7fc48f; box-shadow:0 12px 34px #000a, 0 0 0 2px #7fc48f33}
   /* The board moved under an open panel — a Nope rewound something. */
   .panel.stale{border-color:var(--danger)}
@@ -504,12 +526,27 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-24c";
+const GAME_VERSION = "2026-08-24d";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
 const RES_COLOR = {wood:"#2f6b3a", brick:"#a4472a", sheep:"#7fb85c", wheat:"#dfae32", ore:"#78838f", desert:"#cdbb8e"};
 const PLAYER_COLORS = ["#d94b4b","#4b7fd9","#e08a2e","#e8e8e8","#59b364","#a86fd0"];
+
+/* Little line glyphs for the profile stats. Drawn rather than lettered so the
+   row reads at a glance, and stroked in currentColour so they follow the
+   theme. Every one keeps a title on its tile for whoever wants the word. */
+const SVG = (d) => '<svg viewBox="0 0 16 16" aria-hidden="true">' + d + '</svg>';
+const ICON = {
+  vp:     SVG('<path d="M8 2.2l1.7 3.6 3.9.5-2.9 2.7.8 3.9L8 11l-3.5 1.9.8-3.9L2.4 6.3l3.9-.5z"/>'),
+  res:    SVG('<rect x="2.2" y="4.4" width="7.4" height="9.2" rx="1.2"/>' +
+              '<path d="M6.4 4.4V3.6a1.2 1.2 0 011.2-1.2h5a1.2 1.2 0 011.2 1.2v7a1.2 1.2 0 01-1.2 1.2h-.8"/>'),
+  kit:    SVG('<path d="M4 6.6V3.2l2.6 1.9a6 6 0 012.8 0L12 3.2v3.4"/>' +
+              '<path d="M12 6.6a4 4 0 11-8 0"/><path d="M6.4 9.2h.01M9.6 9.2h.01"/>'),
+  road:   SVG('<path d="M5.4 13.8L7.2 2.2M10.6 13.8L8.8 2.2"/>' +
+              '<path d="M8 4.4v1.8M8 7.4v1.8M8 10.4v1.8"/>'),
+  knight: SVG('<path d="M8 2.2l5 1.8v4.2c0 3-2.1 5-5 5.6-2.9-.6-5-2.6-5-5.6V4z"/>')
+};
 const PLAYER_NAMES  = ["Red","Blue","Orange","White","Green","Purple"];
 
 const COST = {
@@ -1559,15 +1596,15 @@ function drawPlayers(){
             </div>
             <div class="stats">
               <div class="stat vp" title="Victory points (public — Feral Kittens stay hidden)">
-                <b>${publicVP(p)}</b><span>VP</span></div>
-              <div class="stat" title="Resource cards"><b>${totalRes(p)}</b><span>Res</span></div>
-              <div class="stat" title="Kitten cards in hand"><b>${p.cards.length}</b><span>Kit</span></div>
+                <b>${publicVP(p)}</b>${ICON.vp}</div>
+              <div class="stat" title="Resource cards"><b>${totalRes(p)}</b>${ICON.res}</div>
+              <div class="stat" title="Kitten cards in hand"><b>${p.cards.length}</b>${ICON.kit}</div>
               <div class="stat" title="Longest unbroken road (${p.roads} built)${
                     S.longestRoad.owner === p.id ? " — holds Longest Road" : ""}">
                 <b${S.longestRoad.owner === p.id ? ' style="color:var(--accent)"' : ""}>${
                   (S.roadLens && S.roadLens[p.id] !== undefined) ? S.roadLens[p.id] : 0
-                }</b><span>Rd</span></div>
-              <div class="stat" title="Knights played"><b>${p.knights}</b><span>Knt</span></div>
+                }</b>${ICON.road}</div>
+              <div class="stat" title="Knights played"><b>${p.knights}</b>${ICON.knight}</div>
             </div>`;
     if (S.revealed){
       const counts = {};
@@ -1909,9 +1946,9 @@ function clearFeed(){
 /* Resources as coloured chips, so a trade shows what actually moved. */
 function resList(o){
   const parts = RES.filter(r => o[r] > 0)
-    .map(r => '<span class="rchip" style="border-left-color:' + RES_COLOR[r] + '">' +
-              o[r] + "× " + RES_NAME[r] + "</span>");
-  return parts.length ? parts.join(" ") : "<i>nothing</i>";
+    .map(r => '<span class="rchip" style="--rc:' + RES_COLOR[r] + '">' +
+              '<span class="rdot"></span>' + o[r] + "× " + RES_NAME[r] + "</span>");
+  return parts.length ? parts.join(" ") : '<span class="rchip none">nothing</span>';
 }
 function tradeToast(a, b, gave, got){
   announce(pdot(a) + " → " + resList(gave) + "<br>" + pdot(b) + " → " + resList(got),
@@ -3532,42 +3569,42 @@ function bankTradeDialog(){
     const spend = {};
     for (const r of RES) spend[r] = cost(r);
 
-    let h = `<p class="sub">Click to stack up as many exchanges as you like, then make
-             them all at once. Each click on the left is one lot at your rate for that
-             resource; each click on the right is one card back.</p>`;
+    // 4:1 is the default, so printing it on all five buttons is noise that also
+    // wraps the row. The badge appears only where a port beats it — which is
+    // the only time the rate is worth reading.
+    let h = `<p class="sub">Click to add, click past the limit to clear. 4:1 unless a
+             port says otherwise; lots and cards must match.</p>`;
 
-    h += `<div style="margin-bottom:5px;color:var(--dim);font-size:12.5px">Give — click to add a lot</div><div class="pick">`;
+    h += `<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Give — one lot at your rate</div>
+          <div class="pick tight">`;
     for (const r of RES){
       const rate = tradeRate(p, r);
-      const room = p.res[r] - cost(r) >= rate;
-      h += `<button ${room ? "" : "disabled"} onclick="window.__bGive('${r}')"
-              title="${rate}:1 — you hold ${p.res[r]}">
-              <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:5px"></span>
-              ${rate}× ${RES_NAME[r]}${give_[r] ? ` <b>×${give_[r]}</b>` : ""}
-              <span style="opacity:.55">(${p.res[r]})</span></button>`;
+      h += `<button ${p.res[r] >= rate ? "" : "disabled"} onclick="window.__bGive('${r}')"
+              title="${RES_NAME[r]} — ${rate}:1, you hold ${p.res[r]}">
+              <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
+              ${RES_NAME[r]}${rate < 4 ? ` <span class="rate">${rate}:1</span>` : ""}${
+                give_[r] ? ` <b>×${give_[r]}</b>` : ""}</button>`;
     }
-    h += `</div>`;
+    h += `</div><div style="height:6px"></div>`;
 
-    h += `<div style="margin:10px 0 5px;color:var(--dim);font-size:12.5px">Receive — click to add one</div><div class="pick">`;
+    h += `<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Take — one card each</div>
+          <div class="pick tight">`;
     for (const r of RES){
-      const room = S.bank[r] - get_[r] > 0;
-      h += `<button ${room ? "" : "disabled"} onclick="window.__bGet('${r}')"
-              title="bank has ${S.bank[r]}">
-              <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:5px"></span>
-              ${RES_NAME[r]}${get_[r] ? ` <b>×${get_[r]}</b>` : ""}
-              <span style="opacity:.55">(${S.bank[r]})</span></button>`;
+      h += `<button ${S.bank[r] > 0 ? "" : "disabled"} onclick="window.__bGet('${r}')"
+              title="${RES_NAME[r]} — bank holds ${S.bank[r]}">
+              <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
+              ${RES_NAME[r]}${get_[r] ? ` <b>×${get_[r]}</b>` : ""}</button>`;
     }
     h += `</div>`;
 
     const bal = lots() === units() && lots() > 0;
-    h += `<div class="stack" style="margin-top:10px">
-            <div>Give ${resList(spend)}</div>
-            <div>Take ${resList(get_)}</div>
-            ${lots() !== units()
-               ? `<div style="color:var(--accent);margin-top:4px">${lots()} lot${lots() === 1 ? "" : "s"}
-                  given vs ${units()} card${units() === 1 ? "" : "s"} taken — these must match.</div>`
-               : ""}
-          </div>`;
+    if (lots() || units()){
+      h += `<div class="tsum">${resList(spend)}<span class="arrow">→</span>${resList(get_)}
+              ${lots() !== units()
+                 ? `<span class="mismatch">${lots()} lot${lots() === 1 ? "" : "s"} vs ${
+                      units()} card${units() === 1 ? "" : "s"}</span>` : ""}
+            </div>`;
+    }
 
     openPanel("bank", p.id, "Bank / port trade", h, [
       { label:"Clear", fn: () => { for (const r of RES){ give_[r] = 0; get_[r] = 0; } refresh(); } },
@@ -3584,11 +3621,12 @@ function bankTradeDialog(){
   };
 
   window.__bGive = (r) => {
-    if (p.res[r] - cost(r) >= tradeRate(p, r)) give_[r]++;
+    const rate = tradeRate(p, r);
+    give_[r] = p.res[r] >= (give_[r] + 1) * rate ? give_[r] + 1 : 0;
     refresh();
   };
   window.__bGet = (r) => {
-    if (S.bank[r] - get_[r] > 0) get_[r]++;
+    get_[r] = S.bank[r] > get_[r] ? get_[r] + 1 : 0;
     refresh();
   };
   refresh();
@@ -3689,8 +3727,8 @@ function playerTradeDialog(){
     const key = "offer" + qid;
     const answer = (a) => { replies[qid] = a; closePanel(key); results(); };
     openPanel(key, qid, "Trade offer from " + esc(p.name),
-      `<div class="stack"><div>You get: <b>${esc(fmt(offer))}</b></div>
-         <div>You give: <b>${esc(fmt(want))}</b></div></div>`,
+      `<div class="stack"><div class="tline"><span>You get</span>${resList(offer)}</div>
+         <div class="tline"><span>You give</span>${resList(want)}</div></div>`,
       [ { label:"Decline", fn: () => answer("no") },
         { label:"Accept", cls:"primary", fn: () => answer("yes") } ]);
   }
@@ -3701,8 +3739,8 @@ function playerTradeDialog(){
 
   function results(){
     const list = others();
-    let h = `<div class="stack"><div>You give: <b>${fmt(offer)}</b></div>
-             <div>You want: <b>${fmt(want)}</b></div></div>`;
+    let h = `<div class="stack"><div class="tline"><span>You give</span>${resList(offer)}</div>
+             <div class="tline"><span>You want</span>${resList(want)}</div></div>`;
     h += `<div style="margin-top:10px">`;
     for (const q of list){
       const st = replies[q.id];
@@ -4432,13 +4470,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-24c"></script>
+<script src="ai.js?v=2026-08-24d"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-24c"></script>
-<script src="net.js?v=2026-08-24c"></script>
+<script src="firebase-config.js?v=2026-08-24d"></script>
+<script src="net.js?v=2026-08-24d"></script>
 </body>
 </html>
