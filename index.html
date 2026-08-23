@@ -482,7 +482,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-23a";
+const GAME_VERSION = "2026-08-23b";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -810,22 +810,28 @@ function viewSeat(){
 function viewPlayer(){ return S.players[viewSeat()]; }
 
 /* True when the UI must ignore board clicks because the active seat is a bot.
-   Exceptions: the bot driver itself (__botActing), and prompts a human owns —
+   Exceptions: anything driven by proxy (see drivenByProxy), and prompts a human owns —
    for example the robber after we Defused a bot's knight. */
+/* True while something other than the person sitting at this screen is driving
+   the game: a bot taking its turn, or the host replaying a guest's action.
+
+   Every "is it your turn" guard has to stand aside for this, because those
+   guards are about the human here — not about who is allowed to act. The two
+   cases used to be tested separately and in the wrong order, which cost a bug
+   twice over: first remote players could not touch the board, then bots could
+   not move once the game was online. One question, asked first, once. */
+function drivenByProxy(){
+  return !!(window.__botActing || window.__netApplying);
+}
+
 function uiBlocked(){
-  // The host is replaying somebody else's action right now. It is acting AS
-  // that player, and the intent was already checked against whose turn it is,
-  // so the "not your turn" guards have to stand aside — otherwise the host
-  // silently drops every click its guests make. Same escape hatch the bot
-  // driver uses one line down.
-  if (window.__netApplying) return false;
+  if (drivenByProxy()) return false;
   if (window.NET && NET.isOnline && NET.isOnline()){
     // A prompt handed to you is yours to answer even on somebody else's turn.
     if (S.select && S.select.actor !== undefined) return S.select.actor !== viewSeat();
     return S.cur !== viewSeat();
   }
   if (!anyBots()) return false;
-  if (window.__botActing) return false;
   if (S.select && S.select.actor !== undefined && !isBot(S.select.actor)) return false;
   return isBot(S.cur);
 }
@@ -1501,8 +1507,9 @@ function initBoardControls(){
 
 /* Board clicks arriving straight after a pan are swallowed. */
 function swallowedByPan(){
-  // A remote click has nothing to do with whether the host was panning.
-  if (window.__netApplying) return false;
+  // A bot's move, or a remote player's, has nothing to do with whether the
+  // person at this screen happened to be dragging the board a moment ago.
+  if (drivenByProxy()) return false;
   if (window.__panDragged){ window.__panDragged = false; return true; }
   return false;
 }
@@ -1559,7 +1566,7 @@ function canBuyKitten(){
    the human can click has to be gated on this, or a stray click acts for a
    bot — which is how the deck was letting you buy cards on their behalf. */
 function myTurnNow(){
-  if (window.__netApplying) return true;          // acting as the player who asked
+  if (drivenByProxy()) return true;               // acting as whoever is up
   if (window.NET && NET.isOnline && NET.isOnline()) return S.cur === viewSeat();
   if (!anyBots()) return true;
   return S.cur === viewSeat() && !uiBlocked();
@@ -4251,13 +4258,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-23a"></script>
+<script src="ai.js?v=2026-08-23b"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-23a"></script>
-<script src="net.js?v=2026-08-23a"></script>
+<script src="firebase-config.js?v=2026-08-23b"></script>
+<script src="net.js?v=2026-08-23b"></script>
 </body>
 </html>
