@@ -1435,7 +1435,7 @@ function drawPlayers(){
     if (S.revealed){
       const counts = {};
       for (const c of p.cards){
-        const nm = KITTEN[c.key].name;
+        const nm = KITTEN[c.key] ? KITTEN[c.key].name : "Face down";
         counts[nm] = (counts[nm] || 0) + 1;
       }
       const names = Object.keys(counts).map(nm =>
@@ -1600,6 +1600,10 @@ function drawBottom(){
     const live = openEntry();
     p.cards.forEach((c, i) => {
       const def = KITTEN[c.key];
+      // Online, another seat's hand arrives as face-down placeholders. The
+      // bottom bar only ever draws your own, so this should never fire — but
+      // one undefined lookup would take the whole screen down with it.
+      if (!def) return;
       const locked = c.boughtTurn === S.turnCounter;
       const reaction = def.kind === "response";
       const isVP = def.kind === "vp";
@@ -1723,7 +1727,13 @@ function refreshFeedMarks(){
     // A rewound entry stays on screen — the feed is a record of what was said,
     // not of what survived — but it is struck through so the log still reads
     // straight after a Nope has erased something out of the middle of it.
-    const gone = !S.journal.some(x => x.id === jid);
+    //
+    // Only entries new enough to still be in the journal can be judged. The
+    // journal is capped, and online a terminal is sent a shorter tail of it
+    // than the feed it has to mark up; without this every old line would be
+    // struck through for having fallen off the end.
+    const oldestKnown = S.journal.length ? S.journal[0].id : Infinity;
+    const gone = jid >= oldestKnown && !S.journal.some(x => x.id === jid);
     el.classList.toggle("undone", gone);
     const isLive = !!live && live.id === jid;
     el.classList.toggle("livewindow", isLive);
@@ -2331,7 +2341,8 @@ function chooseVictim(victims, sel){
   html += `</div>`;
   if (vag && vag.chooseVictim){
     const pickId = vag.chooseVictim(victims, sel).id;
-    setTimeout(function(){ window.__pickVictim(pickId); }, AI_PACE);
+    const gameAtCall = S;
+    setTimeout(function(){ if (S === gameAtCall) window.__pickVictim(pickId); }, AI_PACE);
   } else {
     openModal("Choose a victim", html, []);
   }
@@ -3597,7 +3608,11 @@ function discardDialog(p, n, done){
     for (const r of RES) take(p, r, pick[r] || 0);
     logMsg("<b>" + p.name + "</b> discards " + n + ".");
     render();
-    setTimeout(done, AI_PACE);
+    // Deferred so the discard is visible before play moves on. If a new game
+    // has started by the time it fires, it belongs to a game that no longer
+    // exists — S is a fresh object then, and continuing would reach into it.
+    const gameAtCall = S;
+    setTimeout(function(){ if (S === gameAtCall) done(); }, AI_PACE);
     return;
   }
   const pick = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };

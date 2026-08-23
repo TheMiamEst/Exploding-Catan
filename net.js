@@ -20,11 +20,15 @@
    WHAT GOES OVER THE WIRE
      /rooms/CODE/meta            room settings, who is hosting
      /rooms/CODE/seats/{n}       roster: who is sitting where
-     /rooms/CODE/view/{n}        host → that seat: the whole redacted state
+     /rooms/CODE/pub             host → everyone: the log and the feed
+     /rooms/CODE/view/{n}        host → that seat: the rest, redacted
      /rooms/CODE/intents         everyone → host: "this is what I did"
 
-   The state blob is a few KB and is rewritten in full after every action.
-   For six people taking turns that is nothing, and it cannot drift.
+   The state is rewritten in full after every action rather than diffed. It
+   cannot drift, and for six people taking turns the traffic is nothing — the
+   private half is about 4KB a seat. The log and the feed are much the biggest
+   part of it and are the same for everybody, so they go out once to a shared
+   path instead of six near-identical times.
 
    HONEST LIMITS
      · The host can read the whole state in devtools. Fixing that needs a real
@@ -36,8 +40,15 @@
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // no I/O/0/1 to read aloud
 const PUBLISH_DEBOUNCE = 60;      // ms — coalesce the burst of renders per action
-const FEED_KEEP = 140;            // feed lines carried in the state blob
-const LOG_KEEP  = 200;
+/* The feed panel shows about fifteen lines at a time and scrolls. Forty gives
+   a terminal some scrollback without dominating the traffic — feed HTML is by
+   far the biggest thing on the wire, and the whole state is resent after every
+   action rather than diffed. If it ever feels sluggish, the next step is to
+   push feed lines to their own append-only path instead of resending them;
+   they are immutable once written, so nothing else would have to change.
+   S.log is deliberately NOT sent at all: it is written but never displayed. */
+const FEED_KEEP = 40;
+const JOURNAL_KEEP = 24;      // enough to judge the live entry and mark the feed
 
 /* Inline handlers a shipped dialog is allowed to call back into. Anything the
    game puts on `window.__…` for its own modals goes here; nothing else can be
@@ -156,14 +167,13 @@ function serializeGame(){
 
     // Snapshots stay home: they are big, and a terminal never rewinds
     // anything. `snap: 1` is the marker canNopeEntry actually tests.
-    journal: S.journal.slice(-40).map(e => ({
+    journal: S.journal.slice(-JOURNAL_KEEP).map(e => ({
       id: e.id, turn: e.turn, actor: e.actor, target: e.target, kind: e.kind,
       card: e.card ? { key: e.card.key, flavor: e.card.flavor || null } : null,
       payload: e.payload || null, nopeable: e.nopeable, noped: e.noped,
       plain: e.plain, snap: 1
     })),
-    feed: (S.feed || []).slice(-FEED_KEEP),
-    log:  (S.log  || []).slice(-LOG_KEEP)
+    feed: (S.feed || []).slice(-FEED_KEEP)
   };
 }
 
@@ -229,7 +239,6 @@ function applyGame(b){
   S.journal = arr(b.journal, (b.journal && b.journal.length) || 0).filter(Boolean)
                 .map(e => Object.assign({ payload:null, card:null }, e));
   S.feed = arr(b.feed, (b.feed && b.feed.length) || 0).filter(Boolean);
-  S.log  = arr(b.log,  (b.log  && b.log.length)  || 0).filter(Boolean);
 
   NET.roster = arr(b.roster, b.n).map((r, i) => r || { seat:i, name: PLAYER_NAMES[i], bot:true });
 
@@ -258,9 +267,17 @@ function publish(){
   if (!isHost() || !NET.started) return;
   NET.pubTimer = null;
   const blob = clean(serializeGame());
+
+  // The log and the feed are the same for everyone — they ARE the public
+  // record — so they go out once rather than six near-identical times. They
+  // are also most of the bytes, which is the practical reason.
+  const pub = { journal: blob.journal, feed: blob.feed };
+  delete blob.journal;
+  delete blob.feed;
+
   const out = {};
   for (let s = 0; s < blob.n; s++) out[s] = clean(viewFor(blob, s));
-  NET.room.child("view").set(out);
+  NET.room.update({ pub: pub, view: out });
 }
 
 NET.publishSoon = function(){
@@ -345,8 +362,10 @@ NET.takePromptSeat = function(){
 /* Called from openModal. Returns true when the dialog has been sent away and
    must not be drawn here. */
 NET.shipModal = function(title, bodyHTML, buttons){
-  if (!isHost() || !NET.started) return false;
+  // Read it either way, so a tag left over from an offline game can never send
+  // the first online dialog to the wrong person.
   const seat = NET.takePromptSeat();
+  if (!isHost() || !NET.started) return false;
   if (seat === null || seat === undefined) return false;
   if (seat === NET.seat) return false;                 // it is the host's own
   if (!NET.roster[seat] || NET.roster[seat].bot) return false;   // a bot answers inline
@@ -524,16 +543,24 @@ function startGuest(code, name){
     NET.room.child("meta/started").on("value", s => {
       if (s.val()) NET.started = true;
     });
+    // Two halves arriving separately: draw only once both are in hand, and
+    // only when the private half is actually newer than what is on screen.
+    const tryApply = () => {
+      if (!NET.lastPub || !NET.lastView) return;
+      if (NET.lastView.v === NET.lastV) return;
+      NET.lastV = NET.lastView.v;
+      NET.started = true;
+      if (document.querySelector(".overlay") && !NET.shownPrompt) closeModal();
+      applyGame(Object.assign({}, NET.lastView,
+                { journal: NET.lastPub.journal, feed: NET.lastPub.feed }));
+      render();
+    };
+    NET.room.child("pub").on("value", s => { NET.lastPub = s.val() || {}; tryApply(); });
     NET.room.child("view").on("value", s => {
       const all = s.val();
       if (!all || NET.seat === null) return;
-      const mine = all[NET.seat];
-      if (!mine || mine.v === NET.lastV) return;
-      NET.lastV = mine.v;
-      NET.started = true;
-      if (document.querySelector(".overlay") && !NET.shownPrompt) closeModal();
-      applyGame(mine);
-      render();
+      NET.lastView = all[NET.seat] || null;
+      tryApply();
     });
     NET.room.child("prompt").on("value", s => {
       const p = s.val();
@@ -636,5 +663,10 @@ NET.isGuest    = isGuest;
 NET.mySeat     = function(){ return NET.seat; };
 NET.applyGame  = applyGame;
 NET.publishNow = publish;
+/* Exposed for poking at from the console when something looks wrong on one
+   screen and right on another: NET.viewFor(NET.serializeGame(), 2). */
+NET.serializeGame = serializeGame;
+NET.viewFor    = viewFor;
+NET.clean      = clean;
 
 })();

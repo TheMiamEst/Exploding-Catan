@@ -114,7 +114,19 @@ anything. It sends what you did ("I dropped card 2 on log entry 14") and draws
 the state the host sends back, in full, after every action.
 
 The host redacts before sending: each seat gets its own cards and placeholders
-for everyone else's, so the bluffing the Nope layer is built on survives.
+for everyone else's, so the bluffing the Nope layer is built on survives. What
+you will see under your room in the Firebase console:
+
+| path | what it holds |
+|---|---|
+| `pub` | the log and the event feed — the same for everybody, so it goes out once |
+| `view/0` … `view/5` | one seat's private state: hands, board, whose turn it is |
+| `prompt` | a dialog the host has handed to one player to answer |
+| `intents` | what players did, consumed and deleted by the host |
+
+About 24 KB reaches each browser per action, so a long six-player game costs
+roughly 35 MB of the free tier's 10 GB a month. Rooms delete themselves when
+the host leaves.
 
 Two things follow from having no server, and both are deliberate:
 
