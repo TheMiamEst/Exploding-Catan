@@ -758,7 +758,7 @@ function makeAgent(pid){
           return true;
         }
       }
-      if (hasNope && e.actor !== p.id && nopeJournalDecision(p, e)){
+      if (hasNope && canNopeFor(e, p.id) && nopeJournalDecision(p, e)){
         nopeEntry(e.id, p.id);
         return true;
       }
@@ -782,7 +782,7 @@ function makeAgent(pid){
       // Defuse first: it costs the table nothing else, where a Nope throws away
       // a roll everybody else may have been happy with.
       if (fresh("defuse") && canDefuseEntry(e, p.id)) return defuseEntry(e.id, p.id);
-      if (fresh("nope")   && e.actor !== p.id)        return nopeEntry(e.id, p.id);
+      if (fresh("nope")   && canNopeFor(e, p.id))    return nopeEntry(e.id, p.id);
       return false;
     },
 

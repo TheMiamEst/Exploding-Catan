@@ -180,14 +180,20 @@ Three cases are worth calling out:
   roller's turn — ending a turn is no answer to a seven, since the robber has
   already moved and the hands have already been cut by the time the turn is
   over. This is what makes a Nope worth holding against a seven you cannot
-  afford: five sixths of the rerolls are not sevens.
+  afford: five sixths of the rerolls are not sevens. A roll is also the one
+  line you may Nope on **your own** turn, for exactly that reason.
+- **A build** loses you the building, not the resources. What you spent stays
+  spent — the same rule a Noped turn has always followed, and the reason a
+  Nope is a real punishment rather than a free undo.
 - **A trade** — between players or with the bank — puts the resources back
   where they came from. Trades are journalled like anything else, so the one
   move that can hand somebody the card they were missing is answerable too.
 - **A seven can also be Defused**, which is the cheaper answer: it buys one
   hand out of the cut and leaves the rest of the roll standing. The robber
   still moves and everybody else still pays. Anyone the seven is about to take
-  from may spend it, including the player who rolled it.
+  from may spend it — except whoever rolled it. Your own seven is yours to
+  wear; you can Nope it and roll again, which costs you the number rather than
+  sparing you the cut.
 
 ---
 

@@ -1964,7 +1964,7 @@ function drawBottom(){
                         (S.phase === "main" || S.phase === "roll")) || offTurn;
       const canAnswer = !locked && live.some(e =>
                         (c.key === "defuse" && canDefuseEntry(e, p.id)) ||
-                        (c.key === "nope"   && e.actor !== p.id));
+                        (c.key === "nope"   && canNopeFor(e, p.id)));
       const held = dragCard && dragCard.ownerId === p.id && dragCard.idx === i;
       const face = cardArt(c);
       let cls = offTurn ? "playable offturn" : playable ? "playable"
@@ -2100,8 +2100,10 @@ function refreshFeedMarks(){
     let marks = "";
     if (hasDefuse && canDefuseEntry(entry, me))
       marks += markFace("defuse", "defuse", "You can Defuse this — drag your Defuse onto this line");
-    if (hasNope && entry.actor !== me)
-      marks += markFace("nope", "nope", "You can Nope this — drag your Nope onto this line");
+    if (hasNope && canNopeFor(entry, me))
+      marks += markFace("nope", "nope", entry.kind === "roll"
+        ? "You can Nope this — drag your Nope onto this line to reroll"
+        : "You can Nope this — drag your Nope onto this line");
     if (!marks) return;
     el.classList.add("answerable");
     const wrap = document.createElement("div");
@@ -2433,7 +2435,15 @@ function edgeClick(eid){
 
 /* ── the placements themselves ─────────────────────────────────────── */
 
+/* Paid BEFORE the snapshot, here and in placeCity and placeRoad, and it has to
+   be. A Nope undoes what you built; it does not refund it. That is the rule
+   freshTurnRecord has always stated for a Noped turn ("resources spent are
+   still never refunded") and the one a Noped card purchase already followed,
+   because drawKitten happens to snapshot after the buyer has paid. Builds
+   snapshotted first, so rewinding to that snapshot handed the cost back — a
+   Noped city cost its builder nothing at all. */
 function placeSettlement(vid, setup){
+  if (!setup) pay(cur(), COST.settlement);
   const snapBefore = snapAll();
   vertices[vid].owner = S.cur;
   vertices[vid].type = "settlement";
@@ -2461,7 +2471,6 @@ function placeSettlement(vid, setup){
     return;
   }
 
-  pay(cur(), COST.settlement);
   if (S.turnRec) S.turnRec.verts.push({ vid, prevType: null });
   logMsg(`<b>${cur().name}</b> builds a settlement.`);
   logAction(pdot(cur()) + " builds a <b>settlement</b>", "buy", { snap: snapBefore });
@@ -2470,8 +2479,8 @@ function placeSettlement(vid, setup){
 }
 
 function placeCity(vid){
-  const snapBefore = snapAll();
   pay(cur(), COST.city);
+  const snapBefore = snapAll();
   vertices[vid].type = "city";
   cur().settlements--; cur().cities++;
   if (S.turnRec) S.turnRec.verts.push({ vid, prevType: "settlement" });
@@ -2481,6 +2490,7 @@ function placeCity(vid){
 }
 
 function placeRoad(eid, setup){
+  if (!setup) pay(cur(), COST.road);
   const snapBefore = snapAll();
   edges[eid].owner = S.cur;
   cur().roads++;
@@ -2504,7 +2514,6 @@ function placeRoad(eid, setup){
     return;
   }
 
-  pay(cur(), COST.road);
   if (S.turnRec) S.turnRec.edges.push(eid);
   logMsg(`<b>${cur().name}</b> builds a road.`);
   logAction(pdot(cur()) + " builds a <b>road</b>", "buy", { snap: snapBefore });
@@ -3202,6 +3211,16 @@ function canNopeEntry(e){
   return true;
 }
 
+/* May THIS player Nope this entry?
+
+   A Nope is somebody else's objection to what you did, so normally not your
+   own line — except a roll, where a Nope is a reroll and wanting a different
+   number of your own is the whole point. You pay a card for it either way. */
+function canNopeFor(e, pid){
+  if (!canNopeEntry(e)) return false;
+  return e.kind === "roll" || e.actor !== pid;
+}
+
 /* A Defuse only answers an attack that landed on you. */
 /* A Defuse only answers an attack that landed on you — and it cannot answer
    another Defuse. Anything at all can be Noped, but "no you" does not stack
@@ -3211,9 +3230,13 @@ function canDefuseEntry(e, pid){
   if (!canNopeEntry(e)) return false;
   // A seven is not a card, but it is aimed at everybody holding more than
   // seven, and a Defuse answers it for exactly one of them. Only while the cut
-  // is still owed, and only by somebody it is still owed by — which includes
-  // the player who rolled it, since a seven takes from its own roller too.
-  if (e.kind === "roll") return e.show === "seven" && owesSevenCut(pid);
+  // is still owed, and only by somebody it is still owed by — and never by the
+  // player who rolled it. Their own seven is theirs to wear: a Defuse would be
+  // a one-card exemption from a roll they made, where everybody else is only
+  // buying out of somebody else's bad luck. They can still Nope it and roll
+  // again, which costs them the number rather than sparing them the cut.
+  if (e.kind === "roll")
+    return e.show === "seven" && e.actor !== pid && owesSevenCut(pid);
   if (!e.card) return false;           // a reaction, not a card aimed at anyone
   if (e.actor === pid) return false;
   if (e.card.key === "alter"){
@@ -3257,7 +3280,7 @@ function promptReactions(pid, jid){
   if (p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, pid))
     out.push({ label: roll ? "🛡 Defuse the 7" : "🛡 Defuse it", cls:"react",
                fn: () => { closeModal(); defuseEntry(e.id, pid); } });
-  if (p.cards.some(c => c.key === "nope" && fresh(c)) && e.actor !== pid)
+  if (p.cards.some(c => c.key === "nope" && fresh(c)) && canNopeFor(e, pid))
     out.push({ label: roll ? "🚫 Nope it — reroll" : "🚫 Nope it", cls:"reactno",
                fn: () => { closeModal(); nopeEntry(e.id, pid); } });
   return out;
@@ -3316,6 +3339,9 @@ function nopeEntry(id, noperId){
   if (!noper.cards.some(c => c.key === "nope")) return false;
 
   const label = e.plain;
+  // Your own roll is the one line you are allowed to Nope, so the log has to
+  // read for that case too — "Red Nopes Red rolls 7" is nonsense.
+  const selfRoll = noperId === e.actor && e.kind === "roll";
   let reroll = false;
   // Whose turn is being cut short. Off-turn plays (an Attack thrown during
   // somebody else's turn), and anything from a turn that has already handed
@@ -3367,10 +3393,12 @@ function nopeEntry(id, noperId){
 
   // A Nope can be Noped. It is the one reaction that can, and the hand-over
   // window is what makes it reachable.
-  const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " + esc(label), "defend",
+  const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " +
+            (selfRoll ? "their own roll" : esc(label)), "defend",
             { actor: noperId, snap: undone, nopeable: true, turnBack: turnBack,
               spent: { pid: noperId, key: "nope" }, show: "nope" });
-  logMsg(`<b>${noper.name}</b> Nopes: ${esc(label)}`);
+  logMsg(selfRoll ? `<b>${noper.name}</b> Nopes their own roll.`
+                  : `<b>${noper.name}</b> Nopes: ${esc(label)}`);
 
   // Noping a Defuse cancels the "no you", so the original card is simply
   // played again — at the target it was first aimed at, and by the player who
@@ -3429,8 +3457,10 @@ function nopeEntry(id, noperId){
     S.phase = "roll";
     S.rolled = null;
     S.seven = null;
-    announce(pdot(victim) + " is Noped — the dice are thrown again", "defend");
-    logMsg(`<b>${victim.name}</b>'s roll is Noped — they roll again.`);
+    announce(selfRoll ? pdot(victim) + " Nopes their own roll — throwing again"
+                      : pdot(victim) + " is Noped — the dice are thrown again", "defend");
+    logMsg(selfRoll ? `<b>${victim.name}</b> Nopes their own roll and throws again.`
+                    : `<b>${victim.name}</b>'s roll is Noped — they roll again.`);
     doRoll();
     render();
     botTick();
@@ -4252,26 +4282,45 @@ let modalMini = false;
 let modalKey  = null;
 
 function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
-  dismissLocalModal();
-  if (modalKey !== title){ modalKey = title; modalMini = false; }
-  modalEl = document.createElement("div");
+  // Same dialog redrawing itself, or a different one taking the screen? The
+  // title says which. A redraw is written over the top of what is already
+  // there rather than replacing it: these dialogs reopen on every click of a
+  // counter, and tearing the overlay out to build a new one flashed, dropped
+  // the scroll position in a long dialog and lost the folded state with it.
+  if (!modalEl || modalKey !== title){
+    dismissLocalModal();
+    modalKey = title;
+    modalMini = false;
+    modalEl = document.createElement("div");
+    modalEl.innerHTML = `<div class="modal"><h2></h2><div class="mbody"></div>
+                         <div class="actions"></div></div>`;
+    // Folded away, the whole tab is the way back — the button alone is a small
+    // target for something you fold and unfold several times in a turn. Bound
+    // once, to an <h2> that now outlives every redraw.
+    modalEl.querySelector("h2").addEventListener("click", (ev) => {
+      if (modalMini && !ev.target.closest(".minibtn")) toggleModalMini();
+    });
+    document.body.appendChild(modalEl);
+  }
   modalEl.className = "overlay" + (canMini ? " canmini" : "") +
                       (canMini && modalMini ? " mini" : "");
+
   const mini = canMini
     ? `<button class="minibtn" onclick="toggleModalMini()"
          title="Fold this away — the board and the log stay live, and it is still owed"
        ><span class="down">−</span><span class="up">▴</span></button>` : "";
-  modalEl.innerHTML = `<div class="modal"><h2>${mini}<span class="mtitle">${title}</span></h2>${bodyHTML}
-    ${btnsHTML ? `<div class="actions">${btnsHTML}</div>` : ""}</div>`;
-  // Folded away, the whole tab is the way back — the button alone is a small
-  // target for something you fold and unfold several times in a turn.
-  if (canMini){
-    const head = modalEl.querySelector("h2");
-    if (head) head.addEventListener("click", (ev) => {
-      if (modalMini && !ev.target.closest(".minibtn")) toggleModalMini();
-    });
-  }
-  document.body.appendChild(modalEl);
+  // Written only where it differs. An identical write is not free: it drops
+  // any text selection inside the dialog and costs a layout for nothing.
+  const put = (el, html) => {
+    if (!el || el.dataset.html === html) return;
+    el.dataset.html = html;
+    el.innerHTML = html;
+  };
+  put(modalEl.querySelector("h2"), mini + `<span class="mtitle">${title}</span>`);
+  put(modalEl.querySelector(".mbody"), bodyHTML);
+  const acts = modalEl.querySelector(".actions");
+  put(acts, btnsHTML || "");
+  acts.style.display = btnsHTML ? "" : "none";
 }
 function dismissLocalModal(){
   if (modalEl){ modalEl.remove(); modalEl = null; }
@@ -4300,9 +4349,18 @@ function promptFor(pid){ if (window.NET) NET.promptSeat = pid; }
    forced ones want it — a discard, a card aimed at you — and only because
    answering them is sometimes better done from the log than from the dialog. */
 function openModal(title, bodyHTML, buttons, opts){
-  dismissLocalModal();
   const canMini = !!(opts && opts.mini);
-  if (window.NET && NET.shipModal && NET.shipModal(title, bodyHTML, buttons, canMini)) return;
+  // Shipped elsewhere: nothing to draw here, and anything already on this
+  // screen belongs to a dialog that has been handed away.
+  if (window.NET && NET.shipModal && NET.shipModal(title, bodyHTML, buttons, canMini)){
+    dismissLocalModal();
+    forgetModalFold();
+    return;
+  }
+  // No dismissal on this path — drawLocalModal decides for itself whether this
+  // is a new dialog or the same one redrawing, and reuses the element when it
+  // can. Clearing it here first made every redraw a new dialog, which is the
+  // flicker these panels and prompts used to have.
   let btns = "";
   (buttons || []).forEach((b, i) => {
     btns += `<button class="${b.cls || ""}" ${b.disabled ? "disabled" : ""} onclick="window.__mb(${i})">${b.label}</button>`;
@@ -4488,26 +4546,61 @@ function pendingAnswerers(){
   return out;
 }
 
+/* Redrawn in place, panel by panel, rather than by replacing the whole column.
+   Every click on a counter reopens its panel — that is how these dialogs are
+   written — and rebuilding the column's innerHTML each time tore the panel out
+   of the document and put a new one back, which replayed the slide-in
+   animation and flashed. Nothing about the panel had actually changed except
+   the number under the pointer.
+
+   So: the container is only touched when a panel arrives or leaves, and a
+   panel that is merely redrawing has its title, body and buttons written over
+   the top of themselves. The element survives, so the animation does not
+   replay and neither does the flicker. */
 function drawPanels(){
   const box = document.getElementById("panels");
   if (!box) return;
-  let h = "";
-  for (const key in panelBox){
+
+  const keys = Object.keys(panelBox).filter(k => panelBox[k].body !== undefined);
+
+  // Gone: panels that closed while this one was open.
+  for (const el of Array.from(box.children))
+    if (keys.indexOf(el.dataset.key) < 0) el.remove();
+
+  let prev = null;
+  for (const key of keys){
     const p = panelBox[key];
-    if (p.body === undefined) continue;             // it lives on somebody else's screen
     const mine = p.seat !== null && p.seat !== undefined;
     let btns = "";
     (p.buttons || []).forEach((b, i) => {
       btns += `<button class="${b.cls || ""}" ${b.disabled ? "disabled" : ""}
                  onclick="panelClick('${key}',${i})">${b.label}</button>`;
     });
-    h += `<div class="panel ${mine ? "forme" : ""}" data-key="${key}">
-            <h3>${p.title}</h3>${p.body}
-            ${btns ? `<div class="actions">${btns}</div>` : ""}
-          </div>`;
+    const inner = `<h3>${p.title}</h3>${p.body}` +
+                  (btns ? `<div class="actions">${btns}</div>` : "");
+
+    let el = box.querySelector('.panel[data-key="' + key + '"]');
+    if (!el){
+      el = document.createElement("div");
+      el.dataset.key = key;
+      el.className = "panel";                       // .panel animates itself in
+      box.appendChild(el);
+    }
+    el.classList.toggle("forme", mine);
+    // Compared before writing: an identical write still resets any text
+    // selection inside the panel, and costs a layout for nothing.
+    if (el.dataset.html !== inner){
+      el.dataset.html = inner;
+      el.innerHTML = inner;
+    }
+    // Keep the column in the order the box lists them, without moving anything
+    // that is already where it belongs — a move re-runs the animation too.
+    const want = prev ? prev.nextSibling : box.firstChild;
+    if (el !== want) box.insertBefore(el, want);
+    prev = el;
   }
-  box.innerHTML = h;
-  document.body.classList.toggle("haspanel", !!h);
+
+  document.body.classList.toggle("haspanel", !!keys.length);
 }
 
 function panelClick(key, i){
@@ -4753,7 +4846,7 @@ function dropAllowed(info, drop){
   if (drop.kind === "entry"){
     const e = S.journal.find(x => x.id === drop.jid);
     if (!e) return false;
-    if (key === "nope")   return canNopeEntry(e) && e.actor !== me;
+    if (key === "nope")   return canNopeFor(e, me);
     if (key === "defuse") return canDefuseEntry(e, me);
     return false;
   }
