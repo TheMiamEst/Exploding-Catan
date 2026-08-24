@@ -518,18 +518,6 @@
     box-shadow:0 10px 30px #000a; animation:capin .45s .12s ease-out both;
   }
   .showcap.seven{border-color:var(--danger); color:#ffd9d9}
-  /* Answering something you did. The card takes a ring and the caption a
-     label, so you never have to read the sentence to know it concerns you. */
-  .showcard.atyou{
-    border-color:#e0b64b;
-    box-shadow:0 26px 64px #000d, 0 0 0 5px #0007, 0 0 0 8px #e0b64b66;
-  }
-  .showcap.atyou{border-color:#e0b64b}
-  .showcap .atyou{
-    display:inline-block; background:#e0b64b; color:#161a20; font-weight:700;
-    font-size:10.5px; letter-spacing:.3px; border-radius:5px;
-    padding:1px 6px; margin-right:6px; vertical-align:1px; text-transform:uppercase;
-  }
   @keyframes capin{from{transform:translateY(10px); opacity:0}to{transform:none; opacity:1}}
 
   /* Dialogs that dock beside the board rather than covering it. A trade or a
@@ -715,7 +703,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26b";
+const GAME_VERSION = "2026-08-26c";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3353,11 +3341,6 @@ function logAction(html, kind, opts){
     // Undoing this must not also end its actor's turn: it was defensive, and
     // played out of turn. Set by the Defuse spent on a seven.
     turnSafe: !!opts.turnSafe,
-    // Whose play this is an answer to. The entry it answers is spliced out of
-    // the journal by the rewind, so the only record of who was on the wrong
-    // end of it is here — and that is what lets the reveal tell the person it
-    // happened TO that it happened to them.
-    against: (opts.against === undefined) ? null : opts.against,
     nopeable: opts.nopeable !== false,
     noped: false,
     plain: String(html).replace(/<[^>]+>/g, "").trim()
@@ -3601,7 +3584,7 @@ function nopeEntry(id, noperId){
   const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " +
             (selfRoll ? "their own roll" : answering), "defend",
             { actor: noperId, snap: undone, nopeable: true, turnBack: turnBack,
-              against: e.actor, spent: { pid: noperId, key: "nope" }, show: "nope" });
+              spent: { pid: noperId, key: "nope" }, show: "nope" });
   logMsg(selfRoll ? `<b>${noper.name}</b> Nopes their own roll.`
                   : `<b>${noper.name}</b> Nopes: ${esc(label)}`);
 
@@ -3736,7 +3719,7 @@ function defuseSeven(e, defuserId){
   // end the turn of a roller who Defused their own seven.
   logAction(pdot(d) + " <b>Defuses</b> the seven — their hand is spared", "defend",
             { actor: defuserId, snap: snapBefore, nopeable: true, turnSafe: true,
-              against: e.actor, spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
+              spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
 
   closeModal();
   // Only re-ask when the queue has actually moved on. Defusing from your own
@@ -3770,7 +3753,7 @@ function defuseEntry(id, defuserId){
      simply played again, at the target it was first aimed at. */
   const preCard = e.snap;
   const redo = { card: card, actor: victimId, target: e.target, payload: payload };
-  const answerable = { snap: preCard, redo: redo, nopeable: true, against: victimId,
+  const answerable = { snap: preCard, redo: redo, nopeable: true,
                        spent: { pid: defuserId, key: "defuse" } };
 
   S.rewinds++;
@@ -4643,36 +4626,61 @@ function checkBoardChanges(){
   if (was.robber !== now.robber) pulseHex(now.robber, "robber", "♟");
 }
 
+/* Reveals QUEUE. They used to overwrite: whatever was on screen was thrown
+   away the instant the next one arrived, which is fine for two unrelated plays
+   and useless for the pair that matter most — an action and the answer to it.
+   A Nope and the Nope that cancels it turn over the same card face, so cutting
+   the first one off and dropping the second in its place looks like nothing
+   happened at all. Answering somebody now waits for their card to finish.
+
+   A backlog is capped and hurried rather than allowed to run minutes behind
+   the board: only so many may wait, the oldest waiting one is dropped when
+   that fills, and a card with something behind it holds for a shorter beat. */
+const SHOWCASE_FADE = 400;
+const SHOWCASE_GAP  = 140;        // a breath between one card and the next
+const SHOWCASE_RUSH = 1100;       // dwell while others are waiting their turn
+const SHOWCASE_WAIT = 2;          // how many may queue behind the one showing
+
+let showQueue = [];
+let showing = false;
+
 function clearShowcase(){
   if (showcaseTimer){ clearTimeout(showcaseTimer); showcaseTimer = null; }
+  showQueue = [];
+  showing = false;
   const el = document.getElementById("showcase");
   if (el){ el.hidden = true; el.className = ""; el.innerHTML = ""; }
 }
 
 function showcase(bodyHTML, capHTML, capCls, ms){
+  showQueue.push({ body: bodyHTML, cap: capHTML, cls: capCls || "",
+                   ms: ms || SHOWCASE_MS });
+  // Keep the newest — a stale card is worth less than an accurate board.
+  while (showQueue.length > SHOWCASE_WAIT) showQueue.shift();
+  if (!showing) runShowcase();
+}
+
+function runShowcase(){
   const el = document.getElementById("showcase");
-  if (!el) return;
+  const next = showQueue.shift();
+  if (!el || !next){ showing = false; return; }
+  showing = true;
   if (showcaseTimer) clearTimeout(showcaseTimer);
   el.className = "";
   el.hidden = false;
-  el.innerHTML = bodyHTML + '<div class="showcap ' + (capCls || "") + '">' + capHTML + "</div>";
+  el.innerHTML = next.body + '<div class="showcap ' + next.cls + '">' + next.cap + "</div>";
+  // Something behind it: show this one briskly rather than make the answer
+  // wait a full beat to appear.
+  const dwell = showQueue.length ? Math.min(next.ms, SHOWCASE_RUSH) : next.ms;
   showcaseTimer = setTimeout(() => {
     el.className = "out";
-    showcaseTimer = setTimeout(clearShowcase, 400);
-  }, ms || SHOWCASE_MS);
-}
-
-/* Does this reveal concern the person at this screen, and in what way?
-   Returns the words for the badge, or null for a play that is somebody else's
-   business. Answering is not the same as being targeted: a Nope played on your
-   Nope has you as neither actor nor target, and is entirely about you. */
-function aimedAtViewer(e){
-  if (!S || !e) return null;
-  const me = viewSeat();
-  if (e.actor === me) return null;                  // it is your own play
-  if (e.against === me) return "answering you";     // an answer to what you did
-  if (e.target === me)  return "aimed at you";      // a card played on you
-  return null;
+    showcaseTimer = setTimeout(() => {
+      el.hidden = true; el.className = ""; el.innerHTML = "";
+      showcaseTimer = null;
+      if (showQueue.length) showcaseTimer = setTimeout(runShowcase, SHOWCASE_GAP);
+      else showing = false;
+    }, SHOWCASE_FADE);
+  }, dwell);
 }
 
 /* The newest journal entry, if it is something worth turning over. */
@@ -4703,17 +4711,9 @@ function checkShowcase(){
   const def = KITTEN[e.show];
   if (!def) return;
   const face = cardArt({ key: e.show, flavor: (e.card && e.card.flavor) || null });
-  // A Nope and a counter-Nope turn over the same card face, so on its own the
-  // reveal cannot tell you whether you are watching your own play or the
-  // answer to it. When it IS the answer to yours, say so and ring it — that
-  // second of "wait, what just happened" was the whole complaint.
-  const at = aimedAtViewer(e);
-  showcase('<div class="showcard' + (at ? " atyou" : "") + '">' +
+  showcase('<div class="showcard">' +
              (face ? '<img src="' + face + '" alt="">' : '<span class="kn">' + esc(def.name) + "</span>") +
-           "</div>",
-           (at ? '<span class="atyou">' + at + "</span> " : "") +
-             esc(e.plain).replace(/\s+/g, " "),
-           at ? "atyou" : "");
+           "</div>", esc(e.plain).replace(/\s+/g, " "));
 }
 
 /* ══ SIDE PANELS ═════════════════════════════════════════════════
@@ -5186,7 +5186,7 @@ function nopeWholeTurn(ownerId, pid){
                      rolled: S.rolled ? S.rolled.slice() : null, extraTurn: S.extraTurn };
   const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " + pdot(victim) + "'s turn",
             "defend", { actor: ownerId, snap: snapAll(), nopeable: true, turnBack: turnBack,
-                        against: pid, spent: { pid: ownerId, key: "nope" }, show: "nope" });
+                        spent: { pid: ownerId, key: "nope" }, show: "nope" });
   clearImplodeClock();
   cancelTurn(pid, totalVP(victim) >= 10);     // cancelTurn ends the turn itself
   noteEntry.turn = S.turnCounter;             // it belongs to the turn it made
@@ -5337,13 +5337,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26b"></script>
+<script src="ai.js?v=2026-08-26c"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26b"></script>
-<script src="net.js?v=2026-08-26b"></script>
+<script src="firebase-config.js?v=2026-08-26c"></script>
+<script src="net.js?v=2026-08-26c"></script>
 </body>
 </html>

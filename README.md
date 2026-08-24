@@ -168,12 +168,15 @@ with. Nobody can answer for anybody else.
 If a Nope or a Defuse rewinds the board while a panel is open, the panel is
 closed — whatever it was offering may no longer be true.
 
-A card turning over in the middle of the board is captioned **answering you**
-when it undoes something you did, and **aimed at you** when it is a card played
-on you, with a ring round the card to match. A Nope and the Nope that cancels
-it show the same face, so without that there is no way to tell your own play
-from the answer to it — which is a bad second to spend working out that your
-Nope has just been handed back.
+Cards turning over in the middle of the board queue rather than overwrite each
+other. They used to overwrite, which is fine for two unrelated plays and
+useless for the pair that matter most: an action and the answer to it. A Nope
+and the Nope that cancels it show the same face, so cutting the first one off
+and dropping the second in its place looked like nothing had happened — and
+being told your Nope has been handed back is exactly what you needed to see.
+Answering somebody now waits for their card to finish. A backlog is capped at
+two waiting and each card is held for a shorter beat while others are queued,
+so the reveal never runs far behind the board.
 
 Two robber moves can be owed at once — a seven, and a Knight played while
 that seven's discards were still being paid. They queue rather than overwrite
