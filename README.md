@@ -108,6 +108,12 @@ build from a private GitHub repo on their free tiers.
    https://themiamest.github.io/Exploding-Catan/
    ```
 
+The build tag in the header — top right, next to the buttons — is the version
+you are running. It changes with every release, so after a `git push` you can
+reload and check the tag actually moved before blaming the game. Everyone
+playing together has to be on the same one, and a terminal on a different
+build says so out loud.
+
 To ship a change after that:
 
 ```bash
@@ -172,6 +178,10 @@ nothing behind it.
 Moving the robber and swapping the second Alter the Future token both take
 two clicks, the same arm-then-confirm a build takes. Neither can be taken
 back once it lands.
+
+A Feral Kitten is a point the moment it is in your hand, not the turn after —
+it is never played, so the "not until next turn" rule does not touch it. Draw
+one at nine points and you win there and then, unless somebody Nopes it.
 
 Your own points on the seat strip include the Feral Kittens in your hand and
 are marked to say so; every other seat shows the public figure the table is

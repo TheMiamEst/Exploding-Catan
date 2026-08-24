@@ -194,6 +194,7 @@ function serializeGame(){
     deckLen: S.deck.length, discardLen: S.discard.length,
     longestRoad: S.longestRoad, largestArmy: S.largestArmy, roadLens: S.roadLens,
     implodeTurn: S.implodeTurn, implodeBy: S.implodeBy,
+    mode: S.mode || "normal",
     // Who a seven is still waiting on. Sent because canDefuseEntry asks it:
     // without it, a terminal cannot tell that the roll on its screen is still
     // answerable and draws no Defuse marker on the line.
@@ -272,6 +273,7 @@ function applyGame(b){
   S.largestArmy = b.largestArmy || { owner:null, n:0 };
   S.roadLens = arr(b.roadLens, b.n).map(x => x || 0);
   S.implodeTurn = b.implodeTurn; S.implodeBy = b.implodeBy;
+  S.mode = b.mode || "normal";
   S.seven = b.seven
     ? { actor: b.seven.actor, jid: b.seven.jid,
         queue: arr(b.seven.queue, b.n).filter(x => x !== null && x !== undefined) }
@@ -587,7 +589,10 @@ function startTable(){
   if (NET.room) NET.room.child("prompt").remove();
   if (typeof closeAllPanels === "function") closeAllPanels();
   window.AGENTS = {};
-  newGame(NET.roster.length);
+  // The opening the host chose in the lobby, the same one the local New Game
+  // dialog sets. It travels with the state, so every terminal knows which
+  // game it is watching.
+  newGame(NET.roster.length, (typeof GAME_MODE !== "undefined") ? GAME_MODE : "normal");
   const bots = NET.roster.map((r, i) => r.bot ? i : -1).filter(i => i >= 0);
   if (bots.length && typeof window.AI !== "undefined"){
     const humans = NET.roster.map((r, i) => r.bot ? -1 : i).filter(i => i >= 0);
@@ -606,6 +611,8 @@ function hostLobby(){
       '<p class="sub">Room code <b style="font-size:22px;letter-spacing:3px">' + NET.code + '</b>' +
       ' — read it out to your friends. They open the same page and press <b>Online → Join</b>.</p>' +
       seatRowsHTML() +
+      '<div style="height:10px"></div>' +
+      (typeof modePickerHTML === "function" ? modePickerHTML() : "") +
       '<div class="okbox" style="margin-top:10px">Empty seats are played by bots. Start when everyone is in ' +
       '— the seating is fixed once the game begins.</div>' +
       '<div class="rules" style="margin-top:8px">You are the host: your browser is running the game, so ' +
@@ -616,6 +623,12 @@ function hostLobby(){
     ]);
   };
   NET.onRoster = refresh;
+  // The opening buttons redraw the lobby they live in rather than the New Game
+  // dialog's, which is the only thing the two pickers do differently.
+  window.__mode = function(key){
+    if (typeof MODES !== "undefined" && MODES[key]) GAME_MODE = key;
+    refresh();
+  };
   refresh();
 }
 
@@ -753,7 +766,7 @@ window.onlineDialog = function(){
       '<p class="sub">Online play passes messages between browsers through a Firebase Realtime ' +
       'Database. It is free, and setting one up is a five minute job you only do once — ' +
       '<b>README.md</b> next to this file walks through it.</p>' +
-      '<p class="rules">Until then the local game works exactly as before: hot-seat, or you ' +
+      '<p class="rules">Until then the local game works exactly as before: you ' +
       'against the bots.</p>',
       [{ label:"Close", cls:"primary", fn: closeModal }]);
     return;

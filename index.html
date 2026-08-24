@@ -24,6 +24,12 @@
   header h1{font-size:16px;margin:0;letter-spacing:.5px}
   header h1 span{color:var(--accent)}
   header .spacer{flex:1}
+  /* Which opening is in play, beside the build tag. Shown only when it is not
+     the ordinary one — there is nothing to say about a normal game. */
+  #modeTag{
+    font-size:10.5px; color:#161a20; background:var(--accent); font-weight:700;
+    border-radius:6px; padding:2px 7px; letter-spacing:.2px; white-space:nowrap;
+  }
   button{
     background:var(--panel2); color:var(--ink); border:1px solid var(--line);
     border-radius:6px; padding:6px 11px; cursor:pointer; font:inherit;
@@ -649,6 +655,7 @@
 <header>
   <h1>Exploding <span>Catan</span></h1>
   <div class="spacer"></div>
+  <span id="modeTag" hidden></span>
   <span id="verTag" title="Build. Everyone playing together must match."></span>
   <button class="sm" onclick="onlineDialog()">Online</button>
   <button class="sm" onclick="showArt()">Art</button>
@@ -696,7 +703,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-25b";
+const GAME_VERSION = "2026-08-26a";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -754,6 +761,28 @@ const KITTEN = {
     text:"Move the robber and steal 1 resource from a player on that hex. Counts toward Largest Army."}
 };
 const KNIGHT_FLAVOR = ["Beard Cat","Watermelon Cat","Potato Cat","Rainbow Cat","Taco Cat"];
+
+/* How much of a head start everybody gets. Catan's opening is slow on purpose,
+   which is fine across a table and long over a browser tab; these shorten it
+   without touching anything else about the game. */
+const MODES = {
+  normal: {
+    name: "Normal",
+    blurb: "Catan's own opening. Only the second settlement pays out."
+  },
+  fast: {
+    name: "Fast track",
+    blurb: "Both opening settlements pay out, so everybody starts with roughly twice the resources."
+  },
+  fastplus: {
+    name: "Fast track +",
+    blurb: "Fast track, and everybody opens holding one random kitten card — dealt fresh, not off the 54, and never the Imploding Kitten."
+  }
+};
+/* The last mode chosen, reused by the online lobby so the host picks once. */
+let GAME_MODE = "normal";
+function modeOf(){ return (S && MODES[S.mode]) ? S.mode : "normal"; }
+function fastStart(){ return modeOf() !== "normal"; }
 
 /* Playable on anyone's turn, not just your own: a Nope to cancel the turn in
    progress, and the two direct attacks. */
@@ -1026,8 +1055,8 @@ function shuffle(a){
    ══════════════════════════════════════════════════════════════════════
    Seats can be driven by a bot instead of the UI. ai.js registers agents
    here; every decision that would normally open a modal checks for one
-   first and asks it instead. With no ai.js present this is inert and the
-   game behaves exactly as the pure hot-seat game it was.
+   first and asks it instead. With no ai.js present this is inert, and the
+   only seats that move are the ones a person is driving.
    ══════════════════════════════════════════════════════════════════════ */
 window.AGENTS = window.AGENTS || {};
 function agentOf(pid){ return window.AGENTS ? (window.AGENTS[pid] || null) : null; }
@@ -1047,8 +1076,9 @@ function anyBots(){ return S && S.players.some(p => isBot(p.id)); }
 function viewSeat(){
   // Online, the bottom bar is always your own seat, whoever is playing.
   if (window.NET && NET.isOnline && NET.isOnline() && NET.mySeat() !== null) return NET.mySeat();
-  if (!anyBots()) return S.cur;
   for (const p of S.players) if (!isBot(p.id)) return p.id;
+  // Nobody at this screen at all — only reachable by turning the bots off from
+  // the console, which leaves the board driving itself. Follow the turn.
   return S.cur;
 }
 function viewPlayer(){ return S.players[viewSeat()]; }
@@ -1088,7 +1118,7 @@ function botTick(){}
 
 let S = null;
 
-function newGame(numPlayers){
+function newGame(numPlayers, mode){
   BOARDSET = boardFor(numPlayers);
   HEX_SIZE = BOARDSET.size;
   NUMBERS  = BOARDSET.numbers;
@@ -1137,6 +1167,7 @@ function newGame(numPlayers){
     roadLens: S_zeroLens(numPlayers),
     longestRoad: { owner:null, len:0 },
     largestArmy: { owner:null, n:0 },
+    mode: MODES[mode] ? mode : "normal",   // normal | fast | fastplus
     seven: null,              // {actor, queue:[pid]} — a 7 still being paid for
     robberDue: [],            // robber moves owed behind the one in progress
     select: null,             // {kind, ...} forced board interaction
@@ -1164,10 +1195,43 @@ function newGame(numPlayers){
   lastShowcased = 0;
   boardWatch = null;
   clearFeed();
+  if (S.mode === "fastplus") dealOpeningKittens();
   logMsg("New game — " + numPlayers + " players. Deck: 54 kitten cards.");
+  if (S.mode !== "normal")
+    logMsg(`<b>${MODES[S.mode].name}</b> — ${MODES[S.mode].blurb}`);
   logMsg("<b>" + S.players[first].name + "</b> goes first.");
   logMsg("Setup: place your first settlement.");
   render();
+}
+
+/* Fast track + opens every hand with one kitten card. These are EXTRA copies
+   run off for the occasion rather than dealt from the 54, so the deck still
+   holds exactly what it always did and nobody has been quietly denied a card
+   somebody else is holding.
+
+   Drawn against the deck's own distribution, so a Defuse stays six times as
+   likely as an Imploding Kitten would have been — except that the Imploding
+   Kitten is not in the pool at all. It fires the instant it is drawn, and
+   handing it out at setup would settle the game before anyone had rolled.
+
+   boughtTurn is -1, not 0: these were not bought on turn zero, they were
+   always there, and a card bought this turn cannot be played this turn. */
+function dealOpeningKittens(){
+  const pool = [];
+  for (const key in KITTEN){
+    if (key === "implode") continue;
+    for (let i = 0; i < KITTEN[key].count; i++) pool.push(key);
+  }
+  if (!pool.length) return;
+  let extraId = 10000;
+  for (const p of S.players){
+    const key = pool[Math.floor(Math.random() * pool.length)];
+    const c = { key: key, id: extraId++, flavor: null, boughtTurn: -1 };
+    if (key === "knight")
+      c.flavor = KNIGHT_FLAVOR[Math.floor(Math.random() * KNIGHT_FLAVOR.length)];
+    p.cards.push(c);
+  }
+  logMsg("Fast track + — everybody opens holding one kitten card.");
 }
 
 function S_zeroLens(n){ const a = []; for (let i = 0; i < n; i++) a.push(0); return a; }
@@ -1402,6 +1466,7 @@ function renderIdle(){
   if (bot) bot.innerHTML = '<div class="bside"></div><div class="bcentre">' +
     '<span class="emptyhand">No game running.</span></div><div class="bside right"></div>';
   hint(null);
+  drawModeTag();
   showIdle(true);
 }
 
@@ -1453,6 +1518,7 @@ function render(){
   if (!S){ renderIdle(); return; }
   showIdle(false);
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
+  drawModeTag();
   refreshFeedMarks();
   checkStalePanels();
   checkShowcase();
@@ -1817,6 +1883,16 @@ function vpStat(p){
           </div>`;
 }
 
+/* Fast track and fast track + are worth being able to see at a glance, an
+   hour in, without opening a dialog. A normal game says nothing. */
+function drawModeTag(){
+  const el = document.getElementById("modeTag");
+  if (!el) return;
+  const m = S && S.mode && S.mode !== "normal" ? MODES[S.mode] : null;
+  el.hidden = !m;
+  if (m){ el.textContent = m.name; el.title = m.blurb; }
+}
+
 function drawPlayers(){
   let h = "";
   for (const p of S.players){
@@ -2013,9 +2089,13 @@ function drawBottom(){
       // bottom bar only ever draws your own, so this should never fire — but
       // one undefined lookup would take the whole screen down with it.
       if (!def) return;
-      const locked = c.boughtTurn === S.turnCounter;
-      const reaction = def.kind === "response";
       const isVP = def.kind === "vp";
+      // A Feral Kitten is never played — it is a point the moment it is in
+      // your hand, and checkVictory already treats it that way. Marking it
+      // "next turn" said the opposite, which is why drawing one at 9 points
+      // looked like a win you had to wait for.
+      const locked = c.boughtTurn === S.turnCounter && !isVP;
+      const reaction = def.kind === "response";
       const offTurn  = OFF_TURN.has(c.key) && !locked && !isVP && !S.pending &&
                         S.phase !== "over" && !S.phase.startsWith("setup") &&
                         S.cur !== p.id;
@@ -2038,7 +2118,7 @@ function drawBottom(){
                  onpointerdown="cardPointerDown(event,${i},${p.id})">
               ${face ? `<img src="${face}" alt="" draggable="false">` : ""}
               ${locked ? `<span class="pip">next turn</span>` : ""}
-              ${isVP ? `<span class="pip">1 VP</span>` : ""}
+              ${isVP ? `<span class="pip now">1 VP now</span>` : ""}
               ${canAnswer ? `<span class="pip now">answer</span>`
                 : offTurn ? `<span class="pip now">now</span>`
                 : reaction ? `<span class="pip">react</span>` : ""}
@@ -2518,8 +2598,9 @@ function placeSettlement(vid, setup){
   if (setup){
     S.setupLastVertex = vid;
     logMsg(`<b>${cur().name}</b> settles.`);
-    if (S.phase === "setup2"){
-      // The second settlement pays out immediately.
+    // Normally only the second settlement pays out. Fast track pays for both,
+    // which is the whole of what it changes.
+    if (S.phase === "setup2" || fastStart()){
       const got = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
       for (const hid of vertices[vid].hexes){
         const hx = hexes[hid];
@@ -4149,14 +4230,14 @@ function bankTradeDialog(){
    OPEN TRADE
    ══════════════════════════════════════════════════════════════════════
    Build one offer, put it to the whole table at once, then pick from
-   whoever accepted. Bots answer immediately; other humans (hot-seat) get
+   whoever accepted. Bots answer immediately; other people get
    Accept / Decline buttons in the same list.
    ══════════════════════════════════════════════════════════════════════ */
 function playerTradeDialog(){
   if (netSend("playerTrade")) return;
-  // The whole negotiation sits on the offering player's screen: they click
-  // Accept or Decline as the table answers out loud. A hot-seat habit, but it
-  // survives going online intact, and you will be on a call anyway.
+  // The whole negotiation sits on the offering player's screen: the offer goes
+  // out to every seat at once and each answers on their own, with the offerer
+  // watching the replies land before choosing who to deal with.
   const p = cur();
   const offer = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
   const want  = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
@@ -4598,9 +4679,8 @@ function checkShowcase(){
    open. Panels leave all of that reachable.
 
    Each panel belongs to a seat. On one screen you see the panels for the
-   seats that screen plays, which is every human seat in hot-seat and just
-   your own online — so one offer can go to the whole table at once and
-   everybody answers for themselves.
+   seats that screen plays, which is your own and no other — so one offer can
+   go to the whole table at once and everybody answers for themselves.
    ═══════════════════════════════════════════════════════════════════ */
 
 const panelBox = {};        // key -> { seat, buttons, rewindAt, title }
@@ -4608,7 +4688,7 @@ const panelBox = {};        // key -> { seat, buttons, rewindAt, title }
 /* Which seats this screen answers for. */
 function ownsSeat(pid){
   if (window.NET && NET.isOnline && NET.isOnline()) return pid === NET.mySeat();
-  return !isBot(pid);                       // hot-seat: everyone is right here
+  return !isBot(pid);            // offline the only seat that is not a bot is yours
 }
 
 function openPanel(key, seat, title, bodyHTML, buttons){
@@ -4750,36 +4830,53 @@ function humanPromptOpen(){
    MENUS
    ══════════════════════════════════════════════════════════════════════ */
 
+/* The three openings, as a row of buttons with the chosen one lit. Shared by
+   the local New Game dialog and the online lobby, so the wording only exists
+   once and the host picks a mode the same way a solo player does. */
+function modePickerHTML(){
+  let h = `<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Opening</div>
+           <div class="pick">`;
+  for (const key in MODES){
+    h += `<button class="${GAME_MODE === key ? "primary" : ""}"
+            onclick="window.__mode('${key}')">${MODES[key].name}</button>`;
+  }
+  return h + `</div><div class="rules" style="margin:6px 0 0">${MODES[GAME_MODE].blurb}</div>`;
+}
+
+/* Hot-seat is gone: one screen, one person. Everybody else at the table is a
+   bot, or is online in their own browser. Passing a laptop round a room was
+   the only thing it was for, and it cost every dialog a "whose is this?" step. */
 function newGameDialog(){
   const haveAI = typeof window.AI !== "undefined";
-  let h = "";
-  if (haveAI){
-    h += `<p class="sub">The other seats are played by bots — they build, trade with everyone,
-          and target whoever is closest to winning. Turn order is drawn at random, so you will
-          not always lead.</p>
-          <div class="pick">
-            <button class="primary" onclick="window.__ng(4,true)">You + 3 bots</button>
-            <button onclick="window.__ng(3,true)">You + 2 bots</button>
-            <button onclick="window.__ng(2,true)">You + 1 bot</button>
-            <button onclick="window.__ng(5,true)">You + 4 bots</button>
-            <button onclick="window.__ng(6,true)">You + 5 bots</button>
-          </div>
+  const refresh = () => {
+    let h = `<p class="sub">The other seats are played by bots — they build, trade with
+             everyone, and target whoever is closest to winning. Turn order is drawn at
+             random, so you will not always lead.</p>`;
+    h += modePickerHTML();
+    h += `<div style="height:12px"></div>
+          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Table</div>
+          <div class="pick">`;
+    for (let n = 2; n <= 6; n++)
+      h += `<button class="${n === 4 ? "primary" : ""}" onclick="window.__ng(${n})"
+              >You + ${n - 1} bot${n === 2 ? "" : "s"}</button>`;
+    h += `</div>
           <div class="rules" style="margin-top:6px">5 and 6 players use the larger
-          extension board — 30 hexes, two deserts, 11 ports, laid out on its side.</div>
-          <div style="height:14px"></div>`;
-  }
-  h += `<p class="sub">Hot-seat — one screen, you play every seat in turn.</p><div class="pick">`;
-  for (let n = 2; n <= 6; n++)
-    h += `<button onclick="window.__ng(${n},false)">${n} players${n === 2 ? " (test)" : ""}</button>`;
-  h += `</div>`;
-  openModal("New Game", h, [{ label:"Cancel", fn: () => { closeModal(); if (!S) renderIdle(); } }]);
-  window.__ng = (n, bots) => {
+          extension board — 30 hexes, two deserts, 11 ports, laid out on its side.</div>`;
+    if (!haveAI)
+      h = `<div class="warnbox">ai.js did not load, so there is nobody to play against.
+           Check that it is next to index.html.</div>` + h;
+    openModal("New Game", h,
+      [{ label:"Cancel", fn: () => { closeModal(); if (!S) renderIdle(); } }]);
+  };
+  window.__mode = (key) => { if (MODES[key]) GAME_MODE = key; refresh(); };
+  window.__ng = (n) => {
     closeModal();
     window.AGENTS = {};
-    newGame(n);
-    if (bots && typeof window.AI !== "undefined") window.AI.enable([0]);
+    newGame(n, GAME_MODE);
+    if (typeof window.AI !== "undefined") window.AI.enable([0]);
     beginSetupStep();
   };
+  refresh();
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -5206,13 +5303,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-25b"></script>
+<script src="ai.js?v=2026-08-26a"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-25b"></script>
-<script src="net.js?v=2026-08-25b"></script>
+<script src="firebase-config.js?v=2026-08-26a"></script>
+<script src="net.js?v=2026-08-26a"></script>
 </body>
 </html>

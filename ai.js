@@ -1024,7 +1024,7 @@ function tickNow(){
   // lying about from a local game would drive seats it does not own, and its
   // "clicks" go out as intents — so it would play for the human sitting there.
   if (window.NET && NET.isGuest && NET.isGuest()) return;
-  if (!S.players.some(p => agentOf(p.id))) return;      // pure hot-seat game
+  if (!S.players.some(p => agentOf(p.id))) return;      // no bots at this table
 
   // A human prompt is open. Wait it out.
   //
