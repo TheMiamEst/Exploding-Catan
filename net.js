@@ -213,7 +213,10 @@ function serializeGame(){
       id: e.id, turn: e.turn, actor: e.actor, target: e.target, kind: e.kind,
       card: e.card ? { key: e.card.key, flavor: e.card.flavor || null } : null,
       payload: e.payload || null, nopeable: e.nopeable, noped: e.noped,
-      show: e.show || null, plain: e.plain, snap: 1
+      show: e.show || null, plain: e.plain, snap: 1,
+      // Who the answer was aimed at, so a terminal can flag a reveal that
+      // concerns the person sitting in front of it.
+      against: (e.against === undefined || e.against === null) ? null : e.against
     })),
     feed: (S.feed || []).slice(-FEED_KEEP)
   };

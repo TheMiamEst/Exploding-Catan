@@ -168,6 +168,13 @@ with. Nobody can answer for anybody else.
 If a Nope or a Defuse rewinds the board while a panel is open, the panel is
 closed — whatever it was offering may no longer be true.
 
+A card turning over in the middle of the board is captioned **answering you**
+when it undoes something you did, and **aimed at you** when it is a card played
+on you, with a ring round the card to match. A Nope and the Nope that cancels
+it show the same face, so without that there is no way to tell your own play
+from the answer to it — which is a bad second to spend working out that your
+Nope has just been handed back.
+
 Two robber moves can be owed at once — a seven, and a Knight played while
 that seven's discards were still being paid. They queue rather than overwrite
 each other, so both get made; the log says "must move the robber again" for

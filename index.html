@@ -458,7 +458,7 @@
      it, so the strip clears a dialog centred below instead of lying across it. */
   body.hasmodal #showcase{
     bottom:auto; flex-direction:row; align-items:center; justify-content:center;
-    padding:6px 8px 0; gap:9px;
+    padding:2px 8px 0; gap:9px;
   }
   body.hasmodal .showcard{ width:clamp(46px, 6.4vh, 60px); border-width:1px; border-radius:7px }
   body.hasmodal .showcard.implode{ width:clamp(76px, 11vh, 100px) }
@@ -518,6 +518,18 @@
     box-shadow:0 10px 30px #000a; animation:capin .45s .12s ease-out both;
   }
   .showcap.seven{border-color:var(--danger); color:#ffd9d9}
+  /* Answering something you did. The card takes a ring and the caption a
+     label, so you never have to read the sentence to know it concerns you. */
+  .showcard.atyou{
+    border-color:#e0b64b;
+    box-shadow:0 26px 64px #000d, 0 0 0 5px #0007, 0 0 0 8px #e0b64b66;
+  }
+  .showcap.atyou{border-color:#e0b64b}
+  .showcap .atyou{
+    display:inline-block; background:#e0b64b; color:#161a20; font-weight:700;
+    font-size:10.5px; letter-spacing:.3px; border-radius:5px;
+    padding:1px 6px; margin-right:6px; vertical-align:1px; text-transform:uppercase;
+  }
   @keyframes capin{from{transform:translateY(10px); opacity:0}to{transform:none; opacity:1}}
 
   /* Dialogs that dock beside the board rather than covering it. A trade or a
@@ -703,7 +715,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26a";
+const GAME_VERSION = "2026-08-26b";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1902,7 +1914,7 @@ function drawPlayers(){
                 style="--pc:${p.color}; --pcTint:${p.color}26; --pcEdge:${p.color}88">
             <div class="phead">
               <span class="dot" style="background:${p.color}"></span>
-              <span class="pname">${p.name}${!isBot(p.id) && anyBots() ? " <span class=\"you\">you</span>" : ""}</span>
+              <span class="pname">${p.name}${!isBot(p.id) && anyBots() ? " " : ""}</span>
               ${p.skipTokens ? `<span class="pskip">skip ×${p.skipTokens}</span>` : ""}
             </div>
             <div class="stats">
@@ -3341,6 +3353,11 @@ function logAction(html, kind, opts){
     // Undoing this must not also end its actor's turn: it was defensive, and
     // played out of turn. Set by the Defuse spent on a seven.
     turnSafe: !!opts.turnSafe,
+    // Whose play this is an answer to. The entry it answers is spliced out of
+    // the journal by the rewind, so the only record of who was on the wrong
+    // end of it is here — and that is what lets the reveal tell the person it
+    // happened TO that it happened to them.
+    against: (opts.against === undefined) ? null : opts.against,
     nopeable: opts.nopeable !== false,
     noped: false,
     plain: String(html).replace(/<[^>]+>/g, "").trim()
@@ -3523,6 +3540,12 @@ function nopeEntry(id, noperId){
   // Your own roll is the one line you are allowed to Nope, so the log has to
   // read for that case too — "Red Nopes Red rolls 7" is nonsense.
   const selfRoll = noperId === e.actor && e.kind === "roll";
+  // Nor does nesting one Nope's text inside the next: a counter-Nope came out
+  // as "Blue Nopes Red Nopes Blue's turn", which nobody can read at a glance —
+  // least of all the player who has just had their own Nope taken off them.
+  const answering = e.kind === "defend"
+        ? pdot(S.players[e.actor]) + "'s <b>Nope</b>"
+        : esc(label);
   let reroll = false;
   // Whose turn is being cut short. Off-turn plays (an Attack thrown during
   // somebody else's turn), and anything from a turn that has already handed
@@ -3576,9 +3599,9 @@ function nopeEntry(id, noperId){
   // A Nope can be Noped. It is the one reaction that can, and the hand-over
   // window is what makes it reachable.
   const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " +
-            (selfRoll ? "their own roll" : esc(label)), "defend",
+            (selfRoll ? "their own roll" : answering), "defend",
             { actor: noperId, snap: undone, nopeable: true, turnBack: turnBack,
-              spent: { pid: noperId, key: "nope" }, show: "nope" });
+              against: e.actor, spent: { pid: noperId, key: "nope" }, show: "nope" });
   logMsg(selfRoll ? `<b>${noper.name}</b> Nopes their own roll.`
                   : `<b>${noper.name}</b> Nopes: ${esc(label)}`);
 
@@ -3713,7 +3736,7 @@ function defuseSeven(e, defuserId){
   // end the turn of a roller who Defused their own seven.
   logAction(pdot(d) + " <b>Defuses</b> the seven — their hand is spared", "defend",
             { actor: defuserId, snap: snapBefore, nopeable: true, turnSafe: true,
-              spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
+              against: e.actor, spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
 
   closeModal();
   // Only re-ask when the queue has actually moved on. Defusing from your own
@@ -3747,7 +3770,7 @@ function defuseEntry(id, defuserId){
      simply played again, at the target it was first aimed at. */
   const preCard = e.snap;
   const redo = { card: card, actor: victimId, target: e.target, payload: payload };
-  const answerable = { snap: preCard, redo: redo, nopeable: true,
+  const answerable = { snap: preCard, redo: redo, nopeable: true, against: victimId,
                        spent: { pid: defuserId, key: "defuse" } };
 
   S.rewinds++;
@@ -4639,6 +4662,19 @@ function showcase(bodyHTML, capHTML, capCls, ms){
   }, ms || SHOWCASE_MS);
 }
 
+/* Does this reveal concern the person at this screen, and in what way?
+   Returns the words for the badge, or null for a play that is somebody else's
+   business. Answering is not the same as being targeted: a Nope played on your
+   Nope has you as neither actor nor target, and is entirely about you. */
+function aimedAtViewer(e){
+  if (!S || !e) return null;
+  const me = viewSeat();
+  if (e.actor === me) return null;                  // it is your own play
+  if (e.against === me) return "answering you";     // an answer to what you did
+  if (e.target === me)  return "aimed at you";      // a card played on you
+  return null;
+}
+
 /* The newest journal entry, if it is something worth turning over. */
 function checkShowcase(){
   if (!S || !S.journal.length) return;
@@ -4667,9 +4703,17 @@ function checkShowcase(){
   const def = KITTEN[e.show];
   if (!def) return;
   const face = cardArt({ key: e.show, flavor: (e.card && e.card.flavor) || null });
-  showcase('<div class="showcard">' +
+  // A Nope and a counter-Nope turn over the same card face, so on its own the
+  // reveal cannot tell you whether you are watching your own play or the
+  // answer to it. When it IS the answer to yours, say so and ring it — that
+  // second of "wait, what just happened" was the whole complaint.
+  const at = aimedAtViewer(e);
+  showcase('<div class="showcard' + (at ? " atyou" : "") + '">' +
              (face ? '<img src="' + face + '" alt="">' : '<span class="kn">' + esc(def.name) + "</span>") +
-           "</div>", esc(e.plain).replace(/\s+/g, " "));
+           "</div>",
+           (at ? '<span class="atyou">' + at + "</span> " : "") +
+             esc(e.plain).replace(/\s+/g, " "),
+           at ? "atyou" : "");
 }
 
 /* ══ SIDE PANELS ═════════════════════════════════════════════════
@@ -4849,9 +4893,7 @@ function modePickerHTML(){
 function newGameDialog(){
   const haveAI = typeof window.AI !== "undefined";
   const refresh = () => {
-    let h = `<p class="sub">The other seats are played by bots — they build, trade with
-             everyone, and target whoever is closest to winning. Turn order is drawn at
-             random, so you will not always lead.</p>`;
+    let h = `<p class="sub">The other seats are played by bots</p>`;
     h += modePickerHTML();
     h += `<div style="height:12px"></div>
           <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Table</div>
@@ -4861,7 +4903,7 @@ function newGameDialog(){
               >You + ${n - 1} bot${n === 2 ? "" : "s"}</button>`;
     h += `</div>
           <div class="rules" style="margin-top:6px">5 and 6 players use the larger
-          extension board — 30 hexes, two deserts, 11 ports, laid out on its side.</div>`;
+          extension board.</div>`;
     if (!haveAI)
       h = `<div class="warnbox">ai.js did not load, so there is nobody to play against.
            Check that it is next to index.html.</div>` + h;
@@ -5144,7 +5186,7 @@ function nopeWholeTurn(ownerId, pid){
                      rolled: S.rolled ? S.rolled.slice() : null, extraTurn: S.extraTurn };
   const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " + pdot(victim) + "'s turn",
             "defend", { actor: ownerId, snap: snapAll(), nopeable: true, turnBack: turnBack,
-                        spent: { pid: ownerId, key: "nope" }, show: "nope" });
+                        against: pid, spent: { pid: ownerId, key: "nope" }, show: "nope" });
   clearImplodeClock();
   cancelTurn(pid, totalVP(victim) >= 10);     // cancelTurn ends the turn itself
   noteEntry.turn = S.turnCounter;             // it belongs to the turn it made
@@ -5201,21 +5243,13 @@ function showArt(){
 
 function showRules(){
   let h = `<div class="rules">
-    <h4>This is Catan — with one swap</h4>
-    <p>Every base Catan rule applies: settlements, cities, roads, the robber on a 7, ports,
-    Longest Road (5+, 2 VP), Largest Army (3+ knights, 2 VP), first to <b>10 VP</b> wins.
-    The development deck is gone. In its place: <b>54 kitten cards</b>.</p>
+    <h4>Exploding Catan</h4>
 
     <h4>Changed rules</h4>
     <ul>
       <li>A kitten card costs <b>any 3 different resources</b> (not wheat + sheep + ore).</li>
       <li>You may play <b>as many kitten cards per turn as you like</b>, starting the turn after you buy them.</li>
       <li>Knights still count toward Largest Army — there are 10 of them.</li>
-      <li><b>5 and 6 players</b> use the extension board: 30 hexes in rows of 3-4-5-6-5-4-3,
-          two deserts, 28 number tokens, 11 ports, and 24 of each resource in the bank.
-          It is drawn a quarter turn round — wider than it is tall, to match the
-          screen — so its hexes sit flat-topped rather than pointed. Piece limits,
-          the 10-point target and the 54-card kitten deck are unchanged.</li>
     </ul>
 
     <h4>The deck (54)</h4><ul>`;
@@ -5303,13 +5337,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26a"></script>
+<script src="ai.js?v=2026-08-26b"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26a"></script>
-<script src="net.js?v=2026-08-26a"></script>
+<script src="firebase-config.js?v=2026-08-26b"></script>
+<script src="net.js?v=2026-08-26b"></script>
 </body>
 </html>
