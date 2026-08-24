@@ -1504,12 +1504,19 @@ function drawBoard(){
     const click = hot ? ` style="cursor:pointer" onclick="hexClick(${hx.id})"` : "";
     const tile = art("hex", hx.terrain);
     if (tile){
-      // Square source, cropped to cover the hex's bounding box — taller than
-      // wide for a pointy-top hex, and the other way round for a turned one.
-      const w  = HEX_SIZE * (BOARDSET.turned ? 2 : Math.sqrt(3));
-      const ht = HEX_SIZE * (BOARDSET.turned ? Math.sqrt(3) : 2);
+      // Square source, cropped to cover a POINTY-TOP hex's bounding box — the
+      // shape the art is composed for, which trims the left and right edges
+      // and nothing else (see art/README.txt).
+      //
+      // A turned board turns the tile with it rather than re-cropping it into
+      // the flat-top box. Same rotation the lattice took, so the hexagon in
+      // the picture still lines up with the clip — and the trim stays on the
+      // edges the artist left room at, instead of moving to the top and bottom
+      // where they had no reason to.
+      const w = HEX_SIZE * Math.sqrt(3), ht = HEX_SIZE * 2;
+      const spin = BOARDSET.turned ? ` transform="rotate(${turnDeg()})"` : "";
       h += `<g transform="translate(${hx.x},${hx.y})" clip-path="url(#hexclip)"${click}>
-              <image href="${tile}" x="${-w/2}" y="${-ht/2}" width="${w}" height="${ht}"
+              <image${spin} href="${tile}" x="${-w/2}" y="${-ht/2}" width="${w}" height="${ht}"
                      preserveAspectRatio="xMidYMid slice"/>
             </g>`;
       h += `<polygon points="${pts}" fill="none" stroke="#0b0d10" stroke-width="2.5" pointer-events="none"/>`;

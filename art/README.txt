@@ -26,6 +26,14 @@ and right. Keep important detail central. Transparency is not needed.
 
 If you'd rather compose exactly to the hex, use 444x512 instead.
 
+Always draw POINTY-TOP, whatever board you have in mind. The 5-6 player
+extension board is laid on its side so it comes out wider than it is tall,
+which makes its hexes flat-topped — and the game turns your tile a quarter turn
+to suit, rather than re-cropping it. So the same file serves both boards, and
+the trim stays on the left and right where you left room for it. The one thing
+that follows: on the extension board your art is seen a quarter turn over, so
+avoid anything that only reads one way up (lettering, a horizon).
+
 
 RESOURCE CARDS — PNG, portrait, 300x420 (5:7)
 ----------------------------------------------
