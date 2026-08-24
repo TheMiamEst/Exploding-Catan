@@ -82,14 +82,6 @@
             stroke-linecap:round; stroke-linejoin:round}
   .stat.vp svg{stroke:var(--accent)}
   .stat.vp b{color:var(--accent)}
-  /* Your own total, with the Feral Kittens counted in. Marked, so the number
-     you read is never mistaken for the one the rest of the table is playing
-     against — theirs is the public figure and stays that way. */
-  .stat.vp.hidden{box-shadow:inset 0 0 0 1px var(--accent)}
-  .stat.vp .fk{
-    display:inline-block; font-size:9px; font-weight:700; line-height:1;
-    color:var(--accent); opacity:.8; margin-left:1px; vertical-align:3px;
-  }
   .reveal{margin-top:6px; display:flex; flex-wrap:wrap; gap:3px}
   .revcard{
     font-size:9.5px; border:1px solid var(--line); border-radius:4px;
@@ -574,6 +566,8 @@
   .tline > span:first-child{color:var(--dim); font-size:11px; min-width:52px}
   .pick.tight .rate{opacity:.6; font-size:10.5px}
   .panel.forme{border-color:#7fc48f; box-shadow:0 12px 34px #000a, 0 0 0 2px #7fc48f33}
+  /* An answer is still owed — the turn controls are gone until it is given. */
+  .thinking.owed{color:var(--accent)}
   /* The board moved under an open panel — a Nope rewound something. */
   .panel.stale{border-color:var(--danger)}
   body.haspanel #zoomWrap{display:none}
@@ -703,7 +697,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26c";
+const GAME_VERSION = "2026-08-26i";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1878,9 +1872,10 @@ function vpStat(p){
         : `${shown} points, including ${kittens} only you can see — ` +
           `the rest of the table sees ${publicVP(p)}`
       : "Victory points";
-  return `<div class="stat vp ${hidden ? "hidden" : ""}" title="${esc(tip)}">
-            <b>${shown}</b>${ICON.vp}${hidden ? '<span class="fk">+' + ferals + "</span>" : ""}
-          </div>`;
+  // Just the number. It used to carry a "+2" spelling out how much of your own
+  // total was hidden, which is arithmetic you can do yourself and clutter on
+  // the one stat you read most.
+  return `<div class="stat vp" title="${esc(tip)}"><b>${shown}</b>${ICON.vp}</div>`;
 }
 
 /* Fast track and fast track + are worth being able to see at a glance, an
@@ -1937,7 +1932,7 @@ function drawPlayers(){
    ══════════════════════════════════════════════════════════════════════ */
 
 function canBuyKitten(){
-  return S.phase === "main" && S.deck.length > 0 &&
+  return S.phase === "main" && S.deck.length > 0 && !owesAnswer() &&
          RES.filter(r => cur().res[r] > 0).length >= 3;
 }
 
@@ -2140,6 +2135,11 @@ function drawBottom(){
     const who = S.players[S.cur];
     h += `<span class="thinking"><span class="dot" style="background:${who.color}"></span>
             ${who.name} is thinking…</span>`;
+  } else if (owesAnswer() && S.phase !== "over"){
+    // The buttons are gated anyway; this is so a folded-away window does not
+    // read as a game that has stopped responding.
+    h += `<span class="thinking owed">⏳ ${S.select ? "finish the move on the board"
+                                                    : "finish the open window first"}</span>`;
   } else if (S.phase === "roll"){
     h += `<button class="primary" id="rollBtn" onclick="rollDice()">Roll Dice</button>`;
   } else if (S.phase === "main"){
@@ -2523,7 +2523,8 @@ function affordable(kind){
 /* During setup the placement is free, so only the piece limit applies. */
 function buildableNow(kind){
   if (S.phase.startsWith("setup")) return true;
-  return S.phase === "main" && !S.select && !S.pending && affordable(kind);
+  return S.phase === "main" && !S.select && !S.pending && !owesAnswer() &&
+         affordable(kind);
 }
 
 function vertexClick(vid){
@@ -2680,12 +2681,14 @@ function hexClick(hid){
     // on this board that cannot be taken back, and it was a single one.
     if (!armed("robber", hid)){ arm("robber", hid); return; }
     S.armed = null;
+    // Where it came from, so a Defuse can send it back. The move and whatever
+    // theft follows it are journalled together, once, by finishRobber — they
+    // are one event to answer, not two.
+    sel.fromHex = S.robber;
     S.robber = hid;
     S.select = null;
     logMsg(`<b>${S.players[sel.actor].name}</b> moves the robber onto the ` +
            `${hexes[hid].terrain}${hexes[hid].number ? " " + hexes[hid].number : ""}.`);
-    announce(pdot(S.players[sel.actor]) + " moves the robber onto the " +
-             hexes[hid].terrain + " " + (hexes[hid].number || "") , "attack");
     const victims = S.players.filter(q =>
       q.id !== sel.actor &&
       totalRes(q) > 0 &&
@@ -2730,6 +2733,7 @@ document.addEventListener("keydown", e => {
    ══════════════════════════════════════════════════════════════════════ */
 
 function rollDice(){
+  if (owesAnswer()){ hint("Finish the open window first."); return; }
   if (netSend("roll")) return;
   doRoll();
 }
@@ -2941,10 +2945,14 @@ function doSteal(thief, victim, sel){
   if (pool.length){
     const r = pool[Math.floor(Math.random() * pool.length)];
     victim.res[r]--; thief.res[r]++; noteGain(thief, r, 1);
-    logMsg(`<b>${thief.name}</b> steals ${RES_NAME[r]} from <b>${victim.name}</b>.`);
-    // The card taken is private; only the two of them see which it was.
-    const reveal = (!isBot(thief.id) || !isBot(victim.id)) ? " " + RES_NAME[r] : "";
-    announce(pdot(thief) + " steals" + reveal + " from " + pdot(victim), "attack");
+    // WHICH card was taken is never named. The two of them can see it in their
+    // own hands and nobody else is entitled to. The feed used to name it
+    // whenever either side was a person, which is why it leaked on some
+    // robberies and not others — a tell that told you more the more humans
+    // were playing.
+    logMsg(`<b>${thief.name}</b> steals a resource card from <b>${victim.name}</b>.`);
+    sel.stole = r;                 // carried to finishRobber, never serialized
+    sel.victim = victim.id;
   } else {
     logMsg(`<b>${victim.name}</b> has nothing to steal.`);
   }
@@ -2953,6 +2961,7 @@ function doSteal(thief, victim, sel){
 
 function finishRobber(sel){
   S.select = null;
+  journalRobber(sel);
   if (sel.knight){
     // The knight counts for whoever played the card, even if it was Defused.
     const p = S.players[sel.credit !== undefined ? sel.credit : sel.actor];
@@ -2963,6 +2972,29 @@ function finishRobber(sel){
   }
   if (nextRobberMove()) return;      // another one was waiting behind it
   render();
+}
+
+/* One line for the whole robbery: where the robber went and who it took from.
+   Answerable by ANYBODY with a building on that hex, not only whoever happened
+   to be robbed — the robber sitting on your wheat costs you every roll it stays
+   there, which is the greater part of the damage and was unanswerable.
+
+   What travels is the hex, so a terminal can work out for itself whether it is
+   settled there. The stolen resource and the robber's previous home ride on
+   fields the wire format does not carry. */
+function journalRobber(sel){
+  if (!sel || sel.actor === undefined || sel.fromHex === undefined) return;
+  const thief = S.players[sel.actor];
+  const hx = hexes[S.robber];
+  const where = hx.terrain + (hx.number ? " " + hx.number : "");
+  const took = (sel.victim !== undefined && sel.victim !== null)
+        ? " and steals a resource card from " + pdot(S.players[sel.victim]) : "";
+  const ent = logAction(pdot(thief) + " moves the robber onto the " + esc(where) + took,
+            "attack", { actor: sel.actor,
+                        target: (sel.victim === undefined) ? null : sel.victim,
+                        snap: snapAll(), payload: { robber: true, hex: S.robber } });
+  ent.stolen = sel.stole || null;
+  ent.fromHex = sel.fromHex;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -2987,6 +3019,7 @@ function cardsFromPool(pool){
 }
 
 function buyKittenDialog(){
+  if (owesAnswer()){ hint("Finish the open window first."); return; }
   if (netSend("buy")) return;
   if (!myTurnNow()) return;
   const p = cur();
@@ -3402,6 +3435,20 @@ function canNopeFor(e, pid){
   return e.kind === "roll" || e.actor !== pid;
 }
 
+/* A robbery: the robber has been moved, and may have taken a card with it.
+   Marked in the payload rather than the kind so it still reads as an attack in
+   the feed. */
+function isRobberEntry(e){ return !!(e && e.payload && e.payload.robber); }
+
+/* Everyone the robber actually landed on — anybody holding a building on that
+   hex. They are the ones it costs, whether or not they were the one robbed. */
+function settledOnRobbedHex(e, pid){
+  if (!isRobberEntry(e)) return false;
+  const hx = hexes[e.payload.hex];
+  if (!hx) return false;
+  return hx.verts.some(v => vertices[v].owner === pid);
+}
+
 /* A Defuse only answers an attack that landed on you. */
 /* A Defuse only answers an attack that landed on you — and it cannot answer
    another Defuse. Anything at all can be Noped, but "no you" does not stack
@@ -3418,6 +3465,12 @@ function canDefuseEntry(e, pid){
   // again, which costs them the number rather than sparing them the cut.
   if (e.kind === "roll")
     return e.show === "seven" && e.actor !== pid && owesSevenCut(pid);
+  // The robber landing on you is the other half of a seven, and the half that
+  // keeps costing after the roll is forgotten. Anybody settled on that hex may
+  // answer it — not only whoever the card came off — and only once between
+  // them, which `answered` enforces.
+  if (isRobberEntry(e))
+    return !e.answered && e.actor !== pid && settledOnRobbedHex(e, pid);
   if (!e.card) return false;           // a reaction, not a card aimed at anyone
   if (e.actor === pid) return false;
   if (e.card.key === "alter"){
@@ -3507,7 +3560,7 @@ function offerTargetResponse(action){
     `<p class="sub">${what}</p>` + reactNoteHTML() +
     `<p class="mininote">Fold this away with − to answer from the log instead.
      Nothing is settled until you come back.</p>`,
-    [{ label:"Take it", fn: closeModal }].concat(react), { mini: true });
+    [{ label:"Take it", fn: () => { closeModal(); render(); } }].concat(react), { mini: true });
 }
 
 /* ── Nope an entry ───────────────────────────────────────────────────── */
@@ -3731,6 +3784,51 @@ function defuseSeven(e, defuserId){
   return true;
 }
 
+/* ── Defuse a robbery ────────────────────────────────────────────────────
+   The card comes straight back out of the thief's hand and the robber stays
+   where it was put: the Defuse answers the theft, not the move.
+
+   Nothing is rewound. A rewind to the state before the steal would also undo
+   what came after it — the knight credited for the move, the next robber move
+   already handed out — so the one card is simply handed back. */
+function defuseRobber(e, defuserId){
+  // One Defuse settles it for the whole hex. Two players reaching for the card
+  // at the same moment is the ordinary case, not a rare one — the robber lands
+  // on a hex several people share. The host takes them in the order they
+  // arrive, and the second finds the entry already answered and is turned away
+  // with the card still in hand.
+  if (e.answered) return false;
+  const d = S.players[defuserId];
+  const thief = S.players[e.actor];
+  if (!thief || e.fromHex === undefined || e.fromHex === null) return false;
+
+  const snapBefore = snapAll();
+  spendCard(d, "defuse");
+  e.answered = true;
+
+  // The robber goes back where it came from, and anything it took goes back
+  // with it. Surgical rather than a rewind: a rewind would also undo what came
+  // after — the knight credited for the move, a second robber move already
+  // handed out — and the Defuse answers the robbery, not the card that caused
+  // it.
+  S.robber = e.fromHex;
+  const r = e.stolen;
+  const victim = (e.target === null || e.target === undefined) ? null : S.players[e.target];
+  if (r && victim && thief.res[r] > 0){ thief.res[r]--; victim.res[r]++; }
+
+  const back = hexes[e.fromHex];
+  logMsg(`<b>${d.name}</b> Defuses the robbery — the robber goes back to the ` +
+         `${back.terrain}${back.number ? " " + back.number : ""}` +
+         `${r && victim ? `, and <b>${thief.name}</b> hands the card back` : ""}.`);
+  // turnSafe, like the Defuse spent on a seven: it is defensive and played out
+  // of turn, so Noping it puts the robber back rather than ending a turn.
+  logAction(pdot(d) + " <b>Defuses</b> the robbery — the robber goes back", "defend",
+            { actor: defuserId, target: e.actor, snap: snapBefore, nopeable: true,
+              turnSafe: true, spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
+  render();
+  return true;
+}
+
 /* ── Defuse an entry ─────────────────────────────────────────────────── */
 function defuseEntry(id, defuserId){
   const idx = S.journal.findIndex(e => e.id === id);
@@ -3740,6 +3838,7 @@ function defuseEntry(id, defuserId){
   const d = S.players[defuserId];
   if (!d.cards.some(c => c.key === "defuse")) return false;
   if (e.kind === "roll") return defuseSeven(e, defuserId);
+  if (isRobberEntry(e)) return defuseRobber(e, defuserId);
 
   const card = e.card, payload = e.payload, victimId = e.actor;
   const key = card.key;
@@ -3993,6 +4092,9 @@ function forcedWinNope(winner, pid){
    during the turn it is meant to cancel — once the turn is over it is too
    late, which also removes the prompt that fired after every single turn. */
 function requestEndTurn(){
+  // Checked before the intent goes out AND again when the host replays it, so
+  // a terminal cannot end a turn it still owes a discard on.
+  if (owesAnswer()){ hint("Finish the open window first."); return; }
   if (netSend("endTurn")) return;
   if (S.select){ hint("Finish or cancel the current board action first."); return; }
   doEndTurn();
@@ -4154,6 +4256,7 @@ function showStandings(){
    ══════════════════════════════════════════════════════════════════════ */
 
 function bankTradeDialog(){
+  if (owesAnswer()){ hint("Finish the open window first."); return; }
   if (netSend("bankTrade")) return;
   if (!myTurnNow()) return;
   const p = cur();
@@ -4240,6 +4343,7 @@ function bankTradeDialog(){
    Accept / Decline buttons in the same list.
    ══════════════════════════════════════════════════════════════════════ */
 function playerTradeDialog(){
+  if (owesAnswer()){ hint("Finish the open window first."); return; }
   if (netSend("playerTrade")) return;
   // The whole negotiation sits on the offering player's screen: the offer goes
   // out to every seat at once and each answers on their own, with the offerer
@@ -4477,6 +4581,9 @@ let modalEl = null;
    moment a different dialog takes the screen. */
 let modalMini = false;
 let modalKey  = null;
+/* Forced dialogs are exactly the ones that may be folded away — a discard, a
+   card aimed at you. Menus are not, and must not lock the table. */
+let modalForced = false;
 
 function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
   // Same dialog redrawing itself, or a different one taking the screen? The
@@ -4500,6 +4607,7 @@ function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
     document.body.appendChild(modalEl);
   }
   document.body.classList.add("hasmodal");
+  modalForced = !!canMini;
   modalEl.className = "overlay" + (canMini ? " canmini" : "") +
                       (canMini && modalMini ? " mini" : "");
 
@@ -4522,6 +4630,7 @@ function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
 }
 function dismissLocalModal(){
   if (modalEl){ modalEl.remove(); modalEl = null; }
+  modalForced = false;
   document.body.classList.remove("hasmodal");
 }
 
@@ -4537,7 +4646,7 @@ function toggleModalMini(){
 /* The dialog has been taken off this screen by somebody else — online, the
    host withdrawing it. Called from net.js, since closeModal is the host's way
    of doing this and a terminal never runs it. */
-function forgetModalFold(){ modalKey = null; modalMini = false; }
+function forgetModalFold(){ modalKey = null; modalMini = false; modalForced = false; }
 
 /* Tag the dialog about to be opened as belonging to one seat. Online, that is
    what sends it to the right person instead of drawing it on the host's
@@ -4861,6 +4970,29 @@ function checkStalePanels(){
   announce("↺ A card was answered — the trade on the table is off", "defend");
 }
 
+/* Is an answer still owed before play may continue — a seven part-paid, or a
+   forced dialog on this screen, folded away or not?
+
+   Folding a dialog exists so a Nope can be dropped on the log while it is
+   open. It handed back the WHOLE bottom bar with it, turn controls included,
+   so folding the discard window for a seven and pressing End Turn walked away
+   from the discard, the robber and all: advancePlayer clears S.seven, and the
+   whole obligation simply evaporated.
+
+   Every voluntary action is gated on this. Dropping a Nope or a Defuse on a
+   log entry deliberately is not, and neither is Noping somebody's turn —
+   those are the reactions folding is FOR. */
+function owesAnswer(){
+  if (!S) return false;
+  if (S.seven) return true;        // a seven still being paid, by anybody
+  if (modalForced) return true;    // a forced dialog here, open or folded away
+  // A robber still to place, two tokens still to name. Setup's placements are
+  // the turn rather than an interruption to it, so they are not owed in this
+  // sense — the bar has its own words for those.
+  if (S.select && !S.phase.startsWith("setup")) return true;
+  return false;
+}
+
 /* True while a person still owes an answer, here or on another screen. The
    bots wait for it. */
 function humanPromptOpen(){
@@ -5105,7 +5237,8 @@ function dropAllowed(info, drop){
     return false;
   }
   if (drop.kind === "player") return pcardAccepts(key, me, drop.pid);
-  if (drop.kind === "board")  return BOARD_PLAY.has(key) && me === S.cur && !S.pending;
+  if (drop.kind === "board")
+    return BOARD_PLAY.has(key) && me === S.cur && !S.pending && !owesAnswer();
   return false;
 }
 
@@ -5138,6 +5271,9 @@ function markDropTargets(){
 function pcardAccepts(key, me, pid){
   if (!S || S.phase === "over" || S.phase.startsWith("setup")) return false;
   if (key === "nope") return pid === S.cur && pid !== me && !implodeActive();
+  // Noping a turn is a reaction and stays open above; starting something new
+  // while you still owe an answer does not.
+  if (owesAnswer()) return false;
   if (key === "defuse") return false;                  // Defuse answers an entry
   if (key === "vp") return false;
   const def = KITTEN[key];
@@ -5337,13 +5473,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26c"></script>
+<script src="ai.js?v=2026-08-26i"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26c"></script>
-<script src="net.js?v=2026-08-26c"></script>
+<script src="firebase-config.js?v=2026-08-26i"></script>
+<script src="net.js?v=2026-08-26i"></script>
 </body>
 </html>

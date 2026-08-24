@@ -213,7 +213,11 @@ function serializeGame(){
       id: e.id, turn: e.turn, actor: e.actor, target: e.target, kind: e.kind,
       card: e.card ? { key: e.card.key, flavor: e.card.flavor || null } : null,
       payload: e.payload || null, nopeable: e.nopeable, noped: e.noped,
-      show: e.show || null, plain: e.plain, snap: 1
+      show: e.show || null, plain: e.plain, snap: 1,
+      // Somebody already spent a Defuse on this one. Travels so the marker
+      // stops offering itself the moment it is settled, rather than letting a
+      // second player drag a card the host is only going to turn away.
+      answered: !!e.answered
     })),
     feed: (S.feed || []).slice(-FEED_KEEP)
   };

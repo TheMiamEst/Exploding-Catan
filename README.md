@@ -193,19 +193,25 @@ A Feral Kitten is a point the moment it is in your hand, not the turn after —
 it is never played, so the "not until next turn" rule does not touch it. Draw
 one at nine points and you win there and then, unless somebody Nopes it.
 
-Your own points on the seat strip include the Feral Kittens in your hand and
-are marked to say so; every other seat shows the public figure the table is
-actually playing against. Once somebody wins, every hand is face up and all
-the totals are real.
+Your own points on the seat strip include the Feral Kittens in your hand;
+every other seat shows the public figure the table is actually playing
+against. Once somebody wins, every hand is face up and all the totals are
+real.
 
 Forced dialogs (discarding, answering a card aimed at you) are still modals,
 because they have to be dealt with before play continues. Those carry their
 own Defuse and Nope buttons, and they **fold away**: the − in the corner
 shrinks the dialog to a tab in the bottom right and hands the board, the log
 and your hand back, so you can drop a card on a line of the log rather than
-answer from the dialog. The answer is still owed — the table still waits for
-it — and clicking the tab brings it back. Folding is a view state and yours
-alone; nobody else's screen changes.
+answer from the dialog. Folding is a view state and yours alone; nobody
+else's screen changes.
+
+What folding hands back is the **reactions**, not the turn. While an answer is
+owed — a seven part-paid, a robber still to place, a forced dialog open or
+folded — rolling, building, buying, trading and ending the turn are all
+refused, and the action bar says so instead of showing buttons. Dropping a
+Nope or a Defuse on a log entry, and Noping somebody's turn, stay open: they
+are what folding is for.
 
 ### What a Nope reaches
 
@@ -230,6 +236,20 @@ Three cases are worth calling out:
   from may spend it — except whoever rolled it. Your own seven is yours to
   wear; you can Nope it and roll again, which costs you the number rather than
   sparing you the cut.
+- **The robbery is Defusable too**, separately from the roll: drop a Defuse on
+  the *"moves the robber onto…"* line and the robber goes back where it came
+  from, taking any stolen card back with it. Anybody with a building on the hex
+  it landed on may spend it — not only whoever was robbed, since the robber
+  sitting on your wheat costs you every roll it stays there. Never the player
+  who moved it.
+
+  One Defuse settles it for the whole hex, and the robber lands on a hex
+  several people share, so two of them reaching for it at once is ordinary.
+  The host takes them in the order they arrive: the first goes through, and
+  the second is turned away **with their card still in hand**.
+
+Which card the robber took is never named anywhere public. The two of them can
+see it in their own hands; the log and the feed say only that a card moved.
 
 ---
 

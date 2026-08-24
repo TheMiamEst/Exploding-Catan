@@ -1077,7 +1077,15 @@ function tickNow(){
 }
 
 /* Ending a turn can itself open a response window; never let that throw out
-   of the driver. */
+   of the driver.
+
+   Note that requestEndTurn now refuses while an answer is still owed — a
+   seven part-paid, a robber still to place. This is the driver's escape from a
+   bot that cannot act, and it deliberately does NOT get to bypass that: force
+   ending a turn mid-seven walked away from the discards and the robber
+   together, which is exactly the hole it was papering over. A table that
+   genuinely wedges now stops visibly rather than quietly skipping what was
+   owed. */
 function safeEndTurn(){
   try { requestEndTurn(); }
   catch (err){ console.error("bot end-turn failed:", err); }
