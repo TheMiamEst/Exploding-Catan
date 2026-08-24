@@ -401,6 +401,27 @@
     .slot,.kcard{width:44px; height:60px}
   }
 
+  /* A hex that just changed under you: a token swapped by Alter the Future,
+     or the robber landing. Floated over the board rather than drawn into the
+     SVG, because the SVG is rebuilt from scratch on every repaint and an
+     animation in there would restart each time. */
+  .hexpulse{
+    position:absolute; z-index:8; pointer-events:none;
+    transform:translate(-50%,-50%);
+    display:flex; align-items:center; justify-content:center;
+    width:52px; height:52px; border-radius:50%;
+    font-size:20px; font-weight:700; font-variant-numeric:tabular-nums;
+    animation:hexpop 1.15s ease-out forwards;
+  }
+  .hexpulse.alter{ background:#e2b33c33; border:2px solid var(--accent); color:#ffe9ab; }
+  .hexpulse.robber{ background:#0b0d1088; border:2px solid #cbd3df; color:#e7ebf1; font-size:15px; }
+  @keyframes hexpop{
+    0%  {transform:translate(-50%,-50%) scale(.35); opacity:0}
+    25% {transform:translate(-50%,-50%) scale(1.18); opacity:1}
+    60% {transform:translate(-50%,-50%) scale(1); opacity:1}
+    100%{transform:translate(-50%,-50%) scale(1.35); opacity:0}
+  }
+
   /* A play announces itself in the middle of the board for a couple of
      seconds. The log keeps the full record; this is so a card actually being
      played is not something you only find out by reading. Nothing here takes
@@ -475,7 +496,19 @@
   .panel .actions button{padding:6px 11px; font-size:12.5px}
   .panel .counter{margin-bottom:3px}
   .panel .pick{display:flex; flex-wrap:wrap; gap:4px}
-  .pick.tight button{padding:4px 6px; font-size:11.5px; line-height:1.2}
+  /* Fixed geometry: the count rides in the corner, out of the flow entirely,
+     so a button is exactly as wide with a count as without one. Reserving an
+     inline slot for it worked too, but cost ~70px across the row and pushed
+     every picker onto two lines. Nothing here ever moves as you click. */
+  .pick.tight{padding-top:6px}
+  .pick.tight button{padding:4px 6px; font-size:11.5px; line-height:1.2; position:relative}
+  .pick.tight .ct{
+    position:absolute; top:-5px; right:-3px; z-index:1;
+    background:var(--accent); color:#161a20; font-size:9.5px; font-weight:700;
+    border-radius:8px; padding:0 4px; min-width:15px; text-align:center;
+    box-shadow:0 1px 4px #0009;
+  }
+  .pick.tight .ct.off{display:none}
   .pick.tight .swatch{width:8px; height:8px; border-radius:2px}
   .panel .stack{font-size:12.5px}
   /* An offer should be judgeable at a glance, so the resources are chips in
@@ -575,7 +608,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-25a";
+const GAME_VERSION = "2026-08-25b";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1023,6 +1056,7 @@ function newGame(numPlayers){
   closeAllPanels();
   clearShowcase();
   lastShowcased = 0;
+  boardWatch = null;
   clearFeed();
   logMsg("New game — " + numPlayers + " players. Deck: 54 kitten cards.");
   logMsg("<b>" + S.players[first].name + "</b> goes first.");
@@ -1316,6 +1350,7 @@ function render(){
   refreshFeedMarks();
   checkStalePanels();
   checkShowcase();
+  checkBoardChanges();
   // A repaint in the middle of a drag (a bot moving, say) wipes the outlines
   // showing where the card may go. Put them straight back.
   if (dragCard) markDropTargets();
@@ -1415,15 +1450,17 @@ function drawBoard(){
       // The number and pips stay procedural so they remain legible.
       if (blank) h += `<image href="${blank}" x="${hx.x - 21}" y="${hx.y - 21}" width="42" height="42"
                               pointer-events="none"/>`;
-      else h += `<circle cx="${hx.x}" cy="${hx.y}" r="19" fill="#f2ead6" stroke="#0b0d10" stroke-width="1.5"/>`;
-      h += `<text x="${hx.x}" y="${hx.y + 6}" text-anchor="middle" font-size="18" font-weight="700"
-              fill="${red ? "#b3261e" : "#242424"}">${hx.number}</text>`;
+      else h += `<circle cx="${hx.x}" cy="${hx.y}" r="19" fill="#ded5c1" stroke="#0b0d10" stroke-width="1.5"/>`;
+      // Muted rather than paper-white: at full brightness the tokens were the
+      // loudest thing on the board, over the pieces they are meant to inform.
+      h += `<g opacity=".86">
+              <text x="${hx.x}" y="${hx.y + 6}" text-anchor="middle" font-size="18" font-weight="700"
+                fill="${red ? "#9e2c1c" : "#33312c"}">${hx.number}</text>`;
       const pips = 6 - Math.abs(7 - hx.number);
-      let dots = "";
       for (let i = 0; i < pips; i++)
-        dots += `<circle cx="${hx.x - (pips - 1) * 2.6 + i * 5.2}" cy="${hx.y + 13}" r="1.5"
-                   fill="${red ? "#b3261e" : "#242424"}"/>`;
-      h += dots;
+        h += `<circle cx="${hx.x - (pips - 1) * 2.6 + i * 5.2}" cy="${hx.y + 13}" r="1.45"
+                fill="${red ? "#9e2c1c" : "#33312c"}" opacity=".8"/>`;
+      h += `</g>`;
     } else {
       h += `<text x="${hx.x}" y="${hx.y + 5}" text-anchor="middle" font-size="12" fill="#8a7a52">DESERT</text>`;
     }
@@ -2045,11 +2082,18 @@ function drawDice(){
 function drawHint(){
   // Advice is for whoever is actually playing. During a bot's turn the strip
   // stays empty unless a prompt has handed us control.
-  const mineToAct = S.select && S.select.actor !== undefined && S.select.actor === viewSeat();
-  const ours = (window.NET && NET.isOnline && NET.isOnline())
-             ? (S.cur === viewSeat() || mineToAct)
-             : (!anyBots() || myTurnNow() ||
-                (S.select && S.select.actor !== undefined && !isBot(S.select.actor)));
+  // A forced selection belongs to whoever owns it and to nobody else. Being
+  // the current player is not enough: a Defused Alter hands the picker to the
+  // defuser, and the person whose card it was would otherwise be told to
+  // "pick the first number token to swap" for a choice that is not theirs.
+  let ours;
+  if (S.select && S.select.actor !== undefined){
+    ours = S.select.actor === viewSeat();
+  } else if (window.NET && NET.isOnline && NET.isOnline()){
+    ours = S.cur === viewSeat();
+  } else {
+    ours = !anyBots() || myTurnNow();
+  }
   if (!ours){ hint(null); return; }
   if (S.armed){
     const what = S.armed.kind;
@@ -2628,7 +2672,7 @@ function buyKittenDialog(){
       h += `<button ${p.res[r] > 0 ? "" : "disabled"} onclick="window.__poolAdd('${r}')"
               title="${RES_NAME[r]} — you hold ${p.res[r]}">
               <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
-              ${RES_NAME[r]}${pool[r] ? ` <b>×${pool[r]}</b>` : ""}</button>`;
+              ${RES_NAME[r]}<b class="ct ${pool[r] ? "" : "off"}">×${pool[r] || 1}</b></button>`;
     }
     h += `</div>`;
     if (RES.some(r => pool[r] > 0)){
@@ -3650,8 +3694,8 @@ function bankTradeDialog(){
       h += `<button ${p.res[r] >= rate ? "" : "disabled"} onclick="window.__bGive('${r}')"
               title="${RES_NAME[r]} — ${rate}:1, you hold ${p.res[r]}">
               <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
-              ${RES_NAME[r]}${rate < 4 ? ` <span class="rate">${rate}:1</span>` : ""}${
-                give_[r] ? ` <b>×${give_[r]}</b>` : ""}</button>`;
+              ${RES_NAME[r]}${rate < 4 ? ` <span class="rate">${rate}:1</span>` : ""}<b
+                class="ct ${give_[r] ? "" : "off"}">×${give_[r] || 1}</b></button>`;
     }
     h += `</div><div style="height:6px"></div>`;
 
@@ -3661,7 +3705,7 @@ function bankTradeDialog(){
       h += `<button ${S.bank[r] > 0 ? "" : "disabled"} onclick="window.__bGet('${r}')"
               title="${RES_NAME[r]} — bank holds ${S.bank[r]}">
               <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
-              ${RES_NAME[r]}${get_[r] ? ` <b>×${get_[r]}</b>` : ""}</button>`;
+              ${RES_NAME[r]}<b class="ct ${get_[r] ? "" : "off"}">×${get_[r] || 1}</b></button>`;
     }
     h += `</div>`;
 
@@ -3736,7 +3780,7 @@ function playerTradeDialog(){
       h += `<button ${cap > 0 ? "" : "disabled"} onclick="window.${fn}('${r}')"
               title="${RES_NAME[r]}${cap > 0 ? " — up to " + cap + ", then back to none" : " — none to give"}">
               <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
-              ${RES_NAME[r]}${obj[r] ? ` <b>×${obj[r]}</b>` : ""}</button>`;
+              ${RES_NAME[r]}<b class="ct ${obj[r] ? "" : "off"}">×${obj[r] || 1}</b></button>`;
     }
     return h + `</div>`;
   }
@@ -3979,6 +4023,43 @@ function closeModal(){
 const SHOWCASE_MS = 2300;
 let lastShowcased = 0;
 let showcaseTimer = null;
+
+/* What the board looked like last repaint, so a change can be pointed at.
+   Kept out of S deliberately: it is a view concern, and comparing it here
+   means a terminal reacts to the same change the host does without anything
+   extra having to travel. */
+let boardWatch = null;
+
+function pulseHex(hid, cls, label){
+  const h = hexes[hid];
+  const area = document.getElementById("boardArea");
+  if (!h || !area) return;
+  const pt = svgToScreen(h.x, h.y);
+  if (!pt) return;
+  const el = document.createElement("div");
+  el.className = "hexpulse " + (cls || "");
+  el.style.left = pt.x + "px";
+  el.style.top  = pt.y + "px";
+  el.textContent = label === undefined || label === null ? "" : String(label);
+  area.appendChild(el);
+  setTimeout(() => el.remove(), 1200);
+}
+
+/* Point at anything on the board that moved since the last repaint. */
+function checkBoardChanges(){
+  if (!S){ boardWatch = null; return; }
+  const now = { robber: S.robber, nums: hexes.map(h => h.number) };
+  const was = boardWatch;
+  boardWatch = now;
+  // First paint of a game, or a board of a different size: nothing to compare.
+  if (!was || was.nums.length !== now.nums.length) return;
+
+  for (let i = 0; i < now.nums.length; i++)
+    if (was.nums[i] !== now.nums[i] && now.nums[i] !== null)
+      pulseHex(i, "alter", now.nums[i]);
+
+  if (was.robber !== now.robber) pulseHex(now.robber, "robber", "♟");
+}
 
 function clearShowcase(){
   if (showcaseTimer){ clearTimeout(showcaseTimer); showcaseTimer = null; }
@@ -4595,13 +4676,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-25a"></script>
+<script src="ai.js?v=2026-08-25b"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-25a"></script>
-<script src="net.js?v=2026-08-25a"></script>
+<script src="firebase-config.js?v=2026-08-25b"></script>
+<script src="net.js?v=2026-08-25b"></script>
 </body>
 </html>
