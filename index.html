@@ -448,6 +448,22 @@
     55% {transform:perspective(900px) rotateY(14deg)   scale(1.08); opacity:1}
     100%{transform:perspective(900px) rotateY(0)       scale(1)}
   }
+  /* The Imploding Kitten is not so much drawn as arrived at. It spins up out
+     of nothing, half again the size of any other card, and stops dead at full
+     size — the one card the whole table has to look at. */
+  .showcard.implode{
+    width:clamp(178px, 27vh, 250px);
+    border-color:var(--danger);
+    box-shadow:0 30px 80px #000e, 0 0 0 6px #0008, 0 0 46px #ff5a5a55;
+    animation:implodein 1.05s cubic-bezier(.13,.86,.24,1) both;
+  }
+  @keyframes implodein{
+    0%  {transform:scale(.012) rotate(0turn); opacity:0}
+    7%  {opacity:1}
+    100%{transform:scale(1) rotate(5turn)}
+  }
+  .showcap.implode{border-color:var(--danger); color:#ffd9d9; font-weight:600}
+
   /* A seven gets the same moment without a card to turn over. */
   .showseven{
     width:clamp(84px, 13vh, 116px); aspect-ratio:1; border-radius:50%;
@@ -537,6 +553,49 @@
     box-shadow:0 18px 50px #0008;
   }
   .modal h2{margin:0 0 4px; font-size:17px}
+
+  /* A forced dialog you can push out of the way. Discarding for a seven or
+     paying an Attack used to mean paying FIRST and reacting afterwards: the
+     overlay covers the log, and the log is the only place a Nope can be
+     dropped. Minimised, the dialog becomes a tab in the corner and the board,
+     the log and your hand are all live again behind it. The answer is still
+     owed — the table still waits for it — you have just stopped staring at it.
+     Purely a view state: nothing about it travels, so a shipped dialog is
+     minimised by whoever is looking at it and by nobody else. */
+  .minibtn{
+    float:right; margin:-2px 0 0 12px; padding:1px 8px 3px; line-height:1.1;
+    font-size:15px; background:#0000; border:1px solid var(--line); border-radius:7px;
+    color:var(--dim); cursor:pointer;
+  }
+  .minibtn:hover{color:var(--ink); border-color:var(--accent)}
+  .minibtn .up{display:none}
+  /* Folded: bottom right, which is the one corner nothing else claims — the
+     seats run across the top, the log down the left, the trade panels down the
+     right above it, and your hand along the bottom. All four stay clickable. */
+  .overlay.mini{
+    background:#0000; pointer-events:none;
+    align-items:flex-end; justify-content:flex-end; padding:0 12px 104px 0;
+  }
+  .overlay.mini .modal{
+    width:auto; max-width:min(340px, 62vw); padding:0; overflow:visible;
+    background:#0000; border:none; box-shadow:none;
+  }
+  .overlay.mini .modal > *{display:none}
+  .overlay.mini .modal > h2{
+    display:flex; align-items:center; gap:8px; margin:0; font-size:13px;
+    pointer-events:auto; cursor:pointer;
+    background:var(--panel); border:1px solid var(--accent); border-radius:9px;
+    padding:7px 11px; box-shadow:0 12px 34px #000a;
+    animation:panelin .16s ease-out;
+  }
+  .overlay.mini .mtitle{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .overlay.mini .minibtn{float:none; margin:0; flex:0 0 auto}
+  .overlay.mini .minibtn .down{display:none}
+  .overlay.mini .minibtn .up{display:inline}
+  .mininote{
+    margin:6px 0 0; font-size:11.5px; color:var(--dim); line-height:1.45;
+    border-top:1px solid var(--line); padding-top:7px;
+  }
   .modal p.sub{margin:0 0 14px; color:var(--dim); font-size:13px}
   .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap}
   .counter{display:flex; align-items:center; gap:8px; padding:5px 0}
@@ -760,6 +819,9 @@ const BOARD = {
   },
   large: {
     rows: [3,4,5,6,5,4,3],
+    // Seven rows of up to six is taller than it is wide, and the screen is the
+    // other way round. Drawn a quarter turn over — see turnPt.
+    turned: true,
     size: 44, ports: 11, bank: 24,
     terrain: ["wood","wood","wood","wood","wood","wood",
               "brick","brick","brick","brick","brick",
@@ -803,13 +865,25 @@ function hexLayout(set){
 
 let hexes = [], vertices = [], edges = [];
 
+/* A quarter turn, for a board that asks for one. Applied to the lattice rather
+   than to the finished picture: hex centres and hex corners both come out of
+   here already turned, so ports, roads, the deck's parking spot and the drag
+   hit-testing are all computed from turned coordinates and none of them has to
+   know about it. Turning a pointy-top tiling a quarter turn makes it flat-top,
+   which is the only visible difference besides the shape of the whole board. */
+function turnPt(x, y){
+  return BOARDSET.turned ? { x: -y, y: x } : { x: x, y: y };
+}
+/* Degrees to add to anything measured from a hex centre. */
+function turnDeg(){ return BOARDSET.turned ? 90 : 0; }
+
 function axialCenter(q, r){
-  return { x: HEX_SIZE * Math.sqrt(3) * (q + r/2), y: HEX_SIZE * 1.5 * r };
+  return turnPt(HEX_SIZE * Math.sqrt(3) * (q + r/2), HEX_SIZE * 1.5 * r);
 }
 function cornerPoints(cx, cy){
   const pts = [];
   for (let i = 0; i < 6; i++){
-    const a = Math.PI / 180 * (60 * i - 30);
+    const a = Math.PI / 180 * (60 * i - 30 + turnDeg());
     pts.push({ x: cx + HEX_SIZE * Math.cos(a), y: cy + HEX_SIZE * Math.sin(a) });
   }
   return pts;
@@ -1034,6 +1108,7 @@ function newGame(numPlayers){
     roadLens: S_zeroLens(numPlayers),
     longestRoad: { owner:null, len:0 },
     largestArmy: { owner:null, n:0 },
+    seven: null,              // {actor, queue:[pid]} — a 7 still being paid for
     select: null,             // {kind, ...} forced board interaction
     armed: null,              // {kind, id} spot awaiting a confirming second click
     diceLog: [],              // every roll this game, for the history panel
@@ -1054,6 +1129,7 @@ function newGame(numPlayers){
   };
   S.turnRec = freshTurnRecord();
   closeAllPanels();
+  forgetModalFold();
   clearShowcase();
   lastShowcased = 0;
   boardWatch = null;
@@ -1428,8 +1504,10 @@ function drawBoard(){
     const click = hot ? ` style="cursor:pointer" onclick="hexClick(${hx.id})"` : "";
     const tile = art("hex", hx.terrain);
     if (tile){
-      // Square source, cropped to cover the hex's bounding box.
-      const w = HEX_SIZE * Math.sqrt(3), ht = HEX_SIZE * 2;
+      // Square source, cropped to cover the hex's bounding box — taller than
+      // wide for a pointy-top hex, and the other way round for a turned one.
+      const w  = HEX_SIZE * (BOARDSET.turned ? 2 : Math.sqrt(3));
+      const ht = HEX_SIZE * (BOARDSET.turned ? Math.sqrt(3) : 2);
       h += `<g transform="translate(${hx.x},${hx.y})" clip-path="url(#hexclip)"${click}>
               <image href="${tile}" x="${-w/2}" y="${-ht/2}" width="${w}" height="${ht}"
                      preserveAspectRatio="xMidYMid slice"/>
@@ -2039,9 +2117,25 @@ function resList(o){
               '<span class="rdot"></span>' + o[r] + "× " + RES_NAME[r] + "</span>");
   return parts.length ? parts.join(" ") : '<span class="rchip none">nothing</span>';
 }
-function tradeToast(a, b, gave, got){
-  announce(pdot(a) + " → " + resList(gave) + "<br>" + pdot(b) + " → " + resList(got),
-           "info", 5200);
+/* A settled trade goes in the journal with everything else, which is what
+   makes it answerable: drop a Nope on the line and the resources go back where
+   they came from. It used to be announced straight to the feed with no entry
+   behind it, so the one action at the table that can hand somebody the card
+   they were missing was also the one nobody could stop.
+
+   `snapBefore` is the board before the resources moved — that is what the
+   Nope rewinds to. */
+function tradeToast(a, b, gave, got, snapBefore){
+  return logAction(pdot(a) + " → " + resList(gave) + "<br>" + pdot(b) + " → " + resList(got),
+                   "info", { actor: a.id, target: b.id, snap: snapBefore || snapAll() });
+}
+
+/* The bank is not a player, so there is nobody on the other side of the line —
+   but the resources still move, and a Nope still has to be able to move them
+   back. */
+function bankToast(a, gave, got, snapBefore){
+  return logAction(pdot(a) + " banks " + resList(gave) + " → " + resList(got), "info",
+                   { actor: a.id, snap: snapBefore || snapAll() });
 }
 
 function pdot(p){
@@ -2466,6 +2560,14 @@ document.addEventListener("keydown", e => {
 
 function rollDice(){
   if (netSend("roll")) return;
+  doRoll();
+}
+
+/* The roll itself. Split from rollDice because a Noped roll is thrown again
+   on the spot — that reroll is the host acting on a decision already taken,
+   not a terminal asking for one, so it must not travel back out as an intent
+   and come round again. */
+function doRoll(){
   const snapBefore = snapAll();
   const d1 = 1 + Math.floor(Math.random() * 6);
   const d2 = 1 + Math.floor(Math.random() * 6);
@@ -2476,10 +2578,10 @@ function rollDice(){
   logMsg(`<b>${cur().name}</b> rolls <b>${sum}</b> (${d1}+${d2}).`);
 
   if (sum === 7){
-    logAction(pdot(cur()) + " rolls <b>7</b> <span style='opacity:.55'>(" + d1 + "+" + d2 +
-             ")</span><br><span style='opacity:.75'>robber moves — hands over 7 are cut</span>",
-             "roll", { snap: snapBefore, show: "seven" });
-    S.phase = "main"; startSevenSequence(S.cur); return;
+    const rollEntry = logAction(pdot(cur()) + " rolls <b>7</b> <span style='opacity:.55'>(" +
+             d1 + "+" + d2 + ")</span><br><span style='opacity:.75'>robber moves — " +
+             "hands over 7 are cut</span>", "roll", { snap: snapBefore, show: "seven" });
+    S.phase = "main"; startSevenSequence(S.cur, rollEntry.id); return;
   }
 
   const out = produce(sum);
@@ -2523,17 +2625,53 @@ function produce(sum){
   return { paid, notes };
 }
 
-/* ── 7: discard, then robber ─────────────────────────────────────────── */
-function startSevenSequence(actor){
-  const queue = S.players.filter(p => totalRes(p) > 7).map(p => p.id);
-  processDiscards(queue, () => beginRobberMove(actor));
+/* ── 7: discard, then robber ───────────────────────────────────────────
+   Who still owes the seven lives on the state rather than in a chain of
+   closures. It has to: a Nope landing mid-discard rewinds the board, and a
+   queue held only in a callback would carry on paying out for a roll that no
+   longer happened — which is exactly how a Noped seven still took everybody's
+   cards. Snapshotted with everything else, so a rewind puts the queue back
+   precisely as it stood, and stepSeven picks it up from there. */
+function startSevenSequence(actor, jid){
+  S.seven = { actor: actor, jid: jid,
+              queue: S.players.filter(p => totalRes(p) > 7).map(p => p.id) };
+  stepSeven();
 }
 
-function processDiscards(queue, done){
-  if (!queue.length){ done(); return; }
-  const p = S.players[queue[0]];
-  const n = Math.floor(totalRes(p) / 2);
-  discardDialog(p, n, () => processDiscards(queue.slice(1), done));
+/* Ask whoever is at the head of the queue, or move the robber when it empties.
+   Safe to call again at any point — after a rewind, after a Defuse — because
+   the queue says what is still owed rather than what has been asked. */
+function stepSeven(){
+  const s = S && S.seven;
+  if (!s) return;
+  if (S.phase === "over" || S.phase.startsWith("setup")){ S.seven = null; return; }
+  // A hand that has shrunk since the roll — Defused, Noped, or given away in a
+  // trade that was then undone — is no longer over the line.
+  while (s.queue.length && totalRes(S.players[s.queue[0]]) <= 7) s.queue.shift();
+  if (!s.queue.length){
+    const actor = s.actor;
+    S.seven = null;
+    beginRobberMove(actor);
+    return;
+  }
+  const p = S.players[s.queue[0]];
+  // A bot pays the moment it is asked, so this is its only chance to answer the
+  // seven instead. Whatever it spends restarts the sequence from wherever the
+  // board ends up, which is why nothing after this line runs.
+  const ag = agentOf(p.id);
+  if (ag && ag.answerSeven && ag.answerSeven()) return;
+  discardDialog(p, Math.floor(totalRes(p) / 2), () => {
+    // The board may have moved under this dialog while it was open. Only the
+    // answer the queue is actually waiting on counts.
+    if (!S.seven || S.seven.queue[0] !== p.id) return;
+    S.seven.queue.shift();
+    stepSeven();
+  }, { mini: true, answers: s.jid });
+}
+
+/* Is this player one of the hands a seven still has its hand out for? */
+function owesSevenCut(pid){
+  return !!(S && S.seven && S.seven.queue.indexOf(pid) >= 0);
 }
 
 function beginRobberMove(actor){
@@ -2726,8 +2864,13 @@ function drawKitten(p){
     startImplodeClock();
     logMsg(`Every other player's hand implodes into <b>${p.name}</b> — ${stolen} cards taken.`);
     logMsg(`<b>${p.name}</b>'s turn cannot be Noped, but ends in 20 seconds.`);
-    announce("💥 " + pdot(p) + " draws the <b>Imploding Kitten</b> — takes " + stolen +
-             " resources from everyone", "big", 5200);
+    // Journalled purely so the card turns over on screen the way every other
+    // played card does — the showcase reads the journal, which is also how a
+    // terminal gets to watch it. Explicitly un-Nopeable: the card says it
+    // cannot be refuted in any way, and the entry must not offer a window.
+    logAction("💥 " + pdot(p) + " draws the <b>Imploding Kitten</b> — takes " + stolen +
+              " resources from everyone", "big",
+              { actor: p.id, snap: snapBefore, nopeable: false, show: "implode" });
     checkVictory();
     return;
   }
@@ -2933,6 +3076,10 @@ function snapAll(){
     la:      Object.assign({}, S.largestArmy),
     roadLens: (S.roadLens || []).slice(),
     implodeTurn: S.implodeTurn,
+    // Copied, not referenced: the queue is shifted through as people pay, and
+    // a snapshot holding the live array would be rewound to its own future.
+    seven:   S.seven ? { actor: S.seven.actor, jid: S.seven.jid,
+                         queue: S.seven.queue.slice() } : null,
     rec: S.turnRec ? {
       edges: S.turnRec.edges.slice(),
       verts: S.turnRec.verts.map(v => Object.assign({}, v)),
@@ -2967,6 +3114,8 @@ function restoreAll(s){
   S.largestArmy = Object.assign({}, s.la);
   S.roadLens = s.roadLens.slice();
   S.implodeTurn = s.implodeTurn;
+  S.seven = s.seven ? { actor: s.seven.actor, jid: s.seven.jid,
+                        queue: s.seven.queue.slice() } : null;
   if (s.rec && S.turnRec){
     S.turnRec.edges = s.rec.edges.slice();
     S.turnRec.verts = s.rec.verts.map(v => Object.assign({}, v));
@@ -2992,6 +3141,9 @@ function logAction(html, kind, opts){
     spent: opts.spent || null,
     redo: opts.redo || null,
     show: opts.show || null,
+    // Undoing this must not also end its actor's turn: it was defensive, and
+    // played out of turn. Set by the Defuse spent on a seven.
+    turnSafe: !!opts.turnSafe,
     nopeable: opts.nopeable !== false,
     noped: false,
     plain: String(html).replace(/<[^>]+>/g, "").trim()
@@ -3050,6 +3202,11 @@ function canNopeEntry(e){
    out here while leaving it wide open to a Nope. */
 function canDefuseEntry(e, pid){
   if (!canNopeEntry(e)) return false;
+  // A seven is not a card, but it is aimed at everybody holding more than
+  // seven, and a Defuse answers it for exactly one of them. Only while the cut
+  // is still owed, and only by somebody it is still owed by — which includes
+  // the player who rolled it, since a seven takes from its own roller too.
+  if (e.kind === "roll") return e.show === "seven" && owesSevenCut(pid);
   if (!e.card) return false;           // a reaction, not a card aimed at anyone
   if (e.actor === pid) return false;
   if (e.card.key === "alter"){
@@ -3076,27 +3233,36 @@ function spendCard(p, key){
    a hand with nothing in it looks exactly like a hand that is holding back.
    A modal covers the screen, which is what makes them necessary: no card can
    be dragged anywhere while one is open. */
-function promptReactions(pid){
+/* `jid` names the entry the dialog is answering. Left out, it is the newest
+   line in the log, which is right for a card that has just landed on you.
+   A seven names its own roll instead: the queue takes several answers to walk
+   through, and by the time it reaches the third player the roll is no longer
+   the newest thing said — but it is still the thing taking their cards. */
+function promptReactions(pid, jid){
   const out = [];
   if (!S) return out;
-  const e = openEntry();
-  if (!e) return out;
-  if (e.kind === "roll") return out;     // a die roll is not a card; leave the 7 queue alone
+  const e = jid === undefined ? openEntry() : S.journal.find(x => x.id === jid);
+  if (!e || !canNopeEntry(e)) return out;
   const p = S.players[pid];
   if (!p) return out;
+  const roll = e.kind === "roll";
   const fresh = c => c.boughtTurn !== S.turnCounter;
   if (p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, pid))
-    out.push({ label:"🛡 Defuse it", cls:"react",
+    out.push({ label: roll ? "🛡 Defuse the 7" : "🛡 Defuse it", cls:"react",
                fn: () => { closeModal(); defuseEntry(e.id, pid); } });
-  if (p.cards.some(c => c.key === "nope" && fresh(c)) && canNopeEntry(e) && e.actor !== pid)
-    out.push({ label:"🚫 Nope it", cls:"reactno",
+  if (p.cards.some(c => c.key === "nope" && fresh(c)) && e.actor !== pid)
+    out.push({ label: roll ? "🚫 Nope it — reroll" : "🚫 Nope it", cls:"reactno",
                fn: () => { closeModal(); nopeEntry(e.id, pid); } });
   return out;
 }
 
-function reactNoteHTML(){
+function reactNoteHTML(e){
+  const roll = !!(e && e.kind === "roll");
   return `<div class="reactnote">You are holding an answer to this — spend it from
-          here. Once the next thing reaches the log the window is shut.</div>`;
+          here, or fold the dialog away and drop it on the log yourself.
+          ${roll ? `A Nope throws the dice again and the turn carries on; a Defuse
+                    spares your hand alone and lets the rest of the seven stand.` : ""}
+          The window closes a few lines further down the log.</div>`;
 }
 
 /* A card aimed at a person opens a window of its own for them. Only when they
@@ -3123,9 +3289,14 @@ function offerTargetResponse(action){
   } else {
     what = `<b>${from.name}</b> played it on you.`;
   }
+  // Foldable like the discard windows, and for the same reason: the answer you
+  // want may be a card dropped on a different line of the log, and the dialog
+  // is standing on top of the log.
   openModal(esc(def.name) + " — aimed at you",
-    `<p class="sub">${what}</p>` + reactNoteHTML(),
-    [{ label:"Take it", fn: closeModal }].concat(react));
+    `<p class="sub">${what}</p>` + reactNoteHTML() +
+    `<p class="mininote">Fold this away with − to answer from the log instead.
+     Nothing is settled until you come back.</p>`,
+    [{ label:"Take it", fn: closeModal }].concat(react), { mini: true });
 }
 
 /* ── Nope an entry ───────────────────────────────────────────────────── */
@@ -3138,6 +3309,7 @@ function nopeEntry(id, noperId){
   if (!noper.cards.some(c => c.key === "nope")) return false;
 
   const label = e.plain;
+  let reroll = false;
   // Whose turn is being cut short. Off-turn plays (an Attack thrown during
   // somebody else's turn), and anything from a turn that has already handed
   // over, have no turn of their own to end.
@@ -3164,6 +3336,12 @@ function nopeEntry(id, noperId){
   restoreAll(e.snap);
   S.journal.splice(idx);
   spendCard(noper, "nope");
+
+  // Undoing an entry throws away everything that came after it, so any forced
+  // dialog still on screen is asking about a state that no longer exists —
+  // the discard window for a roll that has been un-rolled, most of all. Take
+  // it away. Anything genuinely still owed is reopened below by stepSeven.
+  closeModal();
 
   // "The attack and the Nope are both spent." The rewind predates the card
   // leaving its owner's hand, so without this it would be handed straight
@@ -3209,16 +3387,23 @@ function nopeEntry(id, noperId){
     const back = S.players[S.cur];
     announce(pdot(back) + " gets their turn back", "defend");
     logMsg(`<b>${back.name}</b> gets their turn back.`);
-  } else if (wasNoperTurn && !e.redo){
+  } else if (wasNoperTurn && e.kind === "roll"){
+    // A Noped roll is thrown again, and the player carries on with whatever
+    // the dice say the second time. Ending the turn here was wrong twice over:
+    // the whole point of Noping a roll is a seven you cannot afford, and
+    // ending the turn is no answer to a seven at all — the robber moves and
+    // the hands are cut before the turn is over. Rerolling is the answer, and
+    // it costs the roller their number rather than their turn.
+    reroll = true;
+  } else if (wasNoperTurn && !e.redo && !e.turnSafe){
     // Being Noped costs you the rest of your turn, whatever you were doing.
-    // A Noped roll is therefore not rerolled — there is no turn left to roll
-    // for — which is a good part of why a Nope is worth holding on to.
     //
-    // Not so for a Defuse (the `e.redo` case above). That is a defensive card
-    // played out of turn; cancelling it means the original attack lands after
-    // all, which is punishment enough. Ending the defender's turn on top of it
-    // was wrong — an Exploding Kitten thrown at them on their OWN turn, then
-    // Defused, then Noped, cost them the turn instead of the resources.
+    // Not so for a Defuse (the `e.redo` case above, and `turnSafe` for the one
+    // spent on a seven). That is a defensive card played out of turn;
+    // cancelling it means the original attack lands after all, which is
+    // punishment enough. Ending the defender's turn on top of it was wrong —
+    // an Exploding Kitten thrown at them on their OWN turn, then Defused, then
+    // Noped, cost them the turn instead of the resources.
     announce(pdot(victim) + " is Noped — their turn ends", "attack");
     logMsg(`<b>${victim.name}</b>'s turn ends.`);
     endTurnAfterNope();
@@ -3228,6 +3413,28 @@ function nopeEntry(id, noperId){
   // only" rule would put it out of reach the instant it landed, and a Nope
   // could never be Noped.
   noteEntry.turn = S.turnCounter;
+
+  if (reroll){
+    // The snapshot carries the board, not the clock: phase has to be put back
+    // by hand or the roller is left in the middle of a turn they never rolled
+    // for. Then throw the dice, which journals a fresh entry of its own — so
+    // a second seven can be Noped again by anybody still holding one.
+    S.phase = "roll";
+    S.rolled = null;
+    S.seven = null;
+    announce(pdot(victim) + " is Noped — the dice are thrown again", "defend");
+    logMsg(`<b>${victim.name}</b>'s roll is Noped — they roll again.`);
+    doRoll();
+    render();
+    botTick();
+    return true;
+  }
+
+  // A rewind that landed in the middle of a seven puts the queue back as it
+  // stood. Whoever is at the head of it still owes their cards, and their
+  // dialog went with the rewind, so ask again.
+  if (S.seven) stepSeven();
+
   render();
   botTick();
   return true;
@@ -3252,9 +3459,49 @@ function restoreTurnPointer(t){
 function endTurnAfterNope(){
   S.select = null;
   S.armed = null;
+  S.seven = null;
   clearImplodeClock();
   closeModal();
   doEndTurn();
+}
+
+/* ── Defuse a seven ──────────────────────────────────────────────────────
+   Spending a Defuse on the roll buys one hand out of the cut. The roll itself
+   stands: the robber still moves and everybody else still pays. Same reason
+   you would Nope a seven — you are holding too much to lose it — at a smaller
+   price and for one player only.
+
+   Nothing is rewound, because nothing has happened yet: the queue has not
+   reached this player's cards. That matters beyond tidiness — a rewind here
+   would throw away the very queue the sequence is walking. Instead the
+   defuser is simply lifted out of it, and the entry is journalled against the
+   queue as it stood, so a Nope aimed at the Defuse drops them back in. */
+function defuseSeven(e, defuserId){
+  if (!S.seven) return false;
+  const d = S.players[defuserId];
+  const snapBefore = snapAll();
+  const head = S.seven.queue[0];
+
+  spendCard(d, "defuse");
+  const i = S.seven.queue.indexOf(defuserId);
+  if (i >= 0) S.seven.queue.splice(i, 1);
+
+  logMsg(`<b>${d.name}</b> Defuses the seven — their hand is not cut.`);
+  // turnSafe: a Defuse is defensive and played out of turn. Noping it puts the
+  // defuser back in the queue, which is punishment enough — it must not also
+  // end the turn of a roller who Defused their own seven.
+  logAction(pdot(d) + " <b>Defuses</b> the seven — their hand is spared", "defend",
+            { actor: defuserId, snap: snapBefore, nopeable: true, turnSafe: true,
+              spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
+
+  closeModal();
+  // Only re-ask when the queue has actually moved on. Defusing from your own
+  // discard window changes the head; defusing from the log while somebody else
+  // is mid-discard does not, and reopening their dialog would clear the pile
+  // they had already counted out.
+  if (S.seven.queue[0] !== head) stepSeven();
+  render();
+  return true;
 }
 
 /* ── Defuse an entry ─────────────────────────────────────────────────── */
@@ -3265,6 +3512,7 @@ function defuseEntry(id, defuserId){
   if (!canDefuseEntry(e, defuserId)) return false;
   const d = S.players[defuserId];
   if (!d.cards.some(c => c.key === "defuse")) return false;
+  if (e.kind === "roll") return defuseSeven(e, defuserId);
 
   const card = e.card, payload = e.payload, victimId = e.actor;
   const key = card.key;
@@ -3285,6 +3533,9 @@ function defuseEntry(id, defuserId){
   restoreAll(e.snap);
   S.journal.splice(idx);
   spendCard(d, "defuse");
+  // Same as a Nope: whatever forced dialog was standing on the entry we just
+  // erased is asking about a state that no longer exists.
+  closeModal();
 
   // The rewind put the defused card back in its owner's hand. It is spent
   // whichever way it ends up pointing, so take it out again here — otherwise
@@ -3519,6 +3770,7 @@ function doEndTurn(){
     S.extraTurn = false;
     S.phase = "roll";
     S.rolled = null;
+    S.seven = null;
     S.turnCounter++;
     S.turnRec = freshTurnRecord();
     logMsg(`<b>${cur().name}</b> takes another turn.`);
@@ -3547,6 +3799,7 @@ function advancePlayer(){
   S.phase = "roll";
   S.rolled = null;
   S.armed = null;
+  S.seven = null;
   S.turnCounter++;
   S.turnRec = freshTurnRecord();
   clearImplodeClock();
@@ -3723,10 +3976,11 @@ function bankTradeDialog(){
       { label:"Cancel", fn: () => { closePanel("bank"); render(); } },
       { label:"Trade", cls:"primary", disabled: !bal, fn: () => {
           closePanel("bank");
+          const snapBefore = snapAll();
           for (const r of RES) if (spend[r]) take(p, r, spend[r]);
           for (const r of RES) if (get_[r])  give(p, r, get_[r]);
           logMsg(`<b>${p.name}</b> trades with the bank.`);
-          announce(pdot(p) + " banks " + resList(spend) + " → " + resList(get_), "info");
+          bankToast(p, spend, get_, snapBefore);
           render();
         } }
     ]);
@@ -3898,12 +4152,13 @@ function playerTradeDialog(){
       return;
     }
     settled = true;
+    const snapBefore = snapAll();
     for (const r of RES){
       p.res[r] -= offer[r]; q.res[r] += offer[r]; noteGain(q, r, offer[r]);
       q.res[r] -= want[r];  p.res[r] += want[r];  noteGain(p, r, want[r]);
     }
     logMsg(`<b>${p.name}</b> ⇄ <b>${q.name}</b>: gave ${fmt(offer)} for ${fmt(want)}.`);
-    tradeToast(p, q, offer, want);
+    tradeToast(p, q, offer, want, snapBefore);
     dropOffers();
     closePanel("trade");
     render();
@@ -3916,7 +4171,7 @@ function playerTradeDialog(){
    DISCARD DIALOG (used by the 7-roll and by Attack)
    ══════════════════════════════════════════════════════════════════════ */
 
-function discardDialog(p, n, done){
+function discardDialog(p, n, done, opts){
   const ag = agentOf(p.id);
   if (ag && ag.chooseDiscard){
     const pick = ag.chooseDiscard(p, n);
@@ -3944,11 +4199,16 @@ function discardDialog(p, n, done){
             </div>`;
     }
     h += `<div class="stack">Discarding ${total} of ${n}</div>`;
-    // An Attack can be Defused or Noped from right here, instead of being paid
-    // for first. A discard forced by a 7 cannot — a die roll is not a card,
-    // so promptReactions returns nothing and the queue is left alone.
-    const react = promptReactions(p.id);
-    openModal("Discard", h + (react.length ? reactNoteHTML() : ""), [
+    // An Attack or a seven can be answered from right here rather than paid
+    // for first: a Nope throws the dice again, a Defuse buys this hand out of
+    // the cut. Whatever you would rather do with the card, the dialog also
+    // folds away — see openModal — so the log is reachable to drop it on.
+    const answers = opts && opts.answers;
+    const ansEntry = answers === undefined ? null : S.journal.find(x => x.id === answers);
+    const react = promptReactions(p.id, answers);
+    openModal("Discard — " + esc(p.name), h + (react.length ? reactNoteHTML(ansEntry) : "") +
+      `<p class="mininote">Fold this away with − if you would rather answer the
+       log first. Nothing moves until you come back and confirm.</p>`, [
       { label:"Confirm", cls:"primary", disabled: total !== n, fn: () => {
           closeModal();
           for (const r of RES) take(p, r, pick[r]);
@@ -3956,7 +4216,7 @@ function discardDialog(p, n, done){
           render();
           done();
         } }
-    ].concat(react));
+    ].concat(react), { mini: true });
   };
   window.__dc = (r, d) => {
     const total = RES.reduce((s, x) => s + pick[x], 0);
@@ -3977,34 +4237,75 @@ let modalEl = null;
    online play can hand a whole dialog to the browser it actually belongs to,
    and so that a dialog redrawing itself (every +/− on a counter reopens it)
    does not read as the dialog being dismissed. */
-function drawLocalModal(title, bodyHTML, btnsHTML){
+/* Folded-away state for the dialog on screen right now. A view concern and
+   nothing more: it never travels, it survives the dialog redrawing itself
+   (every +/− on a counter reopens the whole thing), and it is dropped the
+   moment a different dialog takes the screen. */
+let modalMini = false;
+let modalKey  = null;
+
+function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
   dismissLocalModal();
+  if (modalKey !== title){ modalKey = title; modalMini = false; }
   modalEl = document.createElement("div");
-  modalEl.className = "overlay";
-  modalEl.innerHTML = `<div class="modal"><h2>${title}</h2>${bodyHTML}
+  modalEl.className = "overlay" + (canMini ? " canmini" : "") +
+                      (canMini && modalMini ? " mini" : "");
+  const mini = canMini
+    ? `<button class="minibtn" onclick="toggleModalMini()"
+         title="Fold this away — the board and the log stay live, and it is still owed"
+       ><span class="down">−</span><span class="up">▴</span></button>` : "";
+  modalEl.innerHTML = `<div class="modal"><h2>${mini}<span class="mtitle">${title}</span></h2>${bodyHTML}
     ${btnsHTML ? `<div class="actions">${btnsHTML}</div>` : ""}</div>`;
+  // Folded away, the whole tab is the way back — the button alone is a small
+  // target for something you fold and unfold several times in a turn.
+  if (canMini){
+    const head = modalEl.querySelector("h2");
+    if (head) head.addEventListener("click", (ev) => {
+      if (modalMini && !ev.target.closest(".minibtn")) toggleModalMini();
+    });
+  }
   document.body.appendChild(modalEl);
 }
 function dismissLocalModal(){
   if (modalEl){ modalEl.remove(); modalEl = null; }
 }
 
+/* Fold the dialog into a tab in the corner, or bring it back. Everything
+   behind it — the log to drop a Nope on, your hand to drag it from — is live
+   again while it is folded, and the table still waits for the answer. */
+function toggleModalMini(){
+  if (!modalEl || !modalEl.classList.contains("canmini")) return;
+  modalMini = !modalMini;
+  modalEl.classList.toggle("mini", modalMini);
+}
+
+/* The dialog has been taken off this screen by somebody else — online, the
+   host withdrawing it. Called from net.js, since closeModal is the host's way
+   of doing this and a terminal never runs it. */
+function forgetModalFold(){ modalKey = null; modalMini = false; }
+
 /* Tag the dialog about to be opened as belonging to one seat. Online, that is
    what sends it to the right person instead of drawing it on the host's
    screen; offline it does nothing at all. */
 function promptFor(pid){ if (window.NET) NET.promptSeat = pid; }
 
-function openModal(title, bodyHTML, buttons){
+/* `opts.mini` marks a dialog that may be folded out of the way. Only the
+   forced ones want it — a discard, a card aimed at you — and only because
+   answering them is sometimes better done from the log than from the dialog. */
+function openModal(title, bodyHTML, buttons, opts){
   dismissLocalModal();
-  if (window.NET && NET.shipModal && NET.shipModal(title, bodyHTML, buttons)) return;
+  const canMini = !!(opts && opts.mini);
+  if (window.NET && NET.shipModal && NET.shipModal(title, bodyHTML, buttons, canMini)) return;
   let btns = "";
   (buttons || []).forEach((b, i) => {
     btns += `<button class="${b.cls || ""}" ${b.disabled ? "disabled" : ""} onclick="window.__mb(${i})">${b.label}</button>`;
   });
-  drawLocalModal(title, bodyHTML, btns);
+  drawLocalModal(title, bodyHTML, btns, canMini);
   window.__mb = (i) => buttons[i].fn();
 }
 function closeModal(){
+  modalKey = null;
+  modalMini = false;
   dismissLocalModal();
   if (window.NET && NET.clearRemote) NET.clearRemote();
 }
@@ -4067,7 +4368,7 @@ function clearShowcase(){
   if (el){ el.hidden = true; el.className = ""; el.innerHTML = ""; }
 }
 
-function showcase(bodyHTML, capHTML, capCls){
+function showcase(bodyHTML, capHTML, capCls, ms){
   const el = document.getElementById("showcase");
   if (!el) return;
   if (showcaseTimer) clearTimeout(showcaseTimer);
@@ -4077,7 +4378,7 @@ function showcase(bodyHTML, capHTML, capCls){
   showcaseTimer = setTimeout(() => {
     el.className = "out";
     showcaseTimer = setTimeout(clearShowcase, 400);
-  }, SHOWCASE_MS);
+  }, ms || SHOWCASE_MS);
 }
 
 /* The newest journal entry, if it is something worth turning over. */
@@ -4091,6 +4392,18 @@ function checkShowcase(){
     showcase('<div class="showseven">7</div>',
              esc(S.players[e.actor] ? S.players[e.actor].name : "") +
              " rolls a seven — hands over 7 are cut, and the robber moves", "seven");
+    return;
+  }
+  // The Imploding Kitten never reaches a hand, so it would otherwise be the
+  // one card in the deck nobody ever sees. It gets the entrance to match: half
+  // again the size of a played card, spun up out of a point, and left standing
+  // long enough that the whole table has looked at it.
+  if (e.show === "implode"){
+    const iface = art("card", "implode");
+    showcase('<div class="showcard implode">' +
+               (iface ? '<img src="' + iface + '" alt="">'
+                      : '<span class="kn">Imploding Kitten</span>') +
+             "</div>", esc(e.plain).replace(/\s+/g, " "), "implode", 4600);
     return;
   }
   const def = KITTEN[e.show];
@@ -4240,7 +4553,7 @@ function newGameDialog(){
             <button onclick="window.__ng(6,true)">You + 5 bots</button>
           </div>
           <div class="rules" style="margin-top:6px">5 and 6 players use the larger
-          extension board — 30 hexes, two deserts, 11 ports.</div>
+          extension board — 30 hexes, two deserts, 11 ports, laid out on its side.</div>
           <div style="height:14px"></div>`;
   }
   h += `<p class="sub">Hot-seat — one screen, you play every seat in turn.</p><div class="pick">`;
@@ -4588,7 +4901,9 @@ function showRules(){
       <li>Knights still count toward Largest Army — there are 10 of them.</li>
       <li><b>5 and 6 players</b> use the extension board: 30 hexes in rows of 3-4-5-6-5-4-3,
           two deserts, 28 number tokens, 11 ports, and 24 of each resource in the bank.
-          Piece limits, the 10-point target and the 54-card kitten deck are unchanged.</li>
+          It is drawn a quarter turn round — wider than it is tall, to match the
+          screen — so its hexes sit flat-topped rather than pointed. Piece limits,
+          the 10-point target and the 54-card kitten deck are unchanged.</li>
     </ul>
 
     <h4>The deck (54)</h4><ul>`;

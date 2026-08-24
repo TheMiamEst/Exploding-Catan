@@ -164,7 +164,30 @@ closed — whatever it was offering may no longer be true.
 
 Forced dialogs (discarding, answering a card aimed at you) are still modals,
 because they have to be dealt with before play continues. Those carry their
-own Defuse and Nope buttons.
+own Defuse and Nope buttons, and they **fold away**: the − in the corner
+shrinks the dialog to a tab in the bottom right and hands the board, the log
+and your hand back, so you can drop a card on a line of the log rather than
+answer from the dialog. The answer is still owed — the table still waits for
+it — and clicking the tab brings it back. Folding is a view state and yours
+alone; nobody else's screen changes.
+
+### What a Nope reaches
+
+A Nope dropped on a line of the log undoes that line, and everything after it.
+Three cases are worth calling out:
+
+- **A roll** is *thrown again*, and the turn carries on. It does not end the
+  roller's turn — ending a turn is no answer to a seven, since the robber has
+  already moved and the hands have already been cut by the time the turn is
+  over. This is what makes a Nope worth holding against a seven you cannot
+  afford: five sixths of the rerolls are not sevens.
+- **A trade** — between players or with the bank — puts the resources back
+  where they came from. Trades are journalled like anything else, so the one
+  move that can hand somebody the card they were missing is answerable too.
+- **A seven can also be Defused**, which is the cheaper answer: it buys one
+  hand out of the cut and leaves the rest of the roll standing. The robber
+  still moves and everybody else still pays. Anyone the seven is about to take
+  from may spend it, including the player who rolled it.
 
 ---
 

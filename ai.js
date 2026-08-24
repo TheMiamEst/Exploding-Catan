@@ -46,7 +46,9 @@ const W = {
   cardPushVP:     5,      // from here on, kitten cards are worth chasing hard
   cardPushMult:   2.8,    // how much more a card is worth in that band
   roadReachMax:   3,      // never build toward a spot further away than this
-  handHardCap:    9       // above this, spend no matter what else is pending
+  handHardCap:    9,      // above this, spend no matter what else is pending
+  sevenAnswerCut: 5       // cards a seven must be about to take before a Nope
+                          // or a Defuse is worth spending on it
 };
 
 /* Why diversity is weighted higher than in base Catan: a kitten card costs
@@ -317,7 +319,13 @@ function nopeJournalDecision(p, e){
   // Judge by what we held before the action, not by what is left afterwards.
   const had = e.snap ? RES.reduce((n, r) => n + e.snap.res[p.id][r], 0) : totalRes(p);
 
-  if (e.kind === "roll") return false;          // rerolls are a coin flip
+  // A Noped roll is thrown again, so a seven that is about to halve a big hand
+  // is worth a card: five sixths of the rerolls are not sevens. A small cut is
+  // not — the Nope is worth more held.
+  if (e.kind === "roll"){
+    return e.show === "seven" && owesSevenCut(p.id) &&
+           Math.floor(had / 2) >= W.sevenAnswerCut;
+  }
   if (e.kind === "buy")  return publicVP(actor) >= 8;   // deny a closing player
 
   // A Nope. Worth answering only when it is OUR turn it just ended, and only
@@ -510,12 +518,15 @@ function tryBankTrade(p){
       const rate = tradeRate(p, r);
       const keep = cost[r] || 0;
       if (p.res[r] - rate < keep) continue;      // must not break the same build
+      const snapBefore = snapAll();
       take(p, r, rate); give(p, need, 1);
       logMsg("<b>" + p.name + "</b> trades " + rate + " " + RES_NAME[r] +
              " → 1 " + RES_NAME[need] + ".");
       const g1 = { wood:0,brick:0,sheep:0,wheat:0,ore:0 }; g1[r] = rate;
       const g2 = { wood:0,brick:0,sheep:0,wheat:0,ore:0 }; g2[need] = 1;
-      announce(pdot(p) + " banks " + resList(g1) + " → " + resList(g2), "info", 4000);
+      // Journalled, so a bot buying the last brick it needs can be Noped like
+      // any other action rather than being the one move nobody can answer.
+      bankToast(p, g1, g2, snapBefore);
       return true;
     }
   }
@@ -549,13 +560,14 @@ function proposeToHuman(bot, human, offer, want){
     // The board may have moved since the offer went out.
     const ok = RES.every(r => bot.res[r] >= offer[r] && human.res[r] >= want[r]);
     if (!ok){ hint("That trade is no longer possible."); render(); return; }
+    const snapBefore = snapAll();
     for (const r of RES){
       bot.res[r]   -= offer[r]; human.res[r] += offer[r]; noteGain(human, r, offer[r]);
       human.res[r] -= want[r];  bot.res[r]   += want[r];  noteGain(bot,   r, want[r]);
     }
     logMsg("<b>" + bot.name + "</b> ⇄ <b>" + human.name + "</b>: gave " +
            fmt(offer) + " for " + fmt(want) + ".");
-    tradeToast(bot, human, offer, want);
+    tradeToast(bot, human, offer, want, snapBefore);
     render();
   };
 
@@ -599,11 +611,12 @@ function tryPlayerTrade(p){
         }
         const accepted = ag.considerTrade(p, q, offer, want);
         if (accepted){
+          const snapBefore = snapAll();
           p.res[give_]--; q.res[give_]++; noteGain(q, give_, 1);
           q.res[need]--;  p.res[need]++;  noteGain(p, need, 1);
           logMsg("<b>" + p.name + "</b> ⇄ <b>" + q.name + "</b>: " +
                  RES_NAME[give_] + " for " + RES_NAME[need] + ".");
-          tradeToast(p, q, offer, want);
+          tradeToast(p, q, offer, want, snapBefore);
           return true;
         }
       }
@@ -627,9 +640,13 @@ function dumpSurplus(p){
     if (!want) want = RES.filter(x => x !== r && S.bank[x] > 0)
                          .sort((a, b) => p.res[a] - p.res[b])[0];
     if (!want) continue;
+    const snapBefore = snapAll();
     take(p, r, rate); give(p, want, 1);
     logMsg("<b>" + p.name + "</b> trades down " + rate + " " + RES_NAME[r] +
            " → 1 " + RES_NAME[want] + ".");
+    const g1 = { wood:0,brick:0,sheep:0,wheat:0,ore:0 }; g1[r] = rate;
+    const g2 = { wood:0,brick:0,sheep:0,wheat:0,ore:0 }; g2[want] = 1;
+    bankToast(p, g1, g2, snapBefore);
     return true;
   }
   return false;
@@ -733,7 +750,9 @@ function makeAgent(pid){
       if (!e) return false;
 
       if (hasDefuse && canDefuseEntry(e, p.id)){
-        const k = e.card.key;
+        // A seven is Defusable too, but it has no card behind it and it is
+        // answered from answerSeven instead — see there for why.
+        const k = e.card ? e.card.key : null;
         if (k === "explode" || k === "attack" || k === "favor" || k === "alter"){
           defuseEntry(e.id, p.id);
           return true;
@@ -743,6 +762,27 @@ function makeAgent(pid){
         nopeEntry(e.id, p.id);
         return true;
       }
+      return false;
+    },
+
+    /* Spend a card on the seven rather than pay it — a Nope throws the dice
+       again, a Defuse spares this hand and lets the rest of the roll stand.
+
+       Asked by stepSeven, just before this bot is handed its discard, rather
+       than left to the driver: a bot pays the instant it is asked, and the
+       driver only reacts BETWEEN actions. Without a hook of its own the seven
+       would be the one thing at the table a bot could never answer, however
+       much it stood to lose. */
+    answerSeven(){
+      const p = me();
+      const e = S.seven ? S.journal.find(x => x.id === S.seven.jid) : null;
+      if (!e || !canNopeEntry(e)) return false;
+      if (Math.floor(totalRes(p) / 2) < W.sevenAnswerCut) return false;
+      const fresh = k => p.cards.some(c => c.key === k && c.boughtTurn !== S.turnCounter);
+      // Defuse first: it costs the table nothing else, where a Nope throws away
+      // a roll everybody else may have been happy with.
+      if (fresh("defuse") && canDefuseEntry(e, p.id)) return defuseEntry(e.id, p.id);
+      if (fresh("nope")   && e.actor !== p.id)        return nopeEntry(e.id, p.id);
       return false;
     },
 

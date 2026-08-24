@@ -194,6 +194,11 @@ function serializeGame(){
     deckLen: S.deck.length, discardLen: S.discard.length,
     longestRoad: S.longestRoad, largestArmy: S.largestArmy, roadLens: S.roadLens,
     implodeTurn: S.implodeTurn, implodeBy: S.implodeBy,
+    // Who a seven is still waiting on. Sent because canDefuseEntry asks it:
+    // without it, a terminal cannot tell that the roll on its screen is still
+    // answerable and draws no Defuse marker on the line.
+    seven: S.seven ? { actor: S.seven.actor, jid: S.seven.jid,
+                       queue: S.seven.queue.slice() } : null,
     winner: S.winner, revealed: S.revealed,
     diceLog: S.diceLog.slice(-60),
 
@@ -267,6 +272,10 @@ function applyGame(b){
   S.largestArmy = b.largestArmy || { owner:null, n:0 };
   S.roadLens = arr(b.roadLens, b.n).map(x => x || 0);
   S.implodeTurn = b.implodeTurn; S.implodeBy = b.implodeBy;
+  S.seven = b.seven
+    ? { actor: b.seven.actor, jid: b.seven.jid,
+        queue: arr(b.seven.queue, b.n).filter(x => x !== null && x !== undefined) }
+    : null;
   S.winner = (b.winner === undefined) ? null : b.winner;
   S.revealed = !!b.revealed;
   S.diceLog = arr(b.diceLog, (b.diceLog && b.diceLog.length) || 0).filter(x => x !== null);
@@ -444,7 +453,7 @@ function btnSpec(buttons){
   return (buttons || []).map(b => ({ label: b.label, cls: b.cls || "", disabled: !!b.disabled }));
 }
 
-NET.shipModal = function(title, bodyHTML, buttons){
+NET.shipModal = function(title, bodyHTML, buttons, mini){
   // Read it either way, so a tag left over from an offline game can never send
   // the first online dialog to the wrong person.
   const seat = NET.takePromptSeat();
@@ -456,7 +465,7 @@ NET.shipModal = function(title, bodyHTML, buttons){
   const id = ++NET.remoteId;
   NET.remote[seat] = { id: id, kind: "modal", key: null, buttons: buttons || [] };
   writePrompt(seat, { id: id, kind: "modal", title: title, body: bodyHTML,
-                      buttons: btnSpec(buttons) });
+                      buttons: btnSpec(buttons), mini: !!mini });
   return true;
 };
 
@@ -512,6 +521,7 @@ function showRemotePrompt(p){
   if (!p){
     if (NET.shownKind === "modal") dismissLocalModal();
     if (NET.shownKind === "panel") closePanel("remote");
+    if (typeof forgetModalFold === "function") forgetModalFold();
     NET.shownPrompt = null; NET.shownKind = null;
     return;
   }
@@ -548,7 +558,7 @@ function showRemotePrompt(p){
     h += '<button class="' + (b.cls || "") + '" ' + (b.disabled ? "disabled" : "") +
          ' onclick="window.__mb(' + i + ')">' + b.label + "</button>";
   });
-  drawLocalModal(p.title, p.body, h);
+  drawLocalModal(p.title, p.body, h, !!p.mini);
 }
 
 /* ══ lobby ══════════════════════════════════════════════════════════════ */
