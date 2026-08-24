@@ -162,6 +162,22 @@ with. Nobody can answer for anybody else.
 If a Nope or a Defuse rewinds the board while a panel is open, the panel is
 closed — whatever it was offering may no longer be true.
 
+Two robber moves can be owed at once — a seven, and a Knight played while
+that seven's discards were still being paid. They queue rather than overwrite
+each other, so both get made; the log says "must move the robber again" for
+the second. A Knight turned around with a Defuse is placed by the defuser,
+which is the usual explanation for a robber that seems to have moved with
+nothing behind it.
+
+Moving the robber and swapping the second Alter the Future token both take
+two clicks, the same arm-then-confirm a build takes. Neither can be taken
+back once it lands.
+
+Your own points on the seat strip include the Feral Kittens in your hand and
+are marked to say so; every other seat shows the public figure the table is
+actually playing against. Once somebody wins, every hand is face up and all
+the totals are real.
+
 Forced dialogs (discarding, answering a card aimed at you) are still modals,
 because they have to be dealt with before play continues. Those carry their
 own Defuse and Nope buttons, and they **fold away**: the − in the corner

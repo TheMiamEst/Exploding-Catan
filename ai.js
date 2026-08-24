@@ -947,13 +947,20 @@ function makeAgent(pid){
     handleSelect: acting(function(){
       const sel = S.select;
       if (!sel) return false;
-      if (sel.kind === "robber"){ hexClick(pickRobberHex(sel.actor)); return true; }
+      // Twice, like the setup placements below: the robber and the second
+      // Alter token both arm on the first click and commit on the second, so
+      // a person cannot move either with one stray click.
+      if (sel.kind === "robber"){
+        const hid = pickRobberHex(sel.actor);
+        hexClick(hid); hexClick(hid);
+        return true;
+      }
       if (sel.kind === "alter"){
         const pair = pickAlterPair(sel.actor);
         const numbered = hexes.filter(h => h.number !== null);
         const a = pair ? pair[0] : numbered[0].id;
         const b = pair ? pair[1] : numbered[1].id;
-        hexClick(a); hexClick(b);
+        hexClick(a); hexClick(b); hexClick(b);
         return true;
       }
       if (sel.kind === "settlement" && sel.setup){

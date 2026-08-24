@@ -76,6 +76,14 @@
             stroke-linecap:round; stroke-linejoin:round}
   .stat.vp svg{stroke:var(--accent)}
   .stat.vp b{color:var(--accent)}
+  /* Your own total, with the Feral Kittens counted in. Marked, so the number
+     you read is never mistaken for the one the rest of the table is playing
+     against — theirs is the public figure and stays that way. */
+  .stat.vp.hidden{box-shadow:inset 0 0 0 1px var(--accent)}
+  .stat.vp .fk{
+    display:inline-block; font-size:9px; font-weight:700; line-height:1;
+    color:var(--accent); opacity:.8; margin-left:1px; vertical-align:3px;
+  }
   .reveal{margin-top:6px; display:flex; flex-wrap:wrap; gap:3px}
   .revcard{
     font-size:9.5px; border:1px solid var(--line); border-radius:4px;
@@ -428,9 +436,30 @@
      a click — pointer-events stay off the whole layer, so a Nope can still be
      dragged onto the log while it is on screen. */
   #showcase{
-    position:absolute; inset:0; z-index:9; pointer-events:none;
+    position:absolute; inset:0; z-index:60; pointer-events:none;
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
   }
+  /* Above the dialogs rather than behind them. The moment your own play is
+     answered is exactly the moment a dialog is most likely to be thrown up at
+     you — a Defused card comes straight back, which opens one — and at z-index
+     9 the answer was drawn behind it. The person whose play it was, the one
+     with most reason to see it, was the only one who never did.
+
+     With a dialog open the reveal moves to the top of the board rather than
+     fighting it for the middle, and comes down in size to match. Still no
+     pointer events, so it can never take a click meant for the dialog. */
+  /* Collapsed to its own height at the top of the board rather than filling
+     it, so the strip clears a dialog centred below instead of lying across it. */
+  body.hasmodal #showcase{
+    bottom:auto; flex-direction:row; align-items:center; justify-content:center;
+    padding:6px 8px 0; gap:9px;
+  }
+  body.hasmodal .showcard{ width:clamp(46px, 6.4vh, 60px); border-width:1px; border-radius:7px }
+  body.hasmodal .showcard.implode{ width:clamp(76px, 11vh, 100px) }
+  body.hasmodal .showseven{
+    width:clamp(40px, 5.6vh, 52px); font-size:clamp(19px, 3vh, 26px); border-width:2px;
+  }
+  body.hasmodal .showcap{ font-size:12px; padding:5px 10px; max-width:min(340px, 62%) }
   #showcase.out{animation:showout .4s ease-in forwards}
   @keyframes showout{to{opacity:0; transform:scale(.94)}}
   .showcard{
@@ -1109,6 +1138,7 @@ function newGame(numPlayers){
     longestRoad: { owner:null, len:0 },
     largestArmy: { owner:null, n:0 },
     seven: null,              // {actor, queue:[pid]} — a 7 still being paid for
+    robberDue: [],            // robber moves owed behind the one in progress
     select: null,             // {kind, ...} forced board interaction
     armed: null,              // {kind, id} spot awaiting a confirming second click
     diceLog: [],              // every roll this game, for the history panel
@@ -1525,8 +1555,13 @@ function drawBoard(){
     }
     if (hot){
       const ok = sel.kind === "robber" ? hx.id !== S.robber : hx.number !== null;
-      if (ok) h += `<polygon points="${pts}" fill="${altPicked ? "#ffffff33" : "#ffffff14"}"
-                      stroke="${altPicked ? "#fff" : "#ffffff66"}" stroke-width="3"
+      // Armed and awaiting its second click: the same brighter, thicker
+      // treatment an armed building spot gets, so the two read alike.
+      const hexArmed = armed("robber", hx.id) || armed("alterb", hx.id);
+      if (ok) h += `<polygon points="${pts}" fill="${
+                        hexArmed ? "#ffffff4d" : altPicked ? "#ffffff33" : "#ffffff14"}"
+                      stroke="${hexArmed ? "var(--accent)" : altPicked ? "#fff" : "#ffffff66"}"
+                      stroke-width="${hexArmed ? 5 : 3}"
                       style="cursor:pointer" onclick="hexClick(${hx.id})"/>`;
     }
     if (hx.number !== null){
@@ -1756,6 +1791,32 @@ function swallowedByPan(){
   return false;
 }
 
+/* The points on somebody's card. Feral Kittens are worth a point each and are
+   held face down, so the number the table sees leaves them out — but there is
+   no reason to hide your own from you. Your card shows what you are actually
+   on, tinted and with the hidden part spelled out in the tooltip; everybody
+   else's shows the public figure the table is playing against. Once the game
+   is over every hand is face up and everyone shows their real total. */
+function vpStat(p){
+  const mine = p.id === viewSeat();
+  const ferals = vpCards(p);
+  const open = mine || S.revealed;
+  const shown = open ? totalVP(p) : publicVP(p);
+  const hidden = open && ferals > 0;
+  const kittens = `${ferals} Feral Kitten${ferals === 1 ? "" : "s"}`;
+  const tip = !open
+    ? "Victory points the table can see — Feral Kittens stay hidden"
+    : hidden
+      ? S.revealed
+        ? `${shown} points, ${kittens} of them held face down`
+        : `${shown} points, including ${kittens} only you can see — ` +
+          `the rest of the table sees ${publicVP(p)}`
+      : "Victory points";
+  return `<div class="stat vp ${hidden ? "hidden" : ""}" title="${esc(tip)}">
+            <b>${shown}</b>${ICON.vp}${hidden ? '<span class="fk">+' + ferals + "</span>" : ""}
+          </div>`;
+}
+
 function drawPlayers(){
   let h = "";
   for (const p of S.players){
@@ -1769,8 +1830,7 @@ function drawPlayers(){
               ${p.skipTokens ? `<span class="pskip">skip ×${p.skipTokens}</span>` : ""}
             </div>
             <div class="stats">
-              <div class="stat vp" title="Victory points (public — Feral Kittens stay hidden)">
-                <b>${publicVP(p)}</b>${ICON.vp}</div>
+              ${vpStat(p)}
               <div class="stat" title="Resource cards"><b>${totalRes(p)}</b>${ICON.res}</div>
               <div class="stat" title="Kitten cards in hand"><b>${p.cards.length}</b>${ICON.kit}</div>
               <div class="stat" title="Longest unbroken road (${p.roads} built)${
@@ -2200,9 +2260,15 @@ function drawHint(){
   if (!ours){ hint(null); return; }
   if (S.armed){
     const what = S.armed.kind;
-    const cost = what === "free" ? "" :
-      " — " + Object.entries(COST[what]).map(([r, n]) => n + " " + RES_NAME[r]).join(", ");
-    hint(`Click again to confirm ${what === "free" ? "placement" : "the " + what + cost}, or click elsewhere to cancel.`, true);
+    if (what === "robber"){
+      hint("Click that hex again to move the robber there, or another to change your mind.", true);
+    } else if (what === "alterb"){
+      hint("Click that token again to swap the two, or another to change your mind.", true);
+    } else {
+      const cost = what === "free" ? "" :
+        " — " + Object.entries(COST[what]).map(([r, n]) => n + " " + RES_NAME[r]).join(", ");
+      hint(`Click again to confirm ${what === "free" ? "placement" : "the " + what + cost}, or click elsewhere to cancel.`, true);
+    }
   } else if (S.select && S.select.kind === "robber"){
     hint("Click a hex to move the robber onto it.", true);
   } else if (S.select && S.select.kind === "alter"){
@@ -2529,6 +2595,10 @@ function hexClick(hid){
 
   if (sel.kind === "robber"){
     if (hid === S.robber) return;
+    // Same two-step a build takes. Moving the robber is one of the few clicks
+    // on this board that cannot be taken back, and it was a single one.
+    if (!armed("robber", hid)){ arm("robber", hid); return; }
+    S.armed = null;
     S.robber = hid;
     S.select = null;
     logMsg(`<b>${S.players[sel.actor].name}</b> moves the robber onto the ` +
@@ -2546,8 +2616,12 @@ function hexClick(hid){
 
   if (sel.kind === "alter"){
     if (hexes[hid].number === null) return;
-    if (sel.first === null){ sel.first = hid; render(); return; }
-    if (sel.first === hid){ sel.first = null; render(); return; }   // click again to deselect
+    if (sel.first === null){ sel.first = hid; S.armed = null; render(); return; }
+    if (sel.first === hid){ sel.first = null; S.armed = null; render(); return; }   // click again to deselect
+    // The first token can be un-picked by clicking it again, so only the
+    // second needs confirming — that is the click that commits the swap.
+    if (!armed("alterb", hid)){ arm("alterb", hid); return; }
+    S.armed = null;
     const a = sel.first, b = hid, cb = sel.onPick;
     S.select = null;
     cb(a, b);
@@ -2690,11 +2764,34 @@ function owesSevenCut(pid){
   return !!(S && S.seven && S.seven.queue.indexOf(pid) >= 0);
 }
 
-function beginRobberMove(actor){
-  S.select = { kind:"robber", actor, knight:false };
+/* Robber moves QUEUE rather than overwrite each other. Two can be owed at
+   once — a seven, and a Knight played in the gap while that seven's discards
+   were still being paid — and each of them used to simply assign over
+   S.select, so one of the two moves silently vanished. That is why a bot that
+   rolled a seven and then played a Knight moved the robber once instead of
+   twice.
+
+   `opts` carries what makes this move different from the last: `knight` for
+   one that counts toward Largest Army, `credit` for one whose knight belongs
+   to somebody other than the player placing it. */
+function beginRobberMove(actor, opts){
+  const move = Object.assign({ kind:"robber", actor: actor, knight:false }, opts || {});
+  if (S.select){ S.robberDue.push(move); return; }
+  S.select = move;
   setTimeout(botTick, 0);
   logMsg(`<b>${S.players[actor].name}</b> must move the robber.`);
   render();
+}
+
+/* Hand over to whatever was waiting behind the move that just finished. */
+function nextRobberMove(){
+  if (!S.robberDue || !S.robberDue.length) return false;
+  S.select = S.robberDue.shift();
+  setTimeout(botTick, 0);
+  logMsg(`<b>${S.players[S.select.actor].name}</b> must move the robber again.`);
+  announce(pdot(S.players[S.select.actor]) + " has a second robber move to make", "attack");
+  render();
+  return true;
 }
 
 function chooseVictim(victims, sel){
@@ -2783,6 +2880,7 @@ function finishRobber(sel){
     updateLargestArmy();
     checkVictory();
   }
+  if (nextRobberMove()) return;      // another one was waiting behind it
   render();
 }
 
@@ -3028,7 +3126,7 @@ function resolveCard(action){
     }
 
     case "knight":
-      S.select = { kind:"robber", actor: actor.id, knight:true };
+      beginRobberMove(actor.id, { knight:true });
       break;
 
     case "alter": {
@@ -3096,6 +3194,7 @@ function snapAll(){
     // a snapshot holding the live array would be rewound to its own future.
     seven:   S.seven ? { actor: S.seven.actor, jid: S.seven.jid,
                          queue: S.seven.queue.slice() } : null,
+    robberDue: (S.robberDue || []).map(m => Object.assign({}, m)),
     rec: S.turnRec ? {
       edges: S.turnRec.edges.slice(),
       verts: S.turnRec.verts.map(v => Object.assign({}, v)),
@@ -3132,6 +3231,7 @@ function restoreAll(s){
   S.implodeTurn = s.implodeTurn;
   S.seven = s.seven ? { actor: s.seven.actor, jid: s.seven.jid,
                         queue: s.seven.queue.slice() } : null;
+  S.robberDue = (s.robberDue || []).map(m => Object.assign({}, m));
   if (s.rec && S.turnRec){
     S.turnRec.edges = s.rec.edges.slice();
     S.turnRec.verts = s.rec.verts.map(v => Object.assign({}, v));
@@ -3390,6 +3490,7 @@ function nopeEntry(id, noperId){
   // Half-finished board business belongs to the action being undone — a
   // robber still to place, two tokens still to name.
   S.select = null;
+  S.robberDue = [];
 
   // A Nope can be Noped. It is the one reaction that can, and the hand-over
   // window is what makes it reachable.
@@ -3482,6 +3583,7 @@ function nopeEntry(id, noperId){
 function restoreTurnPointer(t){
   if (!t) return;
   clearImplodeClock();
+  S.robberDue = [];
   S.cur = t.cur;
   S.phase = t.phase;
   S.turnCounter = t.turnCounter;
@@ -3495,6 +3597,7 @@ function restoreTurnPointer(t){
    robber waiting to be placed, an armed build — is dropped on the way out. */
 function endTurnAfterNope(){
   S.select = null;
+  S.robberDue = [];
   S.armed = null;
   S.seven = null;
   clearImplodeClock();
@@ -3573,6 +3676,12 @@ function defuseEntry(id, defuserId){
   // Same as a Nope: whatever forced dialog was standing on the entry we just
   // erased is asking about a state that no longer exists.
   closeModal();
+  // And whatever board business it left half-finished goes with it. Without
+  // this a robber move owed by an action that has just been un-happened stayed
+  // on the table, and got placed by whoever was next to be asked — a robber
+  // moving with no seven and no Knight anywhere in the log to explain it.
+  S.select = null;
+  S.robberDue = [];
 
   // The rewind put the defused card back in its owner's hand. It is spent
   // whichever way it ends up pointing, so take it out again here — otherwise
@@ -3837,6 +3946,7 @@ function advancePlayer(){
   S.rolled = null;
   S.armed = null;
   S.seven = null;
+  S.robberDue = [];
   S.turnCounter++;
   S.turnRec = freshTurnRecord();
   clearImplodeClock();
@@ -4302,6 +4412,7 @@ function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
     });
     document.body.appendChild(modalEl);
   }
+  document.body.classList.add("hasmodal");
   modalEl.className = "overlay" + (canMini ? " canmini" : "") +
                       (canMini && modalMini ? " mini" : "");
 
@@ -4324,6 +4435,7 @@ function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
 }
 function dismissLocalModal(){
   if (modalEl){ modalEl.remove(); modalEl = null; }
+  document.body.classList.remove("hasmodal");
 }
 
 /* Fold the dialog into a tab in the corner, or bring it back. Everything
@@ -4780,12 +4892,15 @@ function beginCardDrag(ev){
 }
 
 /* The carried card sits centred on the pointer and a little oversized, so it
-   stays readable while you look for somewhere to put it. */
+   stays readable while you look for somewhere to put it. Only a little: at
+   1.9 it covered most of a player card and several lines of the log at once,
+   so you could not see what you were about to drop it on. */
+const DRAG_SCALE = 1.4;
 function moveGhost(x, y){
   if (!dragGhost || !dragCard) return;
   dragGhost.style.transform =
     "translate(" + (x - dragCard.w / 2) + "px," + (y - dragCard.h / 2) + "px)" +
-    " scale(1.9) rotate(-3deg)";
+    " scale(" + DRAG_SCALE + ") rotate(-3deg)";
 }
 
 function endCardDrag(){
