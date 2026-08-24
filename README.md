@@ -237,16 +237,26 @@ Three cases are worth calling out:
   wear; you can Nope it and roll again, which costs you the number rather than
   sparing you the cut.
 - **The robbery is Defusable too**, separately from the roll: drop a Defuse on
-  the *"moves the robber onto…"* line and the robber goes back where it came
-  from, taking any stolen card back with it. Anybody with a building on the hex
-  it landed on may spend it — not only whoever was robbed, since the robber
-  sitting on your wheat costs you every roll it stays there. Never the player
-  who moved it.
+  the *"moves the robber onto…"* line. It is a "no you" like every other
+  Defuse — the robbery is undone, and **you move the robber yourself**, and
+  steal from whoever is standing on wherever you put it. The same seizure a
+  Knight has always allowed, now available against the robber a seven sends
+  round as well.
+
+  Anybody with a building on the hex it landed on may spend it — not only
+  whoever was robbed, since the robber sitting on your wheat costs you every
+  roll it stays there. Never the player who moved it. Your own placement is
+  then answerable in turn by whoever it lands on, which is bounded by how many
+  Defuses are left in the game.
+
+  A knight already credited stays credited: the card was played, and the
+  Defuse answers the robbery rather than the card that caused it.
 
   One Defuse settles it for the whole hex, and the robber lands on a hex
   several people share, so two of them reaching for it at once is ordinary.
   The host takes them in the order they arrive: the first goes through, and
-  the second is turned away **with their card still in hand**.
+  the second is turned away **with their card still in hand**. Nope that first
+  Defuse and the robbery is back on the table for the others to answer.
 
 Which card the robber took is never named anywhere public. The two of them can
 see it in their own hands; the log and the feed say only that a card moved.

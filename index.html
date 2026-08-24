@@ -697,7 +697,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26i";
+const GAME_VERSION = "2026-08-26j";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3627,6 +3627,13 @@ function nopeEntry(id, noperId){
   // Same rule one level up: a Nope that is itself Noped is still spent. The
   // rewind predates the reaction, so it would otherwise come back for free.
   if (e.spent && S.players[e.spent.pid]) spendCard(S.players[e.spent.pid], e.spent.key);
+  // Undoing an answer puts what it answered back on the table. A robbery
+  // Defused and then Noped is a robbery again, and the others standing on that
+  // hex may reach for it in their turn.
+  if (e.unanswers !== undefined && e.unanswers !== null){
+    const back = S.journal.find(x => x.id === e.unanswers);
+    if (back) back.answered = false;
+  }
   // Half-finished board business belongs to the action being undone — a
   // robber still to place, two tokens still to name.
   S.select = null;
@@ -3785,12 +3792,17 @@ function defuseSeven(e, defuserId){
 }
 
 /* ── Defuse a robbery ────────────────────────────────────────────────────
-   The card comes straight back out of the thief's hand and the robber stays
-   where it was put: the Defuse answers the theft, not the move.
+   A Defuse is "no you", here as everywhere else: the robbery is undone — the
+   robber back where it came from, anything it took handed back — and then the
+   defuser moves the robber THEMSELVES, and steals from whoever is standing on
+   wherever they put it. The same seizure the Knight has always allowed, now
+   available against the robber a seven sends round as well.
 
-   Nothing is rewound. A rewind to the state before the steal would also undo
-   what came after it — the knight credited for the move, the next robber move
-   already handed out — so the one card is simply handed back. */
+   Nothing is rewound to a snapshot. That would also undo what came after the
+   robbery — the knight credited for the move, a second robber move already
+   handed out — so the two pieces of it are put back by hand instead. A knight
+   already credited stays credited: the card was played, and the Defuse answers
+   the robbery rather than the card that caused it. */
 function defuseRobber(e, defuserId){
   // One Defuse settles it for the whole hex. Two players reaching for the card
   // at the same moment is the ordinary case, not a rare one — the robber lands
@@ -3806,25 +3818,30 @@ function defuseRobber(e, defuserId){
   spendCard(d, "defuse");
   e.answered = true;
 
-  // The robber goes back where it came from, and anything it took goes back
-  // with it. Surgical rather than a rewind: a rewind would also undo what came
-  // after — the knight credited for the move, a second robber move already
-  // handed out — and the Defuse answers the robbery, not the card that caused
-  // it.
+  // Put the robbery back: the robber where it was, the card with whoever it
+  // came off.
   S.robber = e.fromHex;
   const r = e.stolen;
   const victim = (e.target === null || e.target === undefined) ? null : S.players[e.target];
   if (r && victim && thief.res[r] > 0){ thief.res[r]--; victim.res[r]++; }
 
-  const back = hexes[e.fromHex];
-  logMsg(`<b>${d.name}</b> Defuses the robbery — the robber goes back to the ` +
-         `${back.terrain}${back.number ? " " + back.number : ""}` +
-         `${r && victim ? `, and <b>${thief.name}</b> hands the card back` : ""}.`);
+  logMsg(`<b>${d.name}</b> Defuses the robbery — they take the robber from ` +
+         `<b>${thief.name}</b>` +
+         `${r && victim ? ", and the card goes back" : ""}.`);
   // turnSafe, like the Defuse spent on a seven: it is defensive and played out
-  // of turn, so Noping it puts the robber back rather than ending a turn.
-  logAction(pdot(d) + " <b>Defuses</b> the robbery — the robber goes back", "defend",
+  // of turn, so Noping it hands the robbery back rather than ending a turn.
+  // `unanswers` is what lets a Noped Defuse put the robbery back on the table
+  // for somebody else to answer.
+  const note = logAction(pdot(d) + " <b>Defuses</b> the robbery — they move the robber instead",
+            "defend",
             { actor: defuserId, target: e.actor, snap: snapBefore, nopeable: true,
               turnSafe: true, spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
+  note.unanswers = e.id;
+
+  // "No you": they place it, and rob whoever is there. knight:false because
+  // the knight that caused this, if there was one, has already been credited
+  // by the finishRobber that ran for the move being answered.
+  beginRobberMove(defuserId, { knight: false });
   render();
   return true;
 }
@@ -3933,7 +3950,7 @@ function describeCard(base){
   if (base.card.key === "favor" && base.payload && base.payload.want){
     const asked = plainRes(base.payload.want);
     return pdot(who) + " plays <b>Favor</b> on " + pdot(S.players[base.target]) +
-           (asked ? "<br><span style='opacity:.8'>asks for " + esc(asked) + "</span>" : "");
+           (asked ? "<br><span style='opacity:.8'> asks for " + esc(asked) + "</span>" : "");
   }
   if (base.card.key === "alter" && base.payload && base.payload.hexes){
     const [ha, hb] = base.payload.hexes;
@@ -5473,13 +5490,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26i"></script>
+<script src="ai.js?v=2026-08-26j"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26i"></script>
-<script src="net.js?v=2026-08-26i"></script>
+<script src="firebase-config.js?v=2026-08-26j"></script>
+<script src="net.js?v=2026-08-26j"></script>
 </body>
 </html>
