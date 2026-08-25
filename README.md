@@ -205,6 +205,34 @@ held back while it lands, and that expires on its own: if the timer that ends
 the animation never runs, the next repaint draws the piece anyway. A flourish
 is not worth a board with a road missing from it.
 
+### The seat cards
+
+Points sit beside the name in a ring of their own — they are the score, and
+lined up as a sixth identical box among roads and knights they read as trivia.
+The rest is two groups rather than five boxes in a row: what is in your hand
+(resources, kitten cards) and what is on the board (longest road, knights).
+Largest Army lights the same gold as Longest Road, because they are the same
+kind of thing — two points for holding something nobody else can.
+
+### A phone held sideways
+
+Landscape on a phone is about 375 pixels of height for everything, and the
+strip at the top and the hand at the bottom were sized for a laptop. Between
+them they left the board a letterbox. Under 560px tall the seat card folds onto
+one row, the action buttons stop wrapping, the hand shrinks, and the board
+takes what is left: on a 812x375 screen it goes from 43% of the height to 61%,
+and the hexes from 17px to 24px. Nothing is removed — the same numbers, the
+same cards, smaller.
+
+The side panels get the height they can and each one scrolls inside itself with
+its buttons pinned to the bottom, so the Trade button is never below the fold
+with nothing obvious to scroll. Forced dialogs do the same.
+
+One trap worth knowing if you touch the stylesheet: several base rules
+(`#panels`, `.modal`, `.panel`) are defined *after* the media queries, so a
+query placed above them silently loses. The landscape block is deliberately the
+last thing in the file.
+
 ### Numbers that keep up
 
 Every figure on a seat card is live. It sounds like it should have been, but

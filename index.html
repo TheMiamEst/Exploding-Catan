@@ -62,26 +62,46 @@
     box-shadow:0 0 0 2px var(--accent) inset;
   }
   .pcard.done{opacity:.55}
-  .pcard .phead{display:flex; align-items:center; gap:7px; margin-bottom:6px}
-  .pcard .pname{font-weight:600; font-size:13px; flex:1; white-space:nowrap}
+  .pcard .phead{display:flex; align-items:center; gap:6px; margin-bottom:6px}
+  .pcard .pname{font-weight:600; font-size:13px; flex:1; white-space:nowrap;
+                overflow:hidden; text-overflow:ellipsis; min-width:0}
   .pcard .you{font-size:9px; color:var(--accent); border:1px solid var(--accent);
-              border-radius:3px; padding:0 3px; vertical-align:1px; letter-spacing:.3px}
+              border-radius:3px; padding:0 3px; letter-spacing:.3px; flex:0 0 auto}
   .pcard .pskip{font-size:10px; color:var(--danger); border:1px solid var(--danger);
-                border-radius:4px; padding:0 4px}
-  .stats{display:flex; gap:4px}
-  .stat{
-    flex:1 1 0; background:#0004; border:1px solid var(--line); border-radius:5px;
-    padding:3px 0; text-align:center; min-width:0;
+                border-radius:4px; padding:0 4px; flex:0 0 auto}
+
+  /* Points sit beside the name in a ring of their own. They are the score —
+     the one number on this card that says who is winning — and lined up as a
+     sixth identical box among roads and knights they read as trivia. */
+  .vpring{
+    flex:0 0 auto; width:25px; height:25px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:700; font-variant-numeric:tabular-nums;
+    color:#161a20; background:var(--accent); box-shadow:0 1px 5px #0007;
   }
+  /* Your own, with the Feral Kittens counted in — see vpStat. */
+  .vpring.hidden{ box-shadow:0 1px 5px #0007, 0 0 0 2px #e2b33c66 }
+
+  /* Two groups, not five boxes in a row: what is in your hand, and what is on
+     the board. Reading a seat card should be a glance at two things. */
+  .stats{display:flex; gap:6px}
+  .statgroup{
+    flex:1 1 0; display:flex; min-width:0;
+    background:#0004; border:1px solid var(--line); border-radius:6px; overflow:hidden;
+  }
+  .statgroup .stat + .stat{ border-left:1px solid var(--line) }
+  .stat{ flex:1 1 0; padding:3px 0; text-align:center; min-width:0 }
   .stat b{display:block; font-size:14px; line-height:1.15; font-variant-numeric:tabular-nums}
   /* Icons rather than three-letter labels: at this size "Rd" and "Res" read
      as noise, and a glyph is taken in without being read. Each stat keeps its
      title attribute, so hovering still names it. */
-  .stat svg{display:block; margin:1px auto 0; width:11px; height:11px;
+  .stat svg{display:block; margin:2px auto 0; width:13px; height:13px;
             fill:none; stroke:var(--dim); stroke-width:1.7;
             stroke-linecap:round; stroke-linejoin:round}
-  .stat.vp svg{stroke:var(--accent)}
-  .stat.vp b{color:var(--accent)}
+  /* Longest Road and Largest Army are the same kind of thing — two points for
+     holding something nobody else can — so they light the same gold. */
+  .stat.holds b{color:var(--accent)}
+  .stat.holds svg{stroke:var(--accent)}
   .reveal{margin-top:6px; display:flex; flex-wrap:wrap; gap:3px}
   .revcard{
     font-size:9.5px; border:1px solid var(--line); border-radius:4px;
@@ -407,6 +427,7 @@
     .slot,.kcard{width:44px; height:60px}
   }
 
+
   /* A hex that just changed under you: a token swapped by Alter the Future,
      or the robber landing. Floated over the board rather than drawn into the
      SVG, because the SVG is rebuilt from scratch on every repaint and an
@@ -716,6 +737,91 @@
   .rules h4{color:var(--ink); margin:12px 0 4px; font-size:13px}
   .rules ul{margin:4px 0; padding-left:18px}
   .rules li{margin-bottom:3px}
+
+  /* Kept last on purpose. Several of the rules below restate things the base
+     stylesheet sets further down the file — #panels, .modal, .panel — and a
+     media query that appears BEFORE them loses to them however specific it is.
+     The 900px block above has the same problem with #panels and has never
+     actually moved it; this one sits after everything so it wins.
+     ---------------------------------------------------------------- */
+  /* ── A phone held sideways ─────────────────────────────────────────
+     Barely 380 pixels of height for everything. The strip at the top and the
+     hand at the bottom were sized for a laptop and between them left the board
+     a letterbox; here they give back every row they can and the board takes
+     the rest. Nothing is removed — the same numbers, the same cards, smaller.
+     ────────────────────────────────────────────────────────────────── */
+  @media (max-height:560px){
+    header{padding:3px 8px; gap:8px}
+    header h1{font-size:13px}
+    button.sm{padding:2px 6px; font-size:11px}
+    #verTag, #modeTag{font-size:9px}
+
+    /* The seat card folds onto ONE row: name and score on the left, the two
+       groups on the right. Stacked, four of these ate a sixth of the screen. */
+    #players{padding:3px 5px; gap:5px}
+    .pcard{
+      padding:3px 5px; border-left-width:4px; border-radius:6px; min-width:0;
+      display:flex; align-items:center; gap:5px;
+    }
+    .pcard .phead{margin:0; flex:1 1 auto; min-width:26px; gap:4px}
+    .pcard .pname{font-size:11px}
+    .pcard .you{display:none}         /* the border already says which is yours */
+    .vpring{width:19px; height:19px; font-size:11px}
+    .stats{flex:0 0 auto; gap:4px}
+    .statgroup{flex:0 0 auto}
+    .stat{padding:1px 3px; min-width:21px}
+    .stat b{font-size:11.5px; line-height:1.1}
+    .stat svg{width:11px; height:11px; margin:0 auto}
+    .reveal{display:none}             /* the standings table has the same thing */
+
+    #stage{padding:3px}
+    #boardArea{inset:3px}
+    /* One row of buttons, not three. Wrapped, they were taller than the hand
+       they sat beside and the board paid for all of it. */
+    #bottom{padding:3px 6px; gap:6px}
+    .bside{flex:0 1 auto}
+    .actions-bar{flex-wrap:nowrap; gap:4px}
+    .actions-bar button{padding:5px 8px; font-size:11px; white-space:nowrap}
+    .thinking{font-size:10.5px; white-space:nowrap}
+    .slot,.kcard{width:34px; height:46px; border-radius:5px}
+    .slot .n{font-size:12px}
+    .slot .rn{display:none}          /* unreadable at this size, and the art says it */
+    .kcard .pip{font-size:7px; padding:0 2px}
+    .deck{width:52px; height:72px}
+    .deckcost{display:none}
+    .die{width:40px; height:40px; border-radius:8px; padding:5px}
+    .die i{width:7px; height:7px}
+    .dicesum{font-size:16px; padding:3px 8px}
+    #feed{top:34px; width:132px}
+    .ev{font-size:10px; padding:3px 5px}
+    #leftbtns{top:6px; left:6px}
+
+    /* The panels get the whole height they can, and each one scrolls inside
+       itself with its buttons pinned to the bottom — on a short screen the
+       Trade button was below the fold with nothing obvious to scroll. */
+    #panels{top:40px; bottom:52px; width:min(280px, 60%)}
+    .panel{max-height:100%; overflow-y:auto; padding:7px 9px}
+    .panel h3{font-size:12px}
+    .panel .sub{font-size:10.5px; margin-bottom:5px}
+    .panel .actions{
+      position:sticky; bottom:-1px; margin-top:6px; padding-top:6px;
+      background:var(--panel); border-top:1px solid var(--line);
+    }
+    .pick.tight button{font-size:10.5px; padding:3px 5px}
+
+    /* Same for a forced dialog: it can be taller than the screen, so its
+       buttons stay put while the rest of it scrolls under them. */
+    .overlay{padding:8px}
+    .modal{max-height:96vh; padding:10px 12px}
+    .modal h2{font-size:14px}
+    .modal p.sub{font-size:11.5px; margin-bottom:8px}
+    .counter{padding:2px 0}
+    .modal .actions{
+      position:sticky; bottom:-10px; margin-top:10px; padding:8px 0 2px;
+      background:var(--panel); border-top:1px solid var(--line);
+    }
+    .overlay.mini{padding:0 8px 58px 0}
+  }
 </style>
 </head>
 <body>
@@ -757,7 +863,6 @@
 
 <div id="bottom"></div>
 
-
 <script>
 "use strict";
 
@@ -771,7 +876,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26x";
+const GAME_VERSION = "2026-08-27b";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1979,10 +2084,10 @@ function vpStat(p){
         : `${shown} points, including ${kittens} only you can see — ` +
           `the rest of the table sees ${publicVP(p)}`
       : "Victory points";
-  // Just the number. It used to carry a "+2" spelling out how much of your own
-  // total was hidden, which is arithmetic you can do yourself and clutter on
-  // the one stat you read most.
-  return `<div class="stat vp" title="${esc(tip)}"><b>${shown}</b>${ICON.vp}</div>`;
+  // Just the number, in a ring beside the name. It used to carry a "+2"
+  // spelling out how much of your own total was hidden, which is arithmetic
+  // you can do yourself and clutter on the one number you read most.
+  return `<span class="vpring ${hidden ? "hidden" : ""}" title="${esc(tip)}">${shown}</span>`;
 }
 
 /* Fast track and fast track + are worth being able to see at a glance, an
@@ -2004,19 +2109,26 @@ function drawPlayers(){
                 style="--pc:${p.color}; --pcTint:${p.color}26; --pcEdge:${p.color}88">
             <div class="phead">
               <span class="dot" style="background:${p.color}"></span>
-              <span class="pname">${p.name}${!isBot(p.id) && anyBots() ? " " : ""}</span>
+              <span class="pname">${p.name}</span>
+              ${!isBot(p.id) && anyBots() ? `<span class="you">you</span>` : ""}
               ${p.skipTokens ? `<span class="pskip">skip ×${p.skipTokens}</span>` : ""}
+              ${vpStat(p)}
             </div>
             <div class="stats">
-              ${vpStat(p)}
-              <div class="stat res" title="Resource cards"><b>${totalRes(p)}</b>${ICON.res}</div>
-              <div class="stat kit" title="Kitten cards in hand"><b>${p.cards.length}</b>${ICON.kit}</div>
-              <div class="stat" title="Longest unbroken road (${p.roads} built)${
-                    S.longestRoad.owner === p.id ? " — holds Longest Road" : ""}">
-                <b${S.longestRoad.owner === p.id ? ' style="color:var(--accent)"' : ""}>${
-                  (S.roadLens && S.roadLens[p.id] !== undefined) ? S.roadLens[p.id] : 0
-                }</b>${ICON.road}</div>
-              <div class="stat" title="Knights played"><b>${p.knights}</b>${ICON.knight}</div>
+              <div class="statgroup">
+                <div class="stat res" title="Resource cards"><b>${totalRes(p)}</b>${ICON.res}</div>
+                <div class="stat kit" title="Kitten cards in hand"><b>${p.cards.length}</b>${ICON.kit}</div>
+              </div>
+              <div class="statgroup">
+                <div class="stat road ${S.longestRoad.owner === p.id ? "holds" : ""}"
+                     title="Longest unbroken road (${p.roads} built)${
+                       S.longestRoad.owner === p.id ? " — holds Longest Road, +2" : ""}">
+                  <b>${(S.roadLens && S.roadLens[p.id] !== undefined) ? S.roadLens[p.id] : 0}</b>${ICON.road}</div>
+                <div class="stat knight ${S.largestArmy.owner === p.id ? "holds" : ""}"
+                     title="Knights played${
+                       S.largestArmy.owner === p.id ? " — holds Largest Army, +2" : ""}">
+                  <b>${p.knights}</b>${ICON.knight}</div>
+              </div>
             </div>`;
     if (S.revealed){
       const counts = {};
@@ -3297,7 +3409,6 @@ function resolveCard(action){
   const target = action.target === null ? null : S.players[action.target];
   const def = KITTEN[c.key];
 
-
   switch (c.key){
     case "skip":
       target.skipTokens++;
@@ -4041,7 +4152,6 @@ function defuseEntry(id, defuserId){
   render();
   return true;
 }
-
 
 /* One line describing a card being played. */
 /* Plain text version of a resource bundle: "2 Wheat, 1 Ore". resList() is the
@@ -5867,7 +5977,6 @@ window.addEventListener("dragstart", function(e){ e.preventDefault(); });
 window.addEventListener("dragover",  function(e){ e.preventDefault(); });
 window.addEventListener("drop",      function(e){ e.preventDefault(); });
 
-
 /* Which art files were found. I cannot verify file:// loading from outside
    the game, so this is the ground truth — open it after dropping files in. */
 function showArt(){
@@ -5991,13 +6100,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26x"></script>
+<script src="ai.js?v=2026-08-27b"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26x"></script>
-<script src="net.js?v=2026-08-26x"></script>
+<script src="firebase-config.js?v=2026-08-27b"></script>
+<script src="net.js?v=2026-08-27b"></script>
 </body>
 </html>
