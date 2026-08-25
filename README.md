@@ -260,10 +260,18 @@ Three cases are worth calling out:
   A knight already credited stays credited: the card was played, and the
   Defuse answers the robbery rather than the card that caused it.
 
-  There is no window asking whether you would like to Defuse a Knight any
-  more. It announced to the table that you were holding one before you had
-  decided to spend it, and it could not be folded away. Everything is answered
-  from the log.
+  No card opens a window asking whether you would like to answer it — not a
+  Knight, not a Skip, not an Exploding Kitten. Everything it offered is on the
+  board already: the card turns over in the middle of the screen, the line it
+  wrote lights up in the log with a Defuse badge on it, and the card in your
+  hand wakes up with an "answer" pip. What the window added was a modal
+  standing on top of the log you wanted to drop the card onto.
+
+  The forced dialogs that remain are the ones that take something from you
+  before play can go on — a discard for a seven or an Attack. Those are a
+  payment, not an offer. One consequence worth knowing: nothing pauses the
+  table while you decide any more, so an answer has to be played inside the
+  four log lines a Nope can reach back through.
 
   One Defuse settles it for the whole hex, and the robber lands on a hex
   several people share, so two of them reaching for it at once is ordinary.
