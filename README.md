@@ -228,6 +228,21 @@ The side panels get the height they can and each one scrolls inside itself with
 its buttons pinned to the bottom, so the Trade button is never below the fold
 with nothing obvious to scroll. Forced dialogs do the same.
 
+The board takes touch directly: **one finger drags it**, **two fingers pinch to
+zoom**, and **a double tap puts it back** to where it started. The pinch is
+anchored, so whatever is under your fingers stays under them rather than
+sliding away as it grows. It all runs on pointer events, so the same code
+serves a mouse, a trackpad and a screen — the wheel now zooms towards the
+cursor for the same reason.
+
+The double tap matters more than it sounds. Between the browser's own
+double-tap-to-zoom (killed here with `touch-action: manipulation`, which leaves
+pinch-zooming the page alone for anyone who needs it) and a stray pinch on the
+board, it was easy to end up magnified with only a 30px minus button to climb
+back down. Two taps in the same spot now undo both the zoom and the pan. A
+single tap still builds where you tapped, and a tap that ends a drag or a pinch
+does not.
+
 One trap worth knowing if you touch the stylesheet: several base rules
 (`#panels`, `.modal`, `.panel`) are defined *after* the media queries, so a
 query placed above them silently loses. The landscape block is deliberately the

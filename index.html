@@ -16,6 +16,11 @@
     background:var(--bg); color:var(--ink);
     font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;
     display:flex; flex-direction:column; overflow:hidden;
+    /* Kills the browser's double-tap-to-zoom, which on a fixed full-screen
+       layout like this one zooms in on a corner with nothing to scroll back
+       out with. Pinch-zooming the page still works, so anyone who needs to
+       magnify it still can — it is only the accidental double tap that goes. */
+    touch-action:manipulation;
   }
   header{
     display:flex; align-items:center; gap:14px; padding:8px 14px;
@@ -876,7 +881,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-27b";
+const GAME_VERSION = "2026-08-27d";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1767,6 +1772,9 @@ function drawBoard(){
   const cx = (minX + maxX) / 2 + (S.panX || 0);
   const cy = (minY + maxY) / 2 + (S.panY || 0);
   S.viewW = vw;                              // used to scale drag distances
+  // The whole board, before zoom. Pinching has to know it to work out where a
+  // given point on screen sits on the board and put it back afterwards.
+  boardExtent = { minX: minX, maxX: maxX, minY: minY, maxY: maxY };
   svg.setAttribute("viewBox", `${cx - vw / 2} ${cy - vh / 2} ${vw} ${vh}`);
 
   const uiHidden = uiBlocked();
@@ -2003,7 +2011,10 @@ function rollSummary(p, d1, d2, out){
 }
 
 /* ── board view controls ─────────────────────────────────────────────── */
-const ZOOM_MIN = 0.85, ZOOM_MAX = 1.6;
+/* 1.6 was as far as the + button ever needed to go. Pinching wants more room
+   than that: a hex on the six-player board is under 20px on a phone held
+   sideways, and going in twice as far is the point of the gesture. */
+const ZOOM_MIN = 0.85, ZOOM_MAX = 3;
 
 function zoomBoard(delta){
   if (!S) return;
@@ -2018,8 +2029,54 @@ function resetZoom(){
   drawBoard();
 }
 
-/* Wheel to zoom, drag to pan. The drag only counts once the pointer has moved
-   a few pixels, so an ordinary click still builds where you clicked. */
+let boardExtent = null;
+
+/* Where a point on screen falls on the board. The SVG letterboxes its viewBox
+   inside whatever box it is given, so this is not a plain ratio — it is
+   svgToScreen run backwards. */
+function screenToBoard(sx, sy){
+  const svg = document.getElementById("board");
+  if (!svg) return null;
+  const vb = (svg.getAttribute("viewBox") || "").split(" ").map(Number);
+  if (vb.length !== 4 || !vb[2] || !vb[3]) return null;
+  const r = svg.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  const scale = Math.min(r.width / vb[2], r.height / vb[3]);
+  return { x: vb[0] + (sx - r.left - (r.width  - vb[2] * scale) / 2) / scale,
+           y: vb[1] + (sy - r.top  - (r.height - vb[3] * scale) / 2) / scale };
+}
+
+/* Zoom so that whatever is under the given point on screen stays under it.
+   Pinching without this drags the board out from under your fingers, which
+   makes zooming in on one corner of the island almost impossible. */
+function zoomAbout(z, sx, sy){
+  const svg = document.getElementById("board");
+  if (!S || !svg || !boardExtent) return;
+  const at = screenToBoard(sx, sy);
+  const r = svg.getBoundingClientRect();
+  z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+  if (!at || !r.width){ S.zoom = z; drawBoard(); return; }
+
+  const W = boardExtent.maxX - boardExtent.minX;
+  const H = boardExtent.maxY - boardExtent.minY;
+  const vw = W / z, vh = H / z;
+  const scale = Math.min(r.width / vw, r.height / vh);
+  // The viewBox origin that puts `at` back under (sx, sy) at the new zoom.
+  const vbX = at.x - (sx - r.left - (r.width  - vw * scale) / 2) / scale;
+  const vbY = at.y - (sy - r.top  - (r.height - vh * scale) / 2) / scale;
+  S.zoom = z;
+  S.panX = (vbX + vw / 2) - (boardExtent.minX + boardExtent.maxX) / 2;
+  S.panY = (vbY + vh / 2) - (boardExtent.minY + boardExtent.maxY) / 2;
+  if (z <= 1.001){ S.panX = 0; S.panY = 0; }   // nothing to pan when it fits
+  drawBoard();
+}
+
+/* Wheel or pinch to zoom, drag to pan, double-tap to put it all back. The drag
+   only counts once the pointer has moved a few pixels, so an ordinary click
+   still builds where you clicked — and the same is true of a finger.
+
+   Everything here is pointer events rather than touch events, so one path
+   serves a mouse, a trackpad and a screen. */
 function initBoardControls(){
   const svg = document.getElementById("board");
   if (!svg || svg.__wired) return;
@@ -2028,15 +2085,47 @@ function initBoardControls(){
   svg.addEventListener("wheel", function(e){
     if (!S) return;
     e.preventDefault();
-    zoomBoard(e.deltaY < 0 ? 0.1 : -0.1);
+    zoomAbout((S.zoom || 1) + (e.deltaY < 0 ? 0.12 : -0.12), e.clientX, e.clientY);
   }, { passive:false });
 
-  let down = null;
+  const touches = new Map();     // live pointers on the board
+  let down = null;               // a one-finger drag
+  let pinch = null;              // a two-finger zoom
+  let lastTap = 0, lastTapAt = null;
+
+  const spread = () => {
+    const [a, b] = Array.from(touches.values());
+    return { d: Math.hypot(a.x - b.x, a.y - b.y),
+             mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+  };
+
   svg.addEventListener("pointerdown", function(e){
-    if (!S || (S.zoom || 1) <= 1.001) return;      // only pan when zoomed in
+    if (!S) return;
+    touches.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (touches.size === 2){
+      // A second finger turns a drag into a pinch.
+      down = null;
+      const g = spread();
+      pinch = { d: g.d, zoom: S.zoom || 1 };
+      return;
+    }
+    if (touches.size !== 1) return;
+    if ((S.zoom || 1) <= 1.001) return;          // nothing to pan when it fits
     down = { x:e.clientX, y:e.clientY, panX:S.panX || 0, panY:S.panY || 0, moved:false };
   });
+
   svg.addEventListener("pointermove", function(e){
+    if (!S) return;
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+    if (pinch && touches.size >= 2){
+      const g = spread();
+      if (pinch.d > 8){
+        zoomAbout(pinch.zoom * (g.d / pinch.d), g.mx, g.my);
+        window.__panDragged = true;              // this was a gesture, not a tap
+      }
+      return;
+    }
     if (!down) return;
     const dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) < 5) return;
@@ -2046,12 +2135,33 @@ function initBoardControls(){
     S.panY = down.panY - dy * scale;
     drawBoard();
   });
-  svg.addEventListener("pointerup", function(){
+
+  const lift = function(e){
+    touches.delete(e.pointerId);
+    if (touches.size < 2) pinch = null;
     // Suppress the click that follows a real drag so it does not place a piece.
     if (down && down.moved) window.__panDragged = true;
     down = null;
+  };
+  svg.addEventListener("pointerup", function(e){
+    // Two quick taps in the same spot put the board back where it started.
+    // Without a way out, a stray pinch or a fat-fingered zoom left you stuck
+    // at 2x with only a 30px minus button to climb back down.
+    const now = Date.now();
+    const near = lastTapAt && Math.hypot(e.clientX - lastTapAt.x, e.clientY - lastTapAt.y) < 34;
+    if (!(down && down.moved) && !pinch && near && now - lastTap < 320){
+      lastTap = 0; lastTapAt = null;
+      if (S && ((S.zoom || 1) > 1.001 || S.panX || S.panY)){
+        window.__panDragged = true;              // a reset is not a placement
+        resetZoom();
+      }
+    } else {
+      lastTap = now; lastTapAt = { x:e.clientX, y:e.clientY };
+    }
+    lift(e);
   });
-  svg.addEventListener("pointerleave", function(){ down = null; });
+  svg.addEventListener("pointercancel", lift);
+  svg.addEventListener("pointerleave", lift);
 }
 
 /* Board clicks arriving straight after a pan are swallowed. */
@@ -6099,13 +6209,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27b"></script>
+<script src="ai.js?v=2026-08-27d"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27b"></script>
-<script src="net.js?v=2026-08-27b"></script>
+<script src="firebase-config.js?v=2026-08-27d"></script>
+<script src="net.js?v=2026-08-27d"></script>
 </body>
 </html>
