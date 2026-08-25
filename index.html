@@ -2110,7 +2110,6 @@ function drawPlayers(){
             <div class="phead">
               <span class="dot" style="background:${p.color}"></span>
               <span class="pname">${p.name}</span>
-              ${!isBot(p.id) && anyBots() ? `<span class="you">you</span>` : ""}
               ${p.skipTokens ? `<span class="pskip">skip ×${p.skipTokens}</span>` : ""}
               ${vpStat(p)}
             </div>
