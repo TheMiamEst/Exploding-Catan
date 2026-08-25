@@ -3226,6 +3226,9 @@ function resolveCard(action){
   }
   checkVictory();
   render();
+  // Attack already has a window of its own — the discard prompt carries the
+  // same two buttons — so it is the one card that does not open a second.
+  if (c.key !== "attack") offerTargetResponse(action);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -3493,17 +3496,39 @@ function reactNoteHTML(e){
           The window closes a few lines further down the log.</div>`;
 }
 
-/* A card aimed at a person used to open a window of its own for them — "Skip,
-   aimed at you: take it, or Defuse it". It has gone the way of the Knight's
-   Defuse prompt, and for the same reasons. Everything it offered is on the
-   board already: the card turns over in the middle of the screen, the line it
-   wrote lights up in the log with a Defuse badge on it, and the card in your
-   hand wakes up with an "answer" pip. What the window added was a modal
-   standing on top of the log you wanted to drop the card onto.
-
-   The forced dialogs that remain are the ones that take something from you
-   before play can go on — a discard for a seven or an Attack. Those are a
-   payment, not an offer. */
+/* A card aimed at a person opens a window of its own for them. Only when they
+   have something to answer with: no card, no window, so it is never a tell. */
+function offerTargetResponse(action){
+  const tid = action.target;
+  if (tid === null || tid === undefined || !S.players[tid]) return;
+  if (tid === action.actor || isBot(tid)) return;
+  const react = promptReactions(tid);
+  if (!react.length) return;
+  promptFor(tid);
+  const def = KITTEN[action.card.key];
+  const from = S.players[action.actor];
+  let what;
+  if (action.card.key === "favor"){
+    const want = (action.payload && action.payload.want) || {};
+    const named = RES.filter(r => want[r]).map(r => want[r] + " " + RES_NAME[r]);
+    what = `<b>${from.name}</b> named ${named.join(", ") || "nothing"}, and has taken
+            whichever of those you were holding.`;
+  } else if (action.card.key === "explode"){
+    what = `<b>${from.name}</b> has sent your whole resource hand back to the bank.`;
+  } else if (action.card.key === "skip"){
+    what = `<b>${from.name}</b> has skipped your next turn.`;
+  } else {
+    what = `<b>${from.name}</b> played it on you.`;
+  }
+  // Foldable like the discard windows, and for the same reason: the answer you
+  // want may be a card dropped on a different line of the log, and the dialog
+  // is standing on top of the log.
+  openModal(esc(def.name) + " — aimed at you",
+    `<p class="sub">${what}</p>` + reactNoteHTML() +
+    `<p class="mininote">Fold this away with − to answer from the log instead.
+     Nothing is settled until you come back.</p>`,
+    [{ label:"Take it", fn: () => { closeModal(); render(); } }].concat(react), { mini: true });
+}
 
 /* ── Nope an entry ───────────────────────────────────────────────────── */
 function nopeEntry(id, noperId){
@@ -5410,8 +5435,7 @@ function showRules(){
     <p><b>Forced Nope.</b> The moment someone reaches 10 points, the next player in turn order who
     holds a Nope <i>must</i> spend it — no choice. Otherwise everyone would sit on their Nopes
     waiting for somebody else to spend theirs first.</p>
-    <p>The <b>Imploding Kitten</b> is immune to all of it. It cannot be Noped or Defused, and its
-    haul survives even a cancelled turn.</p>
+    <p>The <b>Imploding Kitten</b> is immune to all of it. It cannot be Noped or Defused.</p>
   </div>`;
   openModal("Exploding Catan — Rules", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
 }
@@ -5442,7 +5466,7 @@ function logMsgSafe(m){ if (S) logMsg(m); }
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26l"></script>
-<script src="net.js?v=2026-08-26l"></script>
+<script src="firebase-config.js?v=2026-08-26k"></script>
+<script src="net.js?v=2026-08-26k"></script>
 </body>
 </html>
