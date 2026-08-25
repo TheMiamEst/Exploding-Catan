@@ -697,7 +697,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26j";
+const GAME_VERSION = "2026-08-26k";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2089,7 +2089,7 @@ function drawBottom(){
       // your hand, and checkVictory already treats it that way. Marking it
       // "next turn" said the opposite, which is why drawing one at 9 points
       // looked like a win you had to wait for.
-      const locked = c.boughtTurn === S.turnCounter && !isVP;
+      const locked = c.boughtTurn === S.turnCounter && !isVP && !playableWhenDrawn(c);
       const reaction = def.kind === "response";
       const offTurn  = OFF_TURN.has(c.key) && !locked && !isVP && !S.pending &&
                         S.phase !== "over" && !S.phase.startsWith("setup") &&
@@ -2113,7 +2113,7 @@ function drawBottom(){
                  onpointerdown="cardPointerDown(event,${i},${p.id})">
               ${face ? `<img src="${face}" alt="" draggable="false">` : ""}
               ${locked ? `<span class="pip">next turn</span>` : ""}
-              ${isVP ? `<span class="pip now">1 VP now</span>` : ""}
+              ${isVP ? `<span class="pip now">1 VP</span>` : ""}
               ${canAnswer ? `<span class="pip now">answer</span>`
                 : offTurn ? `<span class="pip now">now</span>`
                 : reaction ? `<span class="pip">react</span>` : ""}
@@ -2894,48 +2894,15 @@ function chooseVictim(victims, sel){
   } else {
     openModal("Choose a victim", html, []);
   }
+  // Nobody is asked whether they would like to Defuse. There used to be a
+  // window here — a Knight stealing from you, do you want to say "no you"? —
+  // which announced to the table that you were holding a Defuse before you had
+  // decided to spend it, and could not be folded away. The robbery is a line
+  // in the log now, answerable by dragging a Defuse onto it, so the window had
+  // nothing left to offer.
   window.__pickVictim = (vid) => {
     closeModal();
-    const victim = S.players[vid], thief = S.players[sel.actor];
-
-    // A Knight played "on you" can be turned around with Defuse. A robbery
-    // caused by rolling a 7 is not a card play, so nothing to answer there.
-    const di = victim.cards.findIndex(c => c.key === "defuse");
-    const dag = agentOf(victim.id);
-    if (sel.knight && di >= 0 && !sel.defused && dag && dag.defuseKnight){
-      if (dag.defuseKnight(thief, victim, sel)){
-        S.discard.push(victim.cards.splice(di, 1)[0]);
-        logMsg("<b>" + victim.name + "</b> plays <b>Defuse</b> — they seize the robber from <b>" + thief.name + "</b>.");
-        S.select = { kind:"robber", actor: victim.id, knight: sel.knight,
-                     credit: sel.actor, defused: true };
-        render(); botTick();
-      } else {
-        doSteal(thief, victim, sel);
-      }
-      return;
-    }
-    if (sel.knight && di >= 0 && !sel.defused && !dag){
-      promptFor(victim.id);
-      openModal("Defuse?", `<p class="sub"><b>${thief.name}</b>'s Knight is stealing from
-        <b>${victim.name}</b>. ${victim.name} holds a Defuse — say "no you" and take
-        control of the robber?</p>
-        <div class="okbox">You move the robber wherever you like and steal from whoever
-        is there. ${thief.name} still gets credit for the knight toward Largest Army.</div>`, [
-        { label:"Take the hit", fn: () => { closeModal(); doSteal(thief, victim, sel); } },
-        { label:'"No you" — take the robber', cls:"primary", fn: () => {
-            closeModal();
-            S.discard.push(victim.cards.splice(di, 1)[0]);
-            logMsg(`<b>${victim.name}</b> plays <b>Defuse</b> — they seize the robber from <b>${thief.name}</b>.`);
-            // Hand the placement to the defuser. `credit` keeps the knight on the
-            // original player's army; `defused` stops a second Defuse chaining.
-            S.select = { kind:"robber", actor: victim.id, knight: sel.knight,
-                         credit: sel.actor, defused: true };
-            render();
-          } }
-      ]);
-      return;
-    }
-    doSteal(thief, victim, sel);
+    doSteal(S.players[sel.actor], S.players[vid], sel);
   };
 }
 
@@ -3510,7 +3477,7 @@ function promptReactions(pid, jid){
   const p = S.players[pid];
   if (!p) return out;
   const roll = e.kind === "roll";
-  const fresh = c => c.boughtTurn !== S.turnCounter;
+  const fresh = c => c.boughtTurn !== S.turnCounter || playableWhenDrawn(c);
   if (p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, pid))
     out.push({ label: roll ? "🛡 Defuse the 7" : "🛡 Defuse it", cls:"react",
                fn: () => { closeModal(); defuseEntry(e.id, pid); } });
@@ -4036,20 +4003,17 @@ function cancelTurn(actorId, wasWin){
    propping up Largest Army — until they are actually short of the target. */
 function stripWinningPoints(p, wasWin){
   let ferals = 0;
-  let guard = 0;
-  // Noping a win costs a Feral Kitten outright, even when rewinding the turn
-  // already dropped them under 10 — otherwise a player holding one simply
-  // rebuilds the settlement next turn and wins again with the same card.
+  // A cancelled win costs EVERY Feral Kitten in the hand, not just enough of
+  // them to drop back under ten. Taking the minimum left a player parked on
+  // nine with a spare, winning again the moment they laid one road — the Nope
+  // bought a turn rather than denying the win.
   //
   // Knights are deliberately NOT taken. One played on the cancelled turn is
   // already undone by wipeNopedTurn; knights from earlier turns, and the
   // Largest Army resting on them, were never part of what is being cancelled.
-  let owed = wasWin ? 1 : 0;
-  while ((owed > 0 || totalVP(p) >= 10) && guard++ < 25){
-    if (owed > 0) owed--;
-    const vi = p.cards.findIndex(c => c.key === "vp");
-    if (vi < 0) break;                        // nothing left that can be taken
-    p.cards.splice(vi, 1);                    // out of the game, not discarded
+  for (let i = p.cards.length - 1; i >= 0; i--){
+    if (p.cards[i].key !== "vp") continue;
+    p.cards.splice(i, 1);                     // out of the game, not discarded
     ferals++;
   }
   if (totalVP(p) >= 10){
@@ -4061,7 +4025,8 @@ function stripWinningPoints(p, wasWin){
     S.unstoppable = p.id;
   }
   if (ferals){
-    const what = ferals === 1 ? "a Feral Kitten" : ferals + " Feral Kittens";
+    const what = ferals === 1 ? "their Feral Kitten" :
+                 "all " + ferals + " of their Feral Kittens";
     logMsg(`<span style="color:#d98b4b">The cancelled win costs <b>${p.name}</b> ${what}.</span>`);
     announce(pdot(p) + " loses " + what + " to the cancelled win", "big", 5600);
   }
@@ -5230,10 +5195,16 @@ function dropTargetAt(x, y){
 
 /* A card may only be played the turn after it was bought, and never during
    setup or after the game is decided. Rearranging your hand is always fine. */
+/* A Defuse is the exception to "not until next turn". Every other card is a
+   move you choose to make and can wait a turn to make; a Defuse is the answer
+   to something being done to you, and a card you cannot play when you need it
+   is not a card. Draw one, get exploded, use it. */
+function playableWhenDrawn(c){ return !!c && c.key === "defuse"; }
+
 function cardIsPlayable(info){
   const c = info && info.card;
   if (!c || !S) return false;
-  if (c.boughtTurn === S.turnCounter) return false;
+  if (c.boughtTurn === S.turnCounter && !playableWhenDrawn(c)) return false;
   if (KITTEN[c.key].kind === "vp") return false;
   if (S.phase === "over" || S.phase.startsWith("setup")) return false;
   return true;
@@ -5490,13 +5461,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26j"></script>
+<script src="ai.js?v=2026-08-26k"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26j"></script>
-<script src="net.js?v=2026-08-26j"></script>
+<script src="firebase-config.js?v=2026-08-26k"></script>
+<script src="net.js?v=2026-08-26k"></script>
 </body>
 </html>

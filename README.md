@@ -191,7 +191,15 @@ back once it lands.
 
 A Feral Kitten is a point the moment it is in your hand, not the turn after —
 it is never played, so the "not until next turn" rule does not touch it. Draw
-one at nine points and you win there and then, unless somebody Nopes it.
+one at nine points and you win there and then, unless somebody Nopes it. A
+Nope that lands costs you **every** Feral Kitten in your hand, not just enough
+of them to drop you back under ten: taking the minimum left you parked on nine
+with a spare, winning again the moment you laid one road.
+
+A **Defuse** is the other card the "not until next turn" rule does not touch.
+Every other card is a move you choose to make and can wait a turn to make; a
+Defuse answers something being done to you, and a card you cannot play when
+you need it is not a card. Draw one, get exploded, use it.
 
 Your own points on the seat strip include the Feral Kittens in your hand;
 every other seat shows the public figure the table is actually playing
@@ -251,6 +259,11 @@ Three cases are worth calling out:
 
   A knight already credited stays credited: the card was played, and the
   Defuse answers the robbery rather than the card that caused it.
+
+  There is no window asking whether you would like to Defuse a Knight any
+  more. It announced to the table that you were holding one before you had
+  decided to spend it, and it could not be folded away. Everything is answered
+  from the log.
 
   One Defuse settles it for the whole hex, and the robber lands on a hex
   several people share, so two of them reaching for it at once is ordinary.

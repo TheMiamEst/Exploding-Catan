@@ -731,9 +731,15 @@ function makeAgent(pid){
     chooseVictim(victims){
       return victims.slice().sort((a, b) => threat(b) - threat(a))[0];
     },
-    defuseKnight(thief, victim){
-      // Worth a Defuse if we would rather be aiming the robber than losing a card.
-      return totalRes(victim) >= 2 || publicVP(thief) >= 7;
+    /* Worth a Defuse if we would rather be aiming the robber than wearing it.
+       This used to be asked before the theft, through a window that told the
+       table you were holding a Defuse before you had decided to spend it. The
+       robbery is a line in the log now and is answered from there, like
+       everything else. */
+    defuseRobbery(e){
+      const p = me();
+      const thief = S.players[e.actor];
+      return e.target === p.id || (thief && publicVP(thief) >= 7);
     },
 
     /* Decide whether to spend a reaction on the one entry still open to it.
@@ -750,12 +756,18 @@ function makeAgent(pid){
       if (!e) return false;
 
       if (hasDefuse && canDefuseEntry(e, p.id)){
-        // A seven is Defusable too, but it has no card behind it and it is
-        // answered from answerSeven instead — see there for why.
-        const k = e.card ? e.card.key : null;
-        if (k === "explode" || k === "attack" || k === "favor" || k === "alter"){
-          defuseEntry(e.id, p.id);
-          return true;
+        // A robbery has no card behind it — the robber has just landed on a
+        // hex we are settled on, with or without taking something.
+        if (typeof isRobberEntry === "function" && isRobberEntry(e)){
+          if (agent.defuseRobbery(e)){ defuseEntry(e.id, p.id); return true; }
+        } else {
+          // A seven is Defusable too, and is answered from answerSeven
+          // instead — see there for why.
+          const k = e.card ? e.card.key : null;
+          if (k === "explode" || k === "attack" || k === "favor" || k === "alter"){
+            defuseEntry(e.id, p.id);
+            return true;
+          }
         }
       }
       if (hasNope && canNopeFor(e, p.id) && nopeJournalDecision(p, e)){
@@ -778,7 +790,10 @@ function makeAgent(pid){
       const e = S.seven ? S.journal.find(x => x.id === S.seven.jid) : null;
       if (!e || !canNopeEntry(e)) return false;
       if (Math.floor(totalRes(p) / 2) < W.sevenAnswerCut) return false;
-      const fresh = k => p.cards.some(c => c.key === k && c.boughtTurn !== S.turnCounter);
+      // A Defuse is playable the moment it is drawn; everything else waits.
+      const fresh = k => p.cards.some(c => c.key === k &&
+          (c.boughtTurn !== S.turnCounter ||
+           (typeof playableWhenDrawn === "function" && playableWhenDrawn(c))));
       // Defuse first: it costs the table nothing else, where a Nope throws away
       // a roll everybody else may have been happy with.
       if (fresh("defuse") && canDefuseEntry(e, p.id)) return defuseEntry(e.id, p.id);
