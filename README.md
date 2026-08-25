@@ -160,18 +160,29 @@ Two things follow from having no server, and both are deliberate:
 Half of what happens on your turn used to happen invisibly: resources arrived
 as a number ticking up in the corner, and a road appeared on the next repaint.
 
-- **Pieces plop down** where they are placed — a road along its edge, a
-  settlement or city on its corner, in the builder's colour. Driven off the
-  board state rather than off the click, so watching somebody else build looks
-  the same as building yourself. Only things *arriving*: a Nope taking a road
-  back off the board is a rewind, and does not land with a thump.
+- **Pieces come down where they are placed** — a road the full length of its
+  edge, a house on its corner, a city on its corner, each the shape and size of
+  the real piece and in the builder's colour. The board leaves the piece out
+  for the half-second it is falling, so what you are watching *is* the piece
+  arriving rather than a flourish over one that landed a moment ago. Driven off
+  the board state rather than off the click, so watching somebody else build
+  looks the same as building yourself. Only things *arriving*: a Nope taking a
+  road back off the board is a rewind, and does not land with a thump.
 - **Production flies out of the ground.** Each hex that pays flashes in its own
-  colour and the cards fly from it to the seat that owns the building, face up.
+  colour and the cards fly from it to the seat that owns the building, face up,
+  landing on the resource counter they are about to change.
 - **A bought kitten card flies off the deck** to the buyer, face **down** the
   whole way — which one it was is the owner's business.
 - **A trade crosses between the two seat cards**, each side's half flying to
-  the other. Bank and port trades come and go from the top of the board, since
-  the bank has no corner of its own.
+  the other. A bank or port trade happens at the trader's own elbow instead —
+  down into the space just below their seat card and back up out of it. There
+  is nobody on the other side of that one, and sending it out to the middle of
+  the board made it look like there was.
+
+  Every card stands still for a second where it starts and a second where it
+  lands. A card that only ever moves cannot be read: you see something cross
+  the screen and have to work out afterwards what it was and whose it became.
+  Several from the same place fan out rather than stacking.
 - **The robber landing and a number token swapping** are bigger and slower than
   they were. They are the two things that change the board without a piece
   being built, and they were easy to blink past.
@@ -181,6 +192,27 @@ measures a board that has been laid out, and it is skipped entirely on a hidden
 tab or for anyone whose system asks for reduced motion. Bursts are capped —
 sixteen cards per event, sixty live pieces of animation — so a six-player
 payout cannot bury the board or the frame rate.
+
+The one place any of this touches what you can see of the game is the piece
+held back while it lands, and that expires on its own: if the timer that ends
+the animation never runs, the next repaint draws the piece anyway. A flourish
+is not worth a board with a road missing from it.
+
+### Numbers that keep up
+
+Every figure on a seat card is live. It sounds like it should have been, but
+it was not: numbers moved in a dozen places and not all of them asked for a
+repaint. A bot buying a kitten card spent three resources and gained a card
+without the board hearing about it, so the counters sat on figures that were
+minutes old until something else forced a redraw — usually the end of the turn.
+
+Rather than chase every call site, the four things that actually move
+resources and cards ask for a repaint themselves, coalesced through a
+microtask: a production payout of twenty gives costs exactly one redraw, and it
+lands before the browser has painted, so the number changes in the same breath
+as the thing that changed it. Walking four hundred bot actions and comparing
+every seat card against the state after each one now finds no disagreement at
+all, where the same walk used to find six.
 
 ### Dialogs that do not take the screen
 
@@ -308,6 +340,10 @@ Three cases are worth calling out:
 
 Which card the robber took is never named anywhere public. The two of them can
 see it in their own hands; the log and the feed say only that a card moved.
+
+You are only asked who to rob when there is actually a choice. One player on
+the hex is not a choice, and the window went up in front of an answer that had
+already been decided.
 
 ---
 

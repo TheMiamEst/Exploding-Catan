@@ -468,18 +468,21 @@
     100%{opacity:0;  transform:translate(-50%,-50%) scale(1.14)}
   }
 
-  /* A piece landing where it was placed. */
+  /* A piece landing where it was placed. The board leaves the piece out for
+     the duration, so this IS the piece arriving — it comes down from above,
+     settles, and the real one takes over at exactly the moment it stops. */
   .plop{ position:absolute; left:0; top:0; width:0; height:0; pointer-events:none }
   .plopbody{
-    position:absolute; left:0; top:0; border-radius:3px;
-    background:var(--pcol,#fff); border:2px solid #0b0d10; box-shadow:0 5px 16px #000b;
-    animation:plopdrop .52s cubic-bezier(.2,.9,.25,1.5) forwards;
+    position:absolute; left:0; top:0; line-height:0;
+    filter:drop-shadow(0 5px 12px #000b);
+    animation:plopdrop .52s cubic-bezier(.2,.86,.28,1.35) forwards;
   }
+  .plopbody svg{ display:block }
   @keyframes plopdrop{
-    0%  {opacity:0; transform:translate(-50%,-50%) translateY(-26px) scale(2)}
-    50% {opacity:1; transform:translate(-50%,-50%) translateY(0)     scale(1.1)}
-    72% {opacity:1; transform:translate(-50%,-50%) scale(.94)}
-    100%{opacity:0; transform:translate(-50%,-50%) scale(1)}
+    0%  {opacity:0; transform:translate(-50%,-50%) translateY(-30px) scale(1.85)}
+    45% {opacity:1; transform:translate(-50%,-50%) translateY(0)     scale(1.12)}
+    72% {opacity:1; transform:translate(-50%,-50%) scale(.96)}
+    100%{opacity:1; transform:translate(-50%,-50%) scale(1)}
   }
   .plopring{
     position:absolute; left:0; top:0; border-radius:50%; border:2px solid var(--pcol,#fff);
@@ -759,7 +762,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26q";
+const GAME_VERSION = "2026-08-26w";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1378,15 +1381,40 @@ function wipeNopedTurn(){
 
 function totalRes(p){ return RES.reduce((s, r) => s + p.res[r], 0); }
 
+/* Ask for a repaint, once, however many times you ask.
+
+   Numbers move in a dozen places and not every one of them repainted. A bot
+   buying a kitten card spent three resources and gained a card without the
+   board hearing about it, so the seat cards sat on figures that were minutes
+   old until something else forced a redraw — which was usually the end of the
+   turn. That is the "numbers only update when a turn ends" of it.
+
+   Rather than hunt every call site and hope, the four things that actually
+   move resources and cards ask for a repaint themselves. Coalesced through a
+   microtask, so a production payout of twenty gives costs exactly one redraw,
+   and it lands before the browser has painted anything — the number changes in
+   the same breath as the thing that changed it. */
+let repaintQueued = false;
+function touch(){
+  if (repaintQueued || !S) return;
+  repaintQueued = true;
+  Promise.resolve().then(function(){
+    repaintQueued = false;
+    if (S) render();
+  });
+}
+
 function give(p, r, n){
   const actual = Math.min(n, S.bank[r]);
   p.res[r] += actual; S.bank[r] -= actual;
   noteGain(p, r, actual);
+  if (actual) touch();
   return actual;
 }
 function take(p, r, n){
   const actual = Math.min(n, p.res[r]);
   p.res[r] -= actual; S.bank[r] += actual;
+  if (actual) touch();
   return actual;
 }
 function canAfford(p, cost){ return Object.keys(cost).every(r => p.res[r] >= cost[r]); }
@@ -1575,12 +1603,15 @@ function showVersionWarning(hostVer){
 function render(){
   if (!S){ renderIdle(); return; }
   showIdle(false);
+  // Before the board is drawn, not after: a piece that has just arrived is
+  // taken off this very pass so the animation can bring it in, rather than
+  // being drawn and then hidden by a second render a moment later.
+  checkBoardChanges();
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
   drawModeTag();
   refreshFeedMarks();
   checkStalePanels();
   checkShowcase();
-  checkBoardChanges();
   // A repaint in the middle of a drag (a bot moving, say) wipes the outlines
   // showing where the card may go. Put them straight back.
   if (dragCard) markDropTargets();
@@ -1725,7 +1756,7 @@ function drawBoard(){
   // Roads (edges)
   for (const e of edges){
     const a = vertices[e.v[0]], b = vertices[e.v[1]];
-    if (e.owner !== null){
+    if (e.owner !== null && !landing("e" + e.id)){
       const rd = art("piece", "road");
       if (rd){
         // Stretch a horizontal road tile along the edge.
@@ -1757,7 +1788,7 @@ function drawBoard(){
 
   // Buildings (vertices)
   for (const v of vertices){
-    if (v.owner !== null){
+    if (v.owner !== null && !landing("v" + v.id)){
       const col = S.players[v.owner].color;
       const pieceArt = art("piece", v.type);
       if (pieceArt){
@@ -1966,8 +1997,8 @@ function drawPlayers(){
             </div>
             <div class="stats">
               ${vpStat(p)}
-              <div class="stat" title="Resource cards"><b>${totalRes(p)}</b>${ICON.res}</div>
-              <div class="stat" title="Kitten cards in hand"><b>${p.cards.length}</b>${ICON.kit}</div>
+              <div class="stat res" title="Resource cards"><b>${totalRes(p)}</b>${ICON.res}</div>
+              <div class="stat kit" title="Kitten cards in hand"><b>${p.cards.length}</b>${ICON.kit}</div>
               <div class="stat" title="Longest unbroken road (${p.roads} built)${
                     S.longestRoad.owner === p.id ? " — holds Longest Road" : ""}">
                 <b${S.longestRoad.owner === p.id ? ' style="color:var(--accent)"' : ""}>${
@@ -2349,7 +2380,7 @@ function tradeToast(a, b, gave, got, snapBefore){
    but the resources still move, and a Nope still has to be able to move them
    back. */
 function bankToast(a, gave, got, snapBefore){
-  flyTrade(a.id, null, gave, got);      // null: the bank, off the top of the board
+  flyTrade(a.id, null, gave, got);      // null: the bank, at the trader's elbow
   return logAction(pdot(a) + " banks " + resList(gave) + " → " + resList(got), "info",
                    { actor: a.id, snap: snapBefore || snapAll() });
 }
@@ -2961,6 +2992,10 @@ function nextRobberMove(){
 }
 
 function chooseVictim(victims, sel){
+  // One player on the hex is not a choice. Asking anyway put a window in front
+  // of an answer that had already been decided — and made a bot sit through
+  // its own pause before picking the only name on the list.
+  if (victims.length === 1){ doSteal(S.players[sel.actor], victims[0], sel); return; }
   promptFor(sel.actor);
   const vag = agentOf(sel.actor);
   let html = `<p class="sub">Steal one random resource card.</p><div class="pick">`;
@@ -3153,6 +3188,7 @@ function drawKitten(p){
 
   c.boughtTurn = S.turnCounter;
   p.cards.push(c);
+  touch();
   flyKitten(p.id);
   if (S.turnRec && p.id === S.cur) S.turnRec.drawn.push(c);
   logMsg(`<b>${p.name}</b> buys a kitten card.`);
@@ -3557,6 +3593,7 @@ function spendCard(p, key){
   const i = p.cards.findIndex(c => c.key === key);
   if (i < 0) return false;
   S.discard.push(p.cards.splice(i, 1)[0]);
+  touch();
   return true;
 }
 
@@ -4818,9 +4855,17 @@ function centreOf(el){
   if (!r.width && !r.height) return null;
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
-/* Window coordinates for the three things journeys start and end at. */
+/* Window coordinates for the things journeys start and end at. */
 function seatPoint(pid){
   return centreOf(document.querySelector('.pcard[data-pid="' + pid + '"]'));
+}
+/* Resources land on the resource counter itself rather than in the middle of
+   the seat card, so the card you are watching arrives at the number it is
+   about to change. Kitten cards keep the middle: their counter is already
+   there. */
+function seatResPoint(pid){
+  return centreOf(document.querySelector('.pcard[data-pid="' + pid + '"] .stat.res')) ||
+         seatPoint(pid);
 }
 function boardPoint(x, y){
   const area = document.getElementById("boardArea");
@@ -4832,14 +4877,6 @@ function boardPoint(x, y){
 function hexPoint(hid){
   const h = hexes[hid];
   return h ? boardPoint(h.x, h.y) : null;
-}
-/* The bank has no corner of its own, so cards traded with it come and go from
-   the top of the board — off the table rather than from another seat. */
-function bankPoint(){
-  const area = document.getElementById("boardArea");
-  if (!area) return null;
-  const r = area.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + 24 };
 }
 function deckPoint(){
   return centreOf(document.querySelector("#deckWrap .deck")) ||
@@ -4857,26 +4894,46 @@ function kittenBackHTML(){
   return back ? '<img src="' + back + '" alt="">' : '<span class="fxback">🐱</span>';
 }
 
-/* One card, flying from somewhere to somewhere. */
-function flyCard(from, to, inner, cls, ms, delay){
+/* One card, flying from somewhere to somewhere — and standing still for a
+   second at each end. A card that only ever moves cannot be read: you see
+   something cross the screen and have to work out afterwards what it was and
+   whose it became. It shows itself where it came from, crosses, and shows
+   itself again where it landed.
+
+   Several cards from the same place would sit exactly on top of one another
+   through those two seconds, so each is fanned a little by its position in the
+   run. */
+const FX_IN = 180, FX_HOLD = 1000, FX_FLY = 620, FX_OUT = 260;
+const FX_CARD_MS = FX_IN + FX_HOLD + FX_FLY + FX_HOLD + FX_OUT;
+
+function flyCard(from, to, inner, cls, delay, idx){
   if (!fxOn || !from || !to) return;
   const el = document.createElement("div");
   el.className = "fxcard " + (cls || "");
   el.innerHTML = inner || "";
   fxLayer().appendChild(el);
-  const at = (p, sc) => "translate(" + p.x + "px," + p.y + "px) translate(-50%,-50%) scale(" + sc + ")";
+  const i = idx || 0;
+  const fan = { x: (i % 4) * 9 - 13, y: Math.floor(i / 4) * 7 - 6 };
+  const at = (p, sc) => "translate(" + (p.x + fan.x) + "px," + (p.y + fan.y) +
+                        "px) translate(-50%,-50%) scale(" + sc + ")";
+  const t = FX_CARD_MS;
+  const o1 = FX_IN / t;                       // shown at the source
+  const o2 = (FX_IN + FX_HOLD) / t;           // starts across
+  const o3 = (FX_IN + FX_HOLD + FX_FLY) / t;  // arrives
+  const o4 = (t - FX_OUT) / t;                // held there, then goes
   const a = el.animate([
-    { transform: at(from, .45), opacity: 0 },
-    { transform: at(from, 1),   opacity: 1, offset: .17 },
-    { transform: at(to, .95),   opacity: 1, offset: .85 },
-    { transform: at(to, .45),   opacity: 0 }
-  ], { duration: ms || 820, delay: delay || 0,
-       easing: "cubic-bezier(.32,.72,.3,1)", fill: "both" });
+    { transform: at(from, .45), opacity: 0, offset: 0,  easing: "cubic-bezier(.2,.9,.3,1.3)" },
+    { transform: at(from, 1),   opacity: 1, offset: o1, easing: "linear" },
+    { transform: at(from, 1),   opacity: 1, offset: o2, easing: "cubic-bezier(.5,0,.3,1)" },
+    { transform: at(to, 1),     opacity: 1, offset: o3, easing: "linear" },
+    { transform: at(to, 1),     opacity: 1, offset: o4, easing: "ease-in" },
+    { transform: at(to, .72),   opacity: 0, offset: 1 }
+  ], { duration: t, delay: delay || 0, fill: "both" });
   const done = () => el.remove();
   a.onfinish = done; a.oncancel = done;
   // A tab sent to the background never runs the animation, so nothing would
   // ever fire onfinish and the layer would fill up.
-  setTimeout(done, (ms || 820) + (delay || 0) + 400);
+  setTimeout(done, t + (delay || 0) + 400);
 }
 
 /* A hex lighting up as it pays out. */
@@ -4898,46 +4955,116 @@ function flashHex(hid){
   setTimeout(() => el.remove(), 950);
 }
 
-/* A piece landing. `w`/`h`/`angle` shape it: a square for a building, a bar
-   along the edge for a road. */
-function plop(pt, colour, w, h, angle){
-  if (!fxOn || !pt) return;
+/* The piece itself, drawn the shape it really is, for the overlay to fly in.
+   The board tints a silhouette with an SVG filter, which only works inside the
+   SVG that defines it — so the overlay carries its own copy of that filter and
+   comes out identical to what lands. No art, no problem: the same procedural
+   house, city and bar the board falls back to. */
+let fxPieceId = 0;
+function pieceSVG(kind, colour, w, h){
+  const url = art("piece", kind === "road" ? "road" : kind);
+  const W = Math.round(w), H = Math.round(h);
+  if (url){
+    const fid = "fxtint" + (fxPieceId++);
+    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 100 100"' +
+           (kind === "road" ? ' preserveAspectRatio="none"' : '') + '>' +
+             '<filter id="' + fid + '" x="-30%" y="-30%" width="160%" height="160%">' +
+               '<feFlood flood-color="' + colour + '" result="col"/>' +
+               '<feComposite in="col" in2="SourceGraphic" operator="in" result="body"/>' +
+               '<feMorphology in="SourceGraphic" operator="dilate" radius="2" result="fat"/>' +
+               '<feFlood flood-color="#0b0d10" result="dark"/>' +
+               '<feComposite in="dark" in2="fat" operator="in" result="edge"/>' +
+               '<feMerge><feMergeNode in="edge"/><feMergeNode in="body"/></feMerge>' +
+             '</filter>' +
+             '<image href="' + url + '" x="0" y="0" width="100" height="100"' +
+             (kind === "road" ? ' preserveAspectRatio="none"' : '') +
+             ' filter="url(#' + fid + ')"/>' +
+           "</svg>";
+  }
+  // The board's own fallback shapes, at the board's own proportions.
+  if (kind === "road")
+    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 100 24" preserveAspectRatio="none">' +
+             '<rect x="1" y="1" width="98" height="22" rx="9" fill="' + colour +
+             '" stroke="#0b0d10" stroke-width="3"/></svg>';
+  if (kind === "city")
+    return '<svg width="' + W + '" height="' + H + '" viewBox="-14 -12 28 24">' +
+             '<path d="M-12,6 L-12,-3 L-4,-9 L-4,-3 L4,-3 L12,-3 L12,6 Z" fill="' + colour +
+             '" stroke="#0b0d10" stroke-width="1.8"/></svg>';
+  return '<svg width="' + W + '" height="' + H + '" viewBox="-11 -11 22 22">' +
+           '<path d="M-9,4 L-9,-2 L0,-9 L9,-2 L9,4 Z" fill="' + colour +
+           '" stroke="#0b0d10" stroke-width="1.8"/></svg>';
+}
+
+/* A piece coming down where it was placed. The board is not drawing it yet —
+   plopBuild has taken it off the board for the duration — so what you are
+   watching IS the piece arriving, rather than a flourish over one that landed
+   a moment ago. */
+function plop(pt, key, inner, ring, angle, colour, done){
+  if (!pt){ done(); return; }
   const el = document.createElement("div");
   el.className = "plop";
   el.style.left = pt.x + "px";
   el.style.top  = pt.y + "px";
   if (angle) el.style.transform = "rotate(" + angle + "deg)";
   el.style.setProperty("--pcol", colour || "#fff");
-  const ring = Math.round(Math.max(w, h) * 2.4);
-  el.innerHTML =
-    '<span class="plopbody" style="width:' + Math.round(w) + "px;height:" + Math.round(h) + 'px"></span>' +
-    '<span class="plopring" style="width:' + ring + "px;height:" + ring + 'px"></span>';
+  el.innerHTML = '<span class="plopbody">' + inner + "</span>" +
+                 '<span class="plopring" style="width:' + ring + "px;height:" + ring + 'px"></span>';
   fxLayer().appendChild(el);
-  setTimeout(() => el.remove(), 1000);
+  setTimeout(function(){ el.remove(); done(); }, PLOP_MS);
+}
+
+/* Pieces that are mid-landing: drawBoard leaves these out, so each appears at
+   the END of its animation rather than sitting there through it.
+
+   Held with the time it started rather than as a bare flag, and read through
+   landing() which expires anything older than the animation. A piece is on the
+   board; the flourish that brings it in is not worth risking that. If the
+   timer that clears it never runs — a suspended tab, a lost frame — the entry
+   times itself out on the next repaint and the piece simply appears. */
+const fxLanding = new Map();
+const PLOP_MS = 520;
+function landing(key){
+  const t = fxLanding.get(key);
+  if (t === undefined) return false;
+  if (Date.now() - t > PLOP_MS + 500){ fxLanding.delete(key); return false; }
+  return true;
 }
 
 /* Measured on the next frame, so the board has been laid out first. */
 function plopBuild(kind, id, pid){
-  if (!fxOn || !S || !S.players[pid]) return;
+  if (!S || !S.players[pid]) return;
   const colour = S.players[pid].color;
+  const key = (kind === "road" ? "e" : "v") + id;
+  if (!fxOn || (typeof document !== "undefined" && document.hidden)) return;
+  if (landing(key)) return;
+  fxLanding.set(key, Date.now());
+  const land = function(){
+    fxLanding.delete(key);
+    if (S) render();                    // and now the real piece is drawn
+  };
   fxSoon(function(){
     if (kind === "road"){
       const e = edges[id];
-      if (!e) return;
+      if (!e){ land(); return; }
       const a = vertices[e.v[0]], b = vertices[e.v[1]];
       const mid = boardPoint((a.x + b.x) / 2, (a.y + b.y) / 2);
       const pa = boardPoint(a.x, a.y), pb = boardPoint(b.x, b.y);
-      if (!mid || !pa || !pb) return;
-      plop(mid, colour, Math.max(20, Math.hypot(pb.x - pa.x, pb.y - pa.y) * .72), 10,
-           Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI);
+      if (!mid || !pa || !pb){ land(); return; }
+      // The board draws a road the full length of its edge, 18 units thick.
+      const len = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+      const th  = 18 * (mid.scale || 1);
+      plop(mid, key, pieceSVG("road", colour, len, th), Math.round(len * 1.3),
+           Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI, colour, land);
       return;
     }
     const v = vertices[id];
-    if (!v) return;
+    if (!v){ land(); return; }
     const pt = boardPoint(v.x, v.y);
-    if (!pt) return;
-    const d = (kind === "city" ? 30 : 22) * Math.max(.55, Math.min(1.4, pt.scale));
-    plop(pt, colour, d, d, 0);
+    if (!pt){ land(); return; }
+    // 32 units for a settlement, 38 for a city — the board's own sizes.
+    const d = (kind === "city" ? 38 : 32) * (pt.scale || 1);
+    plop(pt, key, pieceSVG(kind === "city" ? "city" : "settlement", colour, d, d),
+         Math.round(d * 2.1), 0, colour, land);
   });
 }
 
@@ -4953,11 +5080,11 @@ function flyProduction(sources, paid){
     for (const g of sources){
       if (sent >= FX_MAX_CARDS) break;
       if (!paid[g.pid] || !paid[g.pid][g.r]) continue;
-      const hp = hexPoint(g.hid), sp = seatPoint(g.pid);
+      const hp = hexPoint(g.hid), sp = seatResPoint(g.pid);
       if (!hp || !sp) continue;
       if (!flashed[g.hid]){ flashed[g.hid] = 1; flashHex(g.hid); }
       for (let k = 0; k < g.n && sent < FX_MAX_CARDS; k++, sent++)
-        flyCard(hp, sp, resFaceHTML(g.r), "", 840, 55 * sent + 120);
+        flyCard(hp, sp, resFaceHTML(g.r), "", 45 * sent + 100, sent);
     }
   });
 }
@@ -4965,25 +5092,42 @@ function flyProduction(sources, paid){
 /* A kitten card off the deck and into a hand, back showing the whole way. */
 function flyKitten(pid){
   fxSoon(function(){
-    flyCard(deckPoint(), seatPoint(pid), kittenBackHTML(), "kit", 760, 60);
+    flyCard(deckPoint(), seatPoint(pid), kittenBackHTML(), "kit", 60, 0);
   });
 }
 
-/* What each side handed over, crossing between the two seat cards. */
+/* Where a bank or port trade happens: just under the trader's own seat card.
+   It used to cross to the middle of the board, which read as a deal with
+   somebody — and there is nobody on the other side of it. It is their own
+   transaction and it belongs at their elbow. */
+function benchPoint(pid){
+  const card = document.querySelector('.pcard[data-pid="' + pid + '"]');
+  const seat = seatResPoint(pid);
+  if (!card || !seat) return null;
+  return { x: seat.x, y: card.getBoundingClientRect().bottom + 46 };
+}
+
+/* What each side handed over, crossing between the two seat cards — or, for
+   the bank, between a seat card and the space just below it. */
 function flyTrade(aid, bid, gave, got){
   fxSoon(function(){
-    const pa = aid === null ? bankPoint() : seatPoint(aid);
-    const pb = bid === null ? bankPoint() : seatPoint(bid);
+    const pa = seatResPoint(aid);
+    const pb = bid === null ? benchPoint(aid) : seatResPoint(bid);
     if (!pa || !pb) return;
     let i = 0, j = 0;
-    for (const r of RES) for (let k = 0; k < (gave[r] || 0) && i < FX_MAX_CARDS; k++)
-      flyCard(pa, pb, resFaceHTML(r), "", 780, 65 * i++);
-    for (const r of RES) for (let k = 0; k < (got[r] || 0) && j < FX_MAX_CARDS; k++)
-      flyCard(pb, pa, resFaceHTML(r), "", 780, 65 * j++ + 140);
+    for (const r of RES) for (let k = 0; k < (gave[r] || 0) && i < FX_MAX_CARDS; k++, i++)
+      flyCard(pa, pb, resFaceHTML(r), "", 55 * i, i);
+    for (const r of RES) for (let k = 0; k < (got[r] || 0) && j < FX_MAX_CARDS; k++, j++)
+      flyCard(pb, pa, resFaceHTML(r), "", 55 * j + 110, j);
   });
 }
 
 function pulseHex(hid, cls, label){
+  // A frame late, like everything else here: this now runs before the board is
+  // redrawn, so measuring immediately would measure the previous layout.
+  fxSoon(function(){ drawPulse(hid, cls, label); });
+}
+function drawPulse(hid, cls, label){
   const h = hexes[hid];
   const area = document.getElementById("boardArea");
   if (!h || !area) return;
@@ -5796,13 +5940,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26q"></script>
+<script src="ai.js?v=2026-08-26w"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26q"></script>
-<script src="net.js?v=2026-08-26q"></script>
+<script src="firebase-config.js?v=2026-08-26w"></script>
+<script src="net.js?v=2026-08-26w"></script>
 </body>
 </html>
