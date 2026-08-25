@@ -452,6 +452,11 @@
   }
   .fxcard img{ width:100%; height:100%; object-fit:cover; display:block }
   .fxcard .fxswatch{ width:100%; height:100%; display:block }
+  /* Until res-back.png exists, a face-down resource still has to read as one. */
+  .fxcard .hiddenface{
+    background:linear-gradient(150deg,#3c465a,#232a36);
+    box-shadow:inset 0 0 0 2px #0b0d10, inset 0 0 0 4px #4a5668;
+  }
   .fxcard.kit{ width:32px; height:44px; border-color:var(--accent) }
   .fxcard .fxback{ font-size:19px; line-height:1 }
 
@@ -472,12 +477,16 @@
      the duration, so this IS the piece arriving — it comes down from above,
      settles, and the real one takes over at exactly the moment it stops. */
   .plop{ position:absolute; left:0; top:0; width:0; height:0; pointer-events:none }
+  /* The size has to be set here, not left to the <svg> inside. An inline SVG
+     with display:block takes width:auto, and auto inside a zero-width holder
+     is zero — so the piece was being drawn 0x0 and all anybody ever saw was
+     the ring going off around it. */
   .plopbody{
     position:absolute; left:0; top:0; line-height:0;
     filter:drop-shadow(0 5px 12px #000b);
     animation:plopdrop .52s cubic-bezier(.2,.86,.28,1.35) forwards;
   }
-  .plopbody svg{ display:block }
+  .plopbody svg{ display:block; width:100%; height:100% }
   @keyframes plopdrop{
     0%  {opacity:0; transform:translate(-50%,-50%) translateY(-30px) scale(1.85)}
     45% {opacity:1; transform:translate(-50%,-50%) translateY(0)     scale(1.12)}
@@ -762,7 +771,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26w";
+const GAME_VERSION = "2026-08-26x";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -880,6 +889,9 @@ function buildArtManifest(){
     ART_MANIFEST.push({ kind:"hex", key:t, file:`hex-${t}.png` });
   for (const r of RES)
     ART_MANIFEST.push({ kind:"res", key:r, file:`res-${r}.png` });
+  // The back of a resource card. Only the robber needs one: everything else
+  // that moves resources is public.
+  ART_MANIFEST.push({ kind:"res", key:"back", file:"res-back.png" });
   for (const p of ["settlement","city","road","robber"])
     ART_MANIFEST.push({ kind:"piece", key:p, file:`piece-${p}.svg` });
   ART_MANIFEST.push({ kind:"token", key:"blank", file:"token-blank.png" });
@@ -3028,6 +3040,9 @@ function doSteal(thief, victim, sel){
   if (pool.length){
     const r = pool[Math.floor(Math.random() * pool.length)];
     victim.res[r]--; thief.res[r]++; noteGain(thief, r, 1);
+    // Face down: which card it was is between the two of them.
+    const took = { wood:0, brick:0, sheep:0, wheat:0, ore:0 }; took[r] = 1;
+    flyCards(victim.id, thief.id, took, true);
     // WHICH card was taken is never named. The two of them can see it in their
     // own hands and nobody else is entitled to. The feed used to name it
     // whenever either side was a person, which is why it leaked on some
@@ -3291,6 +3306,9 @@ function resolveCard(action){
 
     case "explode": {
       let n = 0;
+      const gone = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
+      for (const r of RES){ gone[r] = target.res[r]; }
+      flyCards(target.id, null, gone);          // back to the bank, face up
       for (const r of RES){ n += target.res[r]; S.bank[r] += target.res[r]; target.res[r] = 0; }
       logMsg(`💥 <b>${actor.name}</b> explodes <b>${target.name}</b> — ${n} resources returned to the bank.`);
       break;
@@ -3307,10 +3325,13 @@ function resolveCard(action){
     case "favor": {
       const want = action.payload.want;
       const got = [];
+      const handed = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
       for (const r of RES){
         const n = Math.min(want[r], target.res[r]);
-        if (n > 0){ target.res[r] -= n; actor.res[r] += n; noteGain(actor, r, n); got.push(n + " " + RES_NAME[r]); }
+        if (n > 0){ target.res[r] -= n; actor.res[r] += n; noteGain(actor, r, n);
+                    handed[r] = n; got.push(n + " " + RES_NAME[r]); }
       }
+      flyCards(target.id, actor.id, handed);
       const asked = plainRes(want);
       logMsg(got.length
         ? `<b>${target.name}</b> owes <b>${actor.name}</b> a favor: ${got.join(", ")} (asked for ${asked}).`
@@ -4624,6 +4645,7 @@ function discardDialog(p, n, done, opts){
   const ag = agentOf(p.id);
   if (ag && ag.chooseDiscard){
     const pick = ag.chooseDiscard(p, n);
+    flyCards(p.id, null, pick);            // to the bank, face up
     for (const r of RES) take(p, r, pick[r] || 0);
     logMsg("<b>" + p.name + "</b> discards " + n + ".");
     render();
@@ -4660,6 +4682,7 @@ function discardDialog(p, n, done, opts){
        log first. Nothing moves until you come back and confirm.</p>`, [
       { label:"Confirm", cls:"primary", disabled: total !== n, fn: () => {
           closeModal();
+          flyCards(p.id, null, pick);      // to the bank, face up
           for (const r of RES) take(p, r, pick[r]);
           logMsg(`<b>${p.name}</b> discards ${n}.`);
           render();
@@ -4893,6 +4916,12 @@ function kittenBackHTML(){
   const back = art("card", "back");
   return back ? '<img src="' + back + '" alt="">' : '<span class="fxback">🐱</span>';
 }
+/* So does the one resource card nobody is allowed to see: the one the robber
+   takes. Everything else that moves resources is public and travels face up. */
+function resBackHTML(){
+  const back = art("res", "back");
+  return back ? '<img src="' + back + '" alt="">' : '<span class="fxswatch hiddenface"></span>';
+}
 
 /* One card, flying from somewhere to somewhere — and standing still for a
    second at each end. A card that only ever moves cannot be read: you see
@@ -4999,7 +5028,7 @@ function pieceSVG(kind, colour, w, h){
    plopBuild has taken it off the board for the duration — so what you are
    watching IS the piece arriving, rather than a flourish over one that landed
    a moment ago. */
-function plop(pt, key, inner, ring, angle, colour, done){
+function plop(pt, w, h, inner, ring, angle, colour, done){
   if (!pt){ done(); return; }
   const el = document.createElement("div");
   el.className = "plop";
@@ -5007,7 +5036,8 @@ function plop(pt, key, inner, ring, angle, colour, done){
   el.style.top  = pt.y + "px";
   if (angle) el.style.transform = "rotate(" + angle + "deg)";
   el.style.setProperty("--pcol", colour || "#fff");
-  el.innerHTML = '<span class="plopbody">' + inner + "</span>" +
+  el.innerHTML = '<span class="plopbody" style="width:' + Math.round(w) +
+                   "px;height:" + Math.round(h) + 'px">' + inner + "</span>" +
                  '<span class="plopring" style="width:' + ring + "px;height:" + ring + 'px"></span>';
   fxLayer().appendChild(el);
   setTimeout(function(){ el.remove(); done(); }, PLOP_MS);
@@ -5053,7 +5083,7 @@ function plopBuild(kind, id, pid){
       // The board draws a road the full length of its edge, 18 units thick.
       const len = Math.hypot(pb.x - pa.x, pb.y - pa.y);
       const th  = 18 * (mid.scale || 1);
-      plop(mid, key, pieceSVG("road", colour, len, th), Math.round(len * 1.3),
+      plop(mid, len, th, pieceSVG("road", colour, len, th), Math.round(len * 1.3),
            Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI, colour, land);
       return;
     }
@@ -5063,7 +5093,7 @@ function plopBuild(kind, id, pid){
     if (!pt){ land(); return; }
     // 32 units for a settlement, 38 for a city — the board's own sizes.
     const d = (kind === "city" ? 38 : 32) * (pt.scale || 1);
-    plop(pt, key, pieceSVG(kind === "city" ? "city" : "settlement", colour, d, d),
+    plop(pt, d, d, pieceSVG(kind === "city" ? "city" : "settlement", colour, d, d),
          Math.round(d * 2.1), 0, colour, land);
   });
 }
@@ -5105,6 +5135,27 @@ function benchPoint(pid){
   const seat = seatResPoint(pid);
   if (!card || !seat) return null;
   return { x: seat.x, y: card.getBoundingClientRect().bottom + 46 };
+}
+
+/* Cards leaving one hand for another, or for the bank. `toPid` null means the
+   bank, which sits just below the loser's own seat card — the same place their
+   bank trades happen.
+
+   Face up unless told otherwise. The only exchange in the game nobody is
+   entitled to watch is the robbery, so that is the only one that travels face
+   down; a Favor, an Exploding Kitten, an Attack and a seven all take cards
+   everyone already knows about. */
+function flyCards(fromPid, toPid, bundle, faceDown){
+  fxSoon(function(){
+    const from = seatResPoint(fromPid);
+    const to = (toPid === null || toPid === undefined) ? benchPoint(fromPid)
+                                                      : seatResPoint(toPid);
+    if (!from || !to) return;
+    let i = 0;
+    for (const r of RES)
+      for (let k = 0; k < (bundle[r] || 0) && i < FX_MAX_CARDS; k++, i++)
+        flyCard(from, to, faceDown ? resBackHTML() : resFaceHTML(r), "", 55 * i, i);
+  });
 }
 
 /* What each side handed over, crossing between the two seat cards — or, for
@@ -5940,13 +5991,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26w"></script>
+<script src="ai.js?v=2026-08-26x"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26w"></script>
-<script src="net.js?v=2026-08-26w"></script>
+<script src="firebase-config.js?v=2026-08-26x"></script>
+<script src="net.js?v=2026-08-26x"></script>
 </body>
 </html>

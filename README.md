@@ -178,6 +178,13 @@ as a number ticking up in the corner, and a road appeared on the next repaint.
   down into the space just below their seat card and back up out of it. There
   is nobody on the other side of that one, and sending it out to the middle of
   the board made it look like there was.
+- **Cards taken off you go the same way.** A Favor flies from the target to the
+  asker, and an Exploding Kitten, an Attack and a seven all fly down to the
+  bank at the loser's elbow. Every one of them face up: everybody already knows
+  what those cards were.
+- **The robbery is the exception, and travels face down** — `res-back.png` in
+  the art folder. Which card the robber took is between the two of them, and it
+  is the only exchange in the game nobody else is entitled to watch.
 
   Every card stands still for a second where it starts and a second where it
   lands. A card that only ever moves cannot be read: you see something cross

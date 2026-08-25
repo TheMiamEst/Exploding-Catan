@@ -42,10 +42,18 @@ RESOURCE CARDS — PNG, portrait, 300x420 (5:7)
   res-sheep.png
   res-wheat.png
   res-ore.png
+  res-back.png
 
 These fill the five slots along the bottom bar. The count and the resource
 name are drawn on top of the art, so keep the lower third relatively calm or
 the number gets hard to read. Rendered at 52x70, so 300x420 is plenty.
+
+res-back.png is the BACK of a resource card, and is used in one place only:
+the card the robber takes, flying from the victim to the thief. Every other
+exchange in the game is public and travels face up — a Favor, an Exploding
+Kitten, an Attack, a seven, a trade. The robbery is the one nobody else is
+entitled to see, so it is the one that needs a back. Until the file exists the
+game draws a plain dark card instead, which works but is not much to look at.
 
 
 PIECES — SVG (or PNG), transparent background
