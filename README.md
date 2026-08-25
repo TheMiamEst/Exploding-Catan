@@ -297,5 +297,9 @@ SHOWCASE_MS       // how long a played card stays on screen (default 2300)
 
 Bot pacing is deliberately slow: a Nope has to be draggable onto a line before
 the line scrolls out of reach, and a fast bot would bury it. A Nope only ever
-reaches within the turn still in progress — once a turn ends, everything in it
-is settled.
+reaches within the turn still in progress, **plus the three seconds after it
+ends**. Play does not begin again in that gap: nobody can roll, the bots wait,
+and nothing is drawn to say so — the table simply does not start, which is what
+a table does while somebody thinks. Without it, playing a card and pressing End
+Turn in the same breath put the card out of reach before anyone could lift a
+finger, and "play it and leave" was a strategy rather than a risk.

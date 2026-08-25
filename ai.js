@@ -1054,6 +1054,14 @@ function tickNow(){
     return schedule(IDLE);
   }
 
+  // The three seconds between one turn and the next belong to whoever wants to
+  // answer the turn that just ended. Bots wait it out like everybody else,
+  // otherwise the next one would roll before anyone could reach for a Nope.
+  if (typeof handoverActive === "function" && handoverActive()){
+    guard = 0;
+    return schedule(IDLE);
+  }
+
   // A forced board selection may belong to a bot even on a human's turn
   // (a Defused knight hands the robber to whoever defused it).
   const owner = selectOwner();

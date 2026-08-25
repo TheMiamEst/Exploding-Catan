@@ -204,8 +204,10 @@ function serializeGame(){
     diceLog: S.diceLog.slice(-60),
 
     // The deadline travels as "milliseconds still to run", so nobody has to
-    // trust anybody else's wall clock.
+    // trust anybody else's wall clock. Same for the gap between turns.
     implodeLeft: Math.max(0, (S.implodeUntil || 0) - Date.now()),
+    handoverLeft: Math.max(0, (S.handoverUntil || 0) - Date.now()),
+    handoverTurn: S.handoverTurn === undefined ? -1 : S.handoverTurn,
 
     // Snapshots stay home: they are big, and a terminal never rewinds
     // anything. `snap: 1` is the marker canNopeEntry actually tests.
@@ -291,6 +293,8 @@ function applyGame(b){
   S.discard = new Array(b.discardLen || 0).fill(null).map(() => ({ key:"hidden" }));
 
   S.implodeUntil = b.implodeLeft > 0 ? Date.now() + b.implodeLeft : 0;
+  S.handoverUntil = b.handoverLeft > 0 ? Date.now() + b.handoverLeft : 0;
+  S.handoverTurn = (b.handoverTurn === undefined) ? -1 : b.handoverTurn;
 
   S.journal = arr(b.journal, (b.journal && b.journal.length) || 0).filter(Boolean)
                 .map(e => Object.assign({ payload:null, card:null }, e));

@@ -697,7 +697,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26l";
+const GAME_VERSION = "2026-08-26n";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1162,6 +1162,8 @@ function newGame(numPlayers, mode){
     longestRoad: { owner:null, len:0 },
     largestArmy: { owner:null, n:0 },
     mode: MODES[mode] ? mode : "normal",   // normal | fast | fastplus
+    handoverUntil: 0,         // wall clock: the turn that just ended is still answerable
+    handoverTurn: -1,         // which turn that was
     seven: null,              // {actor, queue:[pid]} — a 7 still being paid for
     robberDue: [],            // robber moves owed behind the one in progress
     select: null,             // {kind, ...} forced board interaction
@@ -2141,7 +2143,8 @@ function drawBottom(){
     h += `<span class="thinking owed">⏳ ${S.select ? "finish the move on the board"
                                                     : "finish the open window first"}</span>`;
   } else if (S.phase === "roll"){
-    h += `<button class="primary" id="rollBtn" onclick="rollDice()">Roll Dice</button>`;
+    h += `<button class="primary" id="rollBtn" ${handoverActive() ? "disabled" : ""}
+            onclick="rollDice()">Roll Dice</button>`;
   } else if (S.phase === "main"){
     h += `<button onclick="bankTradeDialog()">Bank / Port</button>`;
     h += `<button onclick="playerTradeDialog()">Trade</button>`;
@@ -2473,6 +2476,10 @@ function showDice(){
       h += `<span class="${r === 7 ? "seven" : ""}">${r}</span>`;
     h += `</div>`;
   }
+  // Tagged to this screen. Untagged, an online host shipped it to whichever
+  // seat happened to be left in NET.promptSeat, so asking for the dice history
+  // put it up on somebody else's screen instead of your own.
+  promptFor(viewSeat());
   openModal("Dice history", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
 }
 
@@ -2734,6 +2741,7 @@ document.addEventListener("keydown", e => {
 
 function rollDice(){
   if (owesAnswer()){ hint("Finish the open window first."); return; }
+  if (handoverActive()) return;      // the last turn is still open to an answer
   if (netSend("roll")) return;
   doRoll();
 }
@@ -3226,9 +3234,6 @@ function resolveCard(action){
   }
   checkVictory();
   render();
-  // Attack already has a window of its own — the discard prompt carries the
-  // same two buttons — so it is the one card that does not open a second.
-  if (c.key !== "attack") offerTargetResponse(action);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -3358,6 +3363,30 @@ function logAction(html, kind, opts){
    never obvious to anyone. */
 const NOPE_REACH = 4;
 
+/* The gap between one turn ending and the next beginning. For three seconds
+   the turn that just ended is still answerable and nobody can roll.
+
+   Without it, playing a card and pressing End Turn in the same breath put the
+   card out of reach before anyone could lift a finger — "play it and leave"
+   was a strategy rather than a risk. Nothing is drawn for it: the table simply
+   does not start, which is what a table does while somebody thinks. */
+const HANDOVER_MS = 3000;
+function handoverActive(){
+  return !!(S && S.handoverUntil && Date.now() < S.handoverUntil);
+}
+function beginHandover(endedTurn){
+  if (!S || S.phase === "over") return;
+  S.handoverTurn = endedTurn;
+  S.handoverUntil = Date.now() + HANDOVER_MS;
+  const g = S;
+  setTimeout(function(){
+    // Whoever is up can roll now, and the bots pick themselves back up.
+    if (S !== g || S.phase === "over") return;
+    render();
+    botTick();
+  }, HANDOVER_MS + 20);
+}
+
 /* The newest entry still open to an answer — what a prompt's Defuse and Nope
    buttons act on, and what the hand highlights against. */
 function openEntry(){
@@ -3381,9 +3410,12 @@ function openEntries(){
 function canNopeEntry(e){
   if (!e || e.noped || !e.nopeable || !e.snap) return false;
   if (S.phase === "over" || S.phase.startsWith("setup")) return false;
-  // Last call is the end of the turn. Reaching back across turns let people
-  // rewrite something from several turns ago, which nobody could see coming.
-  if (e.turn !== S.turnCounter) return false;
+  // Last call is the end of the turn — plus the three seconds after it, so a
+  // card played and immediately walked away from is still answerable. Reaching
+  // any further back let people rewrite something from several turns ago,
+  // which nobody could see coming.
+  if (e.turn !== S.turnCounter &&
+      !(handoverActive() && e.turn === S.handoverTurn)) return false;
   const idx = S.journal.findIndex(x => x.id === e.id);
   if (idx < 0) return false;
   if (idx < S.journal.length - NOPE_REACH) return false;   // fallen out of reach
@@ -3496,39 +3528,16 @@ function reactNoteHTML(e){
           The window closes a few lines further down the log.</div>`;
 }
 
-/* A card aimed at a person opens a window of its own for them. Only when they
-   have something to answer with: no card, no window, so it is never a tell. */
-function offerTargetResponse(action){
-  const tid = action.target;
-  if (tid === null || tid === undefined || !S.players[tid]) return;
-  if (tid === action.actor || isBot(tid)) return;
-  const react = promptReactions(tid);
-  if (!react.length) return;
-  promptFor(tid);
-  const def = KITTEN[action.card.key];
-  const from = S.players[action.actor];
-  let what;
-  if (action.card.key === "favor"){
-    const want = (action.payload && action.payload.want) || {};
-    const named = RES.filter(r => want[r]).map(r => want[r] + " " + RES_NAME[r]);
-    what = `<b>${from.name}</b> named ${named.join(", ") || "nothing"}, and has taken
-            whichever of those you were holding.`;
-  } else if (action.card.key === "explode"){
-    what = `<b>${from.name}</b> has sent your whole resource hand back to the bank.`;
-  } else if (action.card.key === "skip"){
-    what = `<b>${from.name}</b> has skipped your next turn.`;
-  } else {
-    what = `<b>${from.name}</b> played it on you.`;
-  }
-  // Foldable like the discard windows, and for the same reason: the answer you
-  // want may be a card dropped on a different line of the log, and the dialog
-  // is standing on top of the log.
-  openModal(esc(def.name) + " — aimed at you",
-    `<p class="sub">${what}</p>` + reactNoteHTML() +
-    `<p class="mininote">Fold this away with − to answer from the log instead.
-     Nothing is settled until you come back.</p>`,
-    [{ label:"Take it", fn: () => { closeModal(); render(); } }].concat(react), { mini: true });
-}
+/* No card opens a window asking whether you would like to answer it — not a
+   Knight, not a Skip, not an Exploding Kitten. Everything such a window
+   offered is on the board already: the card turns over in the middle of the
+   screen, the line it wrote lights up in the log with a Defuse badge on it,
+   and the card in your hand wakes up with an "answer" pip. What the window
+   added was a modal standing on top of the log you wanted to drop onto.
+
+   The forced dialogs that remain are the ones that take something from you
+   before play can go on — a discard for a seven or an Attack. Those are a
+   payment, not an offer. */
 
 /* ── Nope an entry ───────────────────────────────────────────────────── */
 function nopeEntry(id, noperId){
@@ -4002,6 +4011,12 @@ function cancelTurn(actorId, wasWin){
    points that carried them over — hidden Feral Kittens first, then the knights
    propping up Largest Army — until they are actually short of the target. */
 function stripWinningPoints(p, wasWin){
+  // Only a cancelled WIN costs Feral Kittens. cancelTurn runs this on every
+  // Noped turn, win or not, so without this guard Noping somebody who was
+  // merely having a good turn burned their whole hand of hidden points — and
+  // said so in the log, announcing cards nobody had any business seeing.
+  if (!wasWin && totalVP(p) < 10) return;
+
   let ferals = 0;
   // A cancelled win costs EVERY Feral Kitten in the hand, not just enough of
   // them to drop back under ten. Taking the minimum left a player parked on
@@ -4083,8 +4098,10 @@ function requestEndTurn(){
 }
 
 function doEndTurn(){
+  const ended = S.turnCounter;
   if (S.extraTurn){
     S.extraTurn = false;
+    beginHandover(ended);
     S.phase = "roll";
     S.rolled = null;
     S.seven = null;
@@ -4096,6 +4113,7 @@ function doEndTurn(){
     botTick();
     return;
   }
+  beginHandover(ended);
   advancePlayer();
 }
 
@@ -4743,11 +4761,17 @@ function clearShowcase(){
   if (el){ el.hidden = true; el.className = ""; el.innerHTML = ""; }
 }
 
-function showcase(bodyHTML, capHTML, capCls, ms){
+function showcase(bodyHTML, capHTML, capCls, ms, must){
   showQueue.push({ body: bodyHTML, cap: capHTML, cls: capCls || "",
-                   ms: ms || SHOWCASE_MS });
-  // Keep the newest — a stale card is worth less than an accurate board.
-  while (showQueue.length > SHOWCASE_WAIT) showQueue.shift();
+                   ms: ms || SHOWCASE_MS, must: !!must });
+  // Keep the newest — a stale card is worth less than an accurate board. A
+  // `must` is never dropped: the Imploding Kitten never reaches a hand, so if
+  // its moment is thrown away nobody ever sees the card at all.
+  while (showQueue.length > SHOWCASE_WAIT){
+    const i = showQueue.findIndex(x => !x.must);
+    if (i < 0) break;
+    showQueue.splice(i, 1);
+  }
   if (!showing) runShowcase();
 }
 
@@ -4774,13 +4798,24 @@ function runShowcase(){
   }, dwell);
 }
 
-/* The newest journal entry, if it is something worth turning over. */
+/* Everything worth turning over that has not been turned over yet.
+
+   This used to look at the newest journal entry and nothing else, which is
+   fine right up until two things happen between one repaint and the next.
+   Buying two kitten cards does exactly that: draw the Imploding Kitten on the
+   first and the second card's log line is the newest by the time anything is
+   drawn, so the one card in the deck nobody ever holds was also the one card
+   nobody ever saw. They queue now, in the order they happened. */
 function checkShowcase(){
   if (!S || !S.journal.length) return;
-  const e = S.journal[S.journal.length - 1];
-  if (!e.show || e.id <= lastShowcased) return;
-  lastShowcased = e.id;
+  for (const e of S.journal){
+    if (e.id <= lastShowcased) continue;
+    lastShowcased = e.id;
+    if (e.show) showEntry(e);
+  }
+}
 
+function showEntry(e){
   if (e.show === "seven"){
     showcase('<div class="showseven">7</div>',
              esc(S.players[e.actor] ? S.players[e.actor].name : "") +
@@ -4796,7 +4831,7 @@ function checkShowcase(){
     showcase('<div class="showcard implode">' +
                (iface ? '<img src="' + iface + '" alt="">'
                       : '<span class="kn">Imploding Kitten</span>') +
-             "</div>", esc(e.plain).replace(/\s+/g, " "), "implode", 4600);
+             "</div>", esc(e.plain).replace(/\s+/g, " "), "implode", 4600, true);
     return;
   }
   const def = KITTEN[e.show];
@@ -5362,6 +5397,7 @@ function showArt(){
         out of the middle for you.</div>`;
   h += `<p class="rules">Reload the page after adding files. 404s in the console for missing art are
         expected and harmless.</p>`;
+  promptFor(viewSeat());
   openModal("Custom art", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
 }
 
@@ -5437,6 +5473,7 @@ function showRules(){
     waiting for somebody else to spend theirs first.</p>
     <p>The <b>Imploding Kitten</b> is immune to all of it. It cannot be Noped or Defused.</p>
   </div>`;
+  promptFor(viewSeat());
   openModal("Exploding Catan — Rules", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
 }
 
@@ -5460,13 +5497,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26l"></script>
+<script src="ai.js?v=2026-08-26n"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26k"></script>
-<script src="net.js?v=2026-08-26k"></script>
+<script src="firebase-config.js?v=2026-08-26n"></script>
+<script src="net.js?v=2026-08-26n"></script>
 </body>
 </html>
