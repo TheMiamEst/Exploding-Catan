@@ -155,6 +155,33 @@ Two things follow from having no server, and both are deliberate:
   would lend money to.
 - **If the host closes the tab, the game ends.** Everyone else is told why.
 
+### Things you can see happen
+
+Half of what happens on your turn used to happen invisibly: resources arrived
+as a number ticking up in the corner, and a road appeared on the next repaint.
+
+- **Pieces plop down** where they are placed — a road along its edge, a
+  settlement or city on its corner, in the builder's colour. Driven off the
+  board state rather than off the click, so watching somebody else build looks
+  the same as building yourself. Only things *arriving*: a Nope taking a road
+  back off the board is a rewind, and does not land with a thump.
+- **Production flies out of the ground.** Each hex that pays flashes in its own
+  colour and the cards fly from it to the seat that owns the building, face up.
+- **A bought kitten card flies off the deck** to the buyer, face **down** the
+  whole way — which one it was is the owner's business.
+- **A trade crosses between the two seat cards**, each side's half flying to
+  the other. Bank and port trades come and go from the top of the board, since
+  the bank has no corner of its own.
+- **The robber landing and a number token swapping** are bigger and slower than
+  they were. They are the two things that change the board without a piece
+  being built, and they were easy to blink past.
+
+None of it is state: it is read off the live DOM a frame late, so it always
+measures a board that has been laid out, and it is skipped entirely on a hidden
+tab or for anyone whose system asks for reduced motion. Bursts are capped —
+sixteen cards per event, sixty live pieces of animation — so a six-player
+payout cannot bury the board or the frame rate.
+
 ### Dialogs that do not take the screen
 
 Trades and card purchases open as **panels beside the board** rather than

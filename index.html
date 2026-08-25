@@ -411,21 +411,83 @@
      or the robber landing. Floated over the board rather than drawn into the
      SVG, because the SVG is rebuilt from scratch on every repaint and an
      animation in there would restart each time. */
+  /* The robber landing, a number token swapped. Bigger and slower than they
+     were: these are the two things that change the board without a piece being
+     built, and at the old size and speed they were easy to blink past. */
   .hexpulse{
     position:absolute; z-index:8; pointer-events:none;
     transform:translate(-50%,-50%);
     display:flex; align-items:center; justify-content:center;
-    width:52px; height:52px; border-radius:50%;
-    font-size:20px; font-weight:700; font-variant-numeric:tabular-nums;
-    animation:hexpop 1.15s ease-out forwards;
+    width:66px; height:66px; border-radius:50%;
+    font-size:25px; font-weight:700; font-variant-numeric:tabular-nums;
+    animation:hexpop 1.75s cubic-bezier(.2,.85,.3,1) forwards;
   }
-  .hexpulse.alter{ background:#e2b33c33; border:2px solid var(--accent); color:#ffe9ab; }
-  .hexpulse.robber{ background:#0b0d1088; border:2px solid #cbd3df; color:#e7ebf1; font-size:15px; }
+  .hexpulse.alter{ background:#e2b33c44; border:3px solid var(--accent); color:#ffe9ab;
+                   box-shadow:0 0 0 4px #e2b33c22, 0 8px 26px #000a; }
+  .hexpulse.robber{ background:#0b0d10cc; border:3px solid #cbd3df; color:#e7ebf1; font-size:20px;
+                    box-shadow:0 0 0 4px #cbd3df22, 0 8px 26px #000c; }
   @keyframes hexpop{
-    0%  {transform:translate(-50%,-50%) scale(.35); opacity:0}
-    25% {transform:translate(-50%,-50%) scale(1.18); opacity:1}
-    60% {transform:translate(-50%,-50%) scale(1); opacity:1}
-    100%{transform:translate(-50%,-50%) scale(1.35); opacity:0}
+    0%  {transform:translate(-50%,-50%) scale(.3)  rotate(-12deg); opacity:0}
+    18% {transform:translate(-50%,-50%) scale(1.3) rotate(4deg);   opacity:1}
+    34% {transform:translate(-50%,-50%) scale(1)   rotate(0);      opacity:1}
+    74% {transform:translate(-50%,-50%) scale(1.04);               opacity:1}
+    100%{transform:translate(-50%,-50%) scale(1.45);               opacity:0}
+  }
+
+  /* ══ MOVEMENT ══════════════════════════════════════════════════════
+     Things that ought to be SEEN to move. Resources used to arrive as a number
+     ticking up in a corner and a road appeared on the next repaint, so half of
+     what happened on your turn happened invisibly.
+
+     A fixed overlay across the whole window rather than something inside the
+     board, because most of these journeys start on the board and finish on a
+     seat card in the strip above it. Nothing here takes a pointer event and
+     nothing here is state: miss it and you have lost only the flourish.
+     ══════════════════════════════════════════════════════════════════ */
+  #fx{ position:fixed; inset:0; z-index:150; pointer-events:none; overflow:hidden }
+  .fxcard{
+    position:absolute; left:0; top:0; width:34px; height:46px; border-radius:5px;
+    border:1px solid #0b0d10; background:var(--panel2); overflow:hidden;
+    box-shadow:0 6px 18px #000b; display:flex; align-items:center; justify-content:center;
+  }
+  .fxcard img{ width:100%; height:100%; object-fit:cover; display:block }
+  .fxcard .fxswatch{ width:100%; height:100%; display:block }
+  .fxcard.kit{ width:32px; height:44px; border-color:var(--accent) }
+  .fxcard .fxback{ font-size:19px; line-height:1 }
+
+  /* The hex that grew them, lighting up as they leave it. */
+  .hexflash{
+    position:absolute; z-index:7; pointer-events:none; border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(circle, var(--fc,#fff) 0%, transparent 66%);
+    opacity:0; animation:hexflash .9s ease-out forwards;
+  }
+  @keyframes hexflash{
+    0%  {opacity:0;  transform:translate(-50%,-50%) scale(.65)}
+    28% {opacity:.62;transform:translate(-50%,-50%) scale(1)}
+    100%{opacity:0;  transform:translate(-50%,-50%) scale(1.14)}
+  }
+
+  /* A piece landing where it was placed. */
+  .plop{ position:absolute; left:0; top:0; width:0; height:0; pointer-events:none }
+  .plopbody{
+    position:absolute; left:0; top:0; border-radius:3px;
+    background:var(--pcol,#fff); border:2px solid #0b0d10; box-shadow:0 5px 16px #000b;
+    animation:plopdrop .52s cubic-bezier(.2,.9,.25,1.5) forwards;
+  }
+  @keyframes plopdrop{
+    0%  {opacity:0; transform:translate(-50%,-50%) translateY(-26px) scale(2)}
+    50% {opacity:1; transform:translate(-50%,-50%) translateY(0)     scale(1.1)}
+    72% {opacity:1; transform:translate(-50%,-50%) scale(.94)}
+    100%{opacity:0; transform:translate(-50%,-50%) scale(1)}
+  }
+  .plopring{
+    position:absolute; left:0; top:0; border-radius:50%; border:2px solid var(--pcol,#fff);
+    opacity:0; animation:plopring .66s .08s ease-out forwards;
+  }
+  @keyframes plopring{
+    0%  {opacity:.85; transform:translate(-50%,-50%) scale(.2)}
+    100%{opacity:0;   transform:translate(-50%,-50%) scale(1)}
   }
 
   /* A play announces itself in the middle of the board for a couple of
@@ -697,7 +759,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-26n";
+const GAME_VERSION = "2026-08-26q";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2278,6 +2340,7 @@ function resList(o){
    `snapBefore` is the board before the resources moved — that is what the
    Nope rewinds to. */
 function tradeToast(a, b, gave, got, snapBefore){
+  flyTrade(a.id, b.id, gave, got);
   return logAction(pdot(a) + " → " + resList(gave) + "<br>" + pdot(b) + " → " + resList(got),
                    "info", { actor: a.id, target: b.id, snap: snapBefore || snapAll() });
 }
@@ -2286,6 +2349,7 @@ function tradeToast(a, b, gave, got, snapBefore){
    but the resources still move, and a Nope still has to be able to move them
    back. */
 function bankToast(a, gave, got, snapBefore){
+  flyTrade(a.id, null, gave, got);      // null: the bank, off the top of the board
   return logAction(pdot(a) + " banks " + resList(gave) + " → " + resList(got), "info",
                    { actor: a.id, snap: snapBefore || snapAll() });
 }
@@ -2610,10 +2674,14 @@ function placeSettlement(vid, setup){
     // which is the whole of what it changes.
     if (S.phase === "setup2" || fastStart()){
       const got = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
+      const opening = [];
       for (const hid of vertices[vid].hexes){
         const hx = hexes[hid];
-        if (hx.terrain !== "desert") got[hx.terrain] += give(cur(), hx.terrain, 1);
+        if (hx.terrain === "desert") continue;
+        got[hx.terrain] += give(cur(), hx.terrain, 1);
+        opening.push({ hid: hid, pid: S.cur, r: hx.terrain, n: 1 });
       }
+      flyProduction(opening, S.players.map((q, i) => i === S.cur ? got : {}));
       logMsg(`<b>${cur().name}</b> starts with ` +
              RES.filter(r => got[r] > 0).map(r => got[r] + " " + RES_NAME[r]).join(", ") + ".");
       announce(pdot(cur()) + " settles and starts with<br>" + resList(got), "buy");
@@ -2777,12 +2845,16 @@ function produce(sum){
   // Tally first: if the bank can't pay everyone for a resource, nobody gets it.
   const owed = S.players.map(() => ({ wood:0, brick:0, sheep:0, wheat:0, ore:0 }));
   const paid = S.players.map(() => ({ wood:0, brick:0, sheep:0, wheat:0, ore:0 }));
+  // Where each card came from, so it can be flown out of the hex that grew it.
+  const sources = [];
   for (const hx of hexes){
     if (hx.number !== sum || hx.id === S.robber || hx.terrain === "desert") continue;
     for (const vid of hx.verts){
       const v = vertices[vid];
       if (v.owner === null) continue;
-      owed[v.owner][hx.terrain] += v.type === "city" ? 2 : 1;
+      const n = v.type === "city" ? 2 : 1;
+      owed[v.owner][hx.terrain] += n;
+      sources.push({ hid: hx.id, pid: v.owner, r: hx.terrain, n: n });
     }
   }
   const notes = [];
@@ -2805,6 +2877,7 @@ function produce(sum){
   if (gains.length) logMsg(gains.join(" · "));
   else logMsg("<span style='opacity:.7'>Nobody produces.</span>");
   for (const n of notes) logMsg(`<span style='opacity:.7'>${n}</span>`);
+  flyProduction(sources, paid);
   return { paid, notes };
 }
 
@@ -3080,6 +3153,7 @@ function drawKitten(p){
 
   c.boughtTurn = S.turnCounter;
   p.cards.push(c);
+  flyKitten(p.id);
   if (S.turnRec && p.id === S.cur) S.turnRec.drawn.push(c);
   logMsg(`<b>${p.name}</b> buys a kitten card.`);
   // Only the buyer learns what it was; everyone sees that a card was bought.
@@ -4704,6 +4778,211 @@ let showcaseTimer = null;
    extra having to travel. */
 let boardWatch = null;
 
+/* ══ MOVEMENT ═════════════════════════════════════════════════════
+   Everything below is presentation and nothing below is state. It reads the
+   live DOM for its coordinates, so it always measures after a repaint, and it
+   fails quietly: no board on screen, no animation, no error.
+   ═════════════════════════════════════════════════════════════════ */
+
+/* Asked for less motion, give less. */
+const fxOn = !(window.matchMedia &&
+               window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+/* Every one of these is measured a frame late, so the board it is measuring
+   has been laid out. A hidden tab never runs that frame, so rather than let a
+   backlog pile up and replay against a board that has moved on, an animation
+   asked for while nobody is looking is simply dropped. */
+function fxSoon(fn){
+  if (!fxOn || (typeof document !== "undefined" && document.hidden)) return;
+  requestAnimationFrame(fn);
+}
+
+/* Nothing on this layer matters enough to be worth a thousand nodes. Each one
+   takes itself off when it lands, but a burst that outruns its own clean-up
+   loses its oldest members rather than the frame rate. */
+const FX_MAX_NODES = 60;
+function fxLayer(){
+  let el = document.getElementById("fx");
+  if (!el){ el = document.createElement("div"); el.id = "fx"; document.body.appendChild(el); }
+  while (el.childElementCount > FX_MAX_NODES) el.removeChild(el.firstChild);
+  return el;
+}
+/* Hex flashes live on the board itself, so they get the same treatment. */
+function trimFlashes(area){
+  const old = area.querySelectorAll(".hexflash");
+  for (let i = 0; i + 24 < old.length; i++) old[i].remove();
+}
+function centreOf(el){
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  if (!r.width && !r.height) return null;
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+/* Window coordinates for the three things journeys start and end at. */
+function seatPoint(pid){
+  return centreOf(document.querySelector('.pcard[data-pid="' + pid + '"]'));
+}
+function boardPoint(x, y){
+  const area = document.getElementById("boardArea");
+  const pt = area && svgToScreen(x, y);
+  if (!pt) return null;
+  const ar = area.getBoundingClientRect();
+  return { x: ar.left + pt.x, y: ar.top + pt.y, scale: pt.scale };
+}
+function hexPoint(hid){
+  const h = hexes[hid];
+  return h ? boardPoint(h.x, h.y) : null;
+}
+/* The bank has no corner of its own, so cards traded with it come and go from
+   the top of the board — off the table rather than from another seat. */
+function bankPoint(){
+  const area = document.getElementById("boardArea");
+  if (!area) return null;
+  const r = area.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + 24 };
+}
+function deckPoint(){
+  return centreOf(document.querySelector("#deckWrap .deck")) ||
+         centreOf(document.getElementById("deckWrap"));
+}
+
+function resFaceHTML(r){
+  const face = art("res", r);
+  return face ? '<img src="' + face + '" alt="">'
+              : '<span class="fxswatch" style="background:' + RES_COLOR[r] + '"></span>';
+}
+/* Kitten cards travel face DOWN. Which one it was is the owner's business. */
+function kittenBackHTML(){
+  const back = art("card", "back");
+  return back ? '<img src="' + back + '" alt="">' : '<span class="fxback">🐱</span>';
+}
+
+/* One card, flying from somewhere to somewhere. */
+function flyCard(from, to, inner, cls, ms, delay){
+  if (!fxOn || !from || !to) return;
+  const el = document.createElement("div");
+  el.className = "fxcard " + (cls || "");
+  el.innerHTML = inner || "";
+  fxLayer().appendChild(el);
+  const at = (p, sc) => "translate(" + p.x + "px," + p.y + "px) translate(-50%,-50%) scale(" + sc + ")";
+  const a = el.animate([
+    { transform: at(from, .45), opacity: 0 },
+    { transform: at(from, 1),   opacity: 1, offset: .17 },
+    { transform: at(to, .95),   opacity: 1, offset: .85 },
+    { transform: at(to, .45),   opacity: 0 }
+  ], { duration: ms || 820, delay: delay || 0,
+       easing: "cubic-bezier(.32,.72,.3,1)", fill: "both" });
+  const done = () => el.remove();
+  a.onfinish = done; a.oncancel = done;
+  // A tab sent to the background never runs the animation, so nothing would
+  // ever fire onfinish and the layer would fill up.
+  setTimeout(done, (ms || 820) + (delay || 0) + 400);
+}
+
+/* A hex lighting up as it pays out. */
+function flashHex(hid){
+  const h = hexes[hid];
+  const area = document.getElementById("boardArea");
+  if (!fxOn || !h || !area) return;
+  const pt = svgToScreen(h.x, h.y);
+  if (!pt) return;
+  const el = document.createElement("div");
+  el.className = "hexflash";
+  const d = Math.round(HEX_SIZE * pt.scale * 1.8);
+  el.style.width = el.style.height = d + "px";
+  el.style.left = pt.x + "px";
+  el.style.top  = pt.y + "px";
+  el.style.setProperty("--fc", RES_COLOR[h.terrain] || "#fff");
+  trimFlashes(area);
+  area.appendChild(el);
+  setTimeout(() => el.remove(), 950);
+}
+
+/* A piece landing. `w`/`h`/`angle` shape it: a square for a building, a bar
+   along the edge for a road. */
+function plop(pt, colour, w, h, angle){
+  if (!fxOn || !pt) return;
+  const el = document.createElement("div");
+  el.className = "plop";
+  el.style.left = pt.x + "px";
+  el.style.top  = pt.y + "px";
+  if (angle) el.style.transform = "rotate(" + angle + "deg)";
+  el.style.setProperty("--pcol", colour || "#fff");
+  const ring = Math.round(Math.max(w, h) * 2.4);
+  el.innerHTML =
+    '<span class="plopbody" style="width:' + Math.round(w) + "px;height:" + Math.round(h) + 'px"></span>' +
+    '<span class="plopring" style="width:' + ring + "px;height:" + ring + 'px"></span>';
+  fxLayer().appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+/* Measured on the next frame, so the board has been laid out first. */
+function plopBuild(kind, id, pid){
+  if (!fxOn || !S || !S.players[pid]) return;
+  const colour = S.players[pid].color;
+  fxSoon(function(){
+    if (kind === "road"){
+      const e = edges[id];
+      if (!e) return;
+      const a = vertices[e.v[0]], b = vertices[e.v[1]];
+      const mid = boardPoint((a.x + b.x) / 2, (a.y + b.y) / 2);
+      const pa = boardPoint(a.x, a.y), pb = boardPoint(b.x, b.y);
+      if (!mid || !pa || !pb) return;
+      plop(mid, colour, Math.max(20, Math.hypot(pb.x - pa.x, pb.y - pa.y) * .72), 10,
+           Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI);
+      return;
+    }
+    const v = vertices[id];
+    if (!v) return;
+    const pt = boardPoint(v.x, v.y);
+    if (!pt) return;
+    const d = (kind === "city" ? 30 : 22) * Math.max(.55, Math.min(1.4, pt.scale));
+    plop(pt, colour, d, d, 0);
+  });
+}
+
+/* Cards flying from the hexes that grew them to the seat that owns the
+   building, with each hex flashing as they leave. Staggered so a big roll
+   reads as a sequence rather than a swarm, and capped so a six-player payout
+   does not bury the board. */
+const FX_MAX_CARDS = 16;
+function flyProduction(sources, paid){
+  fxSoon(function(){
+    const flashed = {};
+    let sent = 0;
+    for (const g of sources){
+      if (sent >= FX_MAX_CARDS) break;
+      if (!paid[g.pid] || !paid[g.pid][g.r]) continue;
+      const hp = hexPoint(g.hid), sp = seatPoint(g.pid);
+      if (!hp || !sp) continue;
+      if (!flashed[g.hid]){ flashed[g.hid] = 1; flashHex(g.hid); }
+      for (let k = 0; k < g.n && sent < FX_MAX_CARDS; k++, sent++)
+        flyCard(hp, sp, resFaceHTML(g.r), "", 840, 55 * sent + 120);
+    }
+  });
+}
+
+/* A kitten card off the deck and into a hand, back showing the whole way. */
+function flyKitten(pid){
+  fxSoon(function(){
+    flyCard(deckPoint(), seatPoint(pid), kittenBackHTML(), "kit", 760, 60);
+  });
+}
+
+/* What each side handed over, crossing between the two seat cards. */
+function flyTrade(aid, bid, gave, got){
+  fxSoon(function(){
+    const pa = aid === null ? bankPoint() : seatPoint(aid);
+    const pb = bid === null ? bankPoint() : seatPoint(bid);
+    if (!pa || !pb) return;
+    let i = 0, j = 0;
+    for (const r of RES) for (let k = 0; k < (gave[r] || 0) && i < FX_MAX_CARDS; k++)
+      flyCard(pa, pb, resFaceHTML(r), "", 780, 65 * i++);
+    for (const r of RES) for (let k = 0; k < (got[r] || 0) && j < FX_MAX_CARDS; k++)
+      flyCard(pb, pa, resFaceHTML(r), "", 780, 65 * j++ + 140);
+  });
+}
+
 function pulseHex(hid, cls, label){
   const h = hexes[hid];
   const area = document.getElementById("boardArea");
@@ -4716,13 +4995,15 @@ function pulseHex(hid, cls, label){
   el.style.top  = pt.y + "px";
   el.textContent = label === undefined || label === null ? "" : String(label);
   area.appendChild(el);
-  setTimeout(() => el.remove(), 1200);
+  setTimeout(() => el.remove(), 1800);
 }
 
 /* Point at anything on the board that moved since the last repaint. */
 function checkBoardChanges(){
   if (!S){ boardWatch = null; return; }
-  const now = { robber: S.robber, nums: hexes.map(h => h.number) };
+  const now = { robber: S.robber, nums: hexes.map(h => h.number),
+                vOwner: vertices.map(v => v.owner), vType: vertices.map(v => v.type),
+                eOwner: edges.map(e => e.owner) };
   const was = boardWatch;
   boardWatch = now;
   // First paint of a game, or a board of a different size: nothing to compare.
@@ -4733,6 +5014,24 @@ function checkBoardChanges(){
       pulseHex(i, "alter", now.nums[i]);
 
   if (was.robber !== now.robber) pulseHex(now.robber, "robber", "♟");
+
+  // Pieces plop where they land. Driven off the state rather than off the
+  // click that placed them, so a terminal watching somebody else build sees it
+  // too — the same reason the reveals read the journal.
+  //
+  // Only things ARRIVING: a spot going from empty to owned, or a settlement
+  // becoming a city. A Nope taking a road back off the board is a rewind, not
+  // a build, and should not land with a thump.
+  for (let i = 0; i < now.eOwner.length; i++)
+    if (was.eOwner[i] === null && now.eOwner[i] !== null)
+      plopBuild("road", i, now.eOwner[i]);
+
+  for (let i = 0; i < now.vOwner.length; i++){
+    if (now.vOwner[i] === null) continue;
+    if (was.vOwner[i] === null) plopBuild(now.vType[i] || "settlement", i, now.vOwner[i]);
+    else if (was.vType[i] !== "city" && now.vType[i] === "city")
+      plopBuild("city", i, now.vOwner[i]);
+  }
 }
 
 /* Reveals QUEUE. They used to overwrite: whatever was on screen was thrown
@@ -5497,13 +5796,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-26n"></script>
+<script src="ai.js?v=2026-08-26q"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-26n"></script>
-<script src="net.js?v=2026-08-26n"></script>
+<script src="firebase-config.js?v=2026-08-26q"></script>
+<script src="net.js?v=2026-08-26q"></script>
 </body>
 </html>
