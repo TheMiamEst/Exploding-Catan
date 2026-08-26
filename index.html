@@ -10,17 +10,6 @@
     --ink:#e7ebf1; --dim:#95a1b3; --accent:#e2b33c; --danger:#d94b4b;
     --wood:#2f6b3a; --brick:#a4472a; --sheep:#7fb85c; --wheat:#dfae32; --ore:#78838f; --desert:#cdbb8e;
 
-    /* What kind of thing just happened, as a colour. The log has coded its
-       left edge this way for a long time and the words next to it stayed
-       grey, which is half a signal: you had to read the line to find out
-       whether the bar mattered. These are the same five meanings as text —
-       lightened, because a colour chosen to read as a 4px bar against a dark
-       panel is far too dark to read as a sentence. */
-    --tAttack:#ff9b9b;    /* something is being taken from somebody */
-    --tDefend:#89d7f4;    /* an answer: a Nope, a Defuse */
-    --tGain:#93d9a6;      /* a purchase, a payout, a card drawn */
-    --tBig:#ffd77a;       /* the whole table should look up */
-    --tRoll:#c6cfdb;      /* the dice, and everything else ordinary */
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -423,7 +412,7 @@
     flex:0 0 auto; animation:evin .2s ease-out; backdrop-filter:blur(3px);
     box-shadow:0 3px 12px #0007; position:relative;
   }
-  .ev b{font-weight:800}
+  .ev b{font-weight:700}
   .ev .evturn{
     display:block; font-size:9.5px; letter-spacing:.4px; color:var(--dim);
     text-transform:uppercase; margin-bottom:2px;
@@ -441,14 +430,14 @@
   .rchip .rdot{display:inline-block; width:7px; height:7px; border-radius:2px;
                background:var(--rc); margin-right:4px; vertical-align:0}
   .rchip.none{--rc:#5a6478; font-style:italic; opacity:.75}
-  .ev.roll{border-left-color:#7f8ba0; color:var(--tRoll)}
-  .ev.buy{border-left-color:#5a8f68; color:var(--tGain)}
-  .ev.attack{border-left-color:var(--danger); color:var(--tAttack)}
-  .ev.defend{border-left-color:#4bb1d9; color:var(--tDefend)}
+  .ev.roll{border-left-color:#7f8ba0}
+  .ev.buy{border-left-color:#5a8f68}
+  .ev.attack{border-left-color:var(--danger)}
+  .ev.defend{border-left-color:#4bb1d9}
   .ev.info{border-left-color:#5a6478}
   .ev.big{
-    border-left-color:var(--accent); background:#232a1c; color:var(--tBig);
-    font-size:14.5px; box-shadow:0 0 0 1px #e2b33c33 inset;
+    border-left-color:var(--accent); background:#232a1c; font-size:13.5px;
+    box-shadow:0 0 0 1px #e2b33c33 inset;
   }
 
   /* ── "you can answer this" markers ──────────────────────────────────
@@ -824,7 +813,7 @@
   body.hasmodal .showseven{
     width:clamp(40px, 5.6vh, 52px); font-size:clamp(19px, 3vh, 26px); border-width:2px;
   }
-  body.hasmodal .showcap{ font-size:14px; padding:6px 12px; max-width:min(360px, 64%) }
+  body.hasmodal .showcap{ font-size:15px; padding:6px 13px; max-width:min(370px, 66%) }
   #showcase.out{animation:showout .4s ease-in forwards}
   @keyframes showout{to{opacity:0; transform:scale(.94)}}
   .showcard{
@@ -856,8 +845,8 @@
     7%  {opacity:1}
     100%{transform:scale(1) rotate(5turn)}
   }
-  .showcap.implode{border-color:var(--danger); color:#ffc2c2; font-weight:800;
-                   font-size:19px; box-shadow:0 10px 30px #000a, 0 0 0 5px #d94b4b3d}
+  .showcap.implode{border-color:var(--danger); color:#ffd9d9; font-weight:800;
+                   font-size:21px}
 
   /* A seven gets the same moment without a card to turn over. */
   .showseven{
@@ -873,25 +862,19 @@
     100%{transform:scale(1) rotate(0)}
   }
   .showcap{
-    background:#0b0d10ee; border:2px solid var(--line); border-radius:10px;
-    padding:9px 18px; font-size:17px; font-weight:700; letter-spacing:.2px;
-    line-height:1.35; max-width:min(460px, 78%); text-align:center;
+    background:#0b0d10ee; border:1px solid var(--line); border-radius:10px;
+    padding:10px 20px; font-size:19px; font-weight:700; letter-spacing:.2px;
+    line-height:1.35; max-width:min(480px, 80%); text-align:center;
     text-shadow:0 2px 8px #000c;
     box-shadow:0 10px 30px #000a; animation:capin .45s .12s ease-out both;
   }
-  .showcap b{font-weight:800}
-  /* Coded the same five ways the log is, so the card and the line it wrote
-     say the same thing in the same colour. */
-  .showcap.attack{border-color:var(--danger); color:var(--tAttack);
-                  box-shadow:0 10px 30px #000a, 0 0 0 4px #d94b4b26}
-  .showcap.defend{border-color:#4bb1d9; color:var(--tDefend);
-                  box-shadow:0 10px 30px #000a, 0 0 0 4px #4bb1d926}
-  .showcap.gain{border-color:#5a8f68; color:var(--tGain);
-                box-shadow:0 10px 30px #000a, 0 0 0 4px #5a8f6826}
-  .showcap.big{border-color:var(--accent); color:var(--tBig);
-               box-shadow:0 10px 30px #000a, 0 0 0 4px #e2b33c26}
-  .showcap.seven{border-color:var(--danger); color:var(--tAttack);
-                 box-shadow:0 10px 30px #000a, 0 0 0 4px #d94b4b33}
+  /* The one thing in here that is coloured is WHO. Every player already has a
+     colour — their pieces on the board, the bar down their seat card, the dot
+     beside their name in the log — so the names in a caption wear it too, and
+     the box stays out of it. Heavier and shadowed because a seat colour is
+     picked to sit against the board, not to be read as a word. */
+  .showcap .capname{font-weight:800; text-shadow:0 1px 4px #000, 0 0 10px #0009}
+  .showcap.seven{border-color:var(--danger); color:#ffd9d9}
   @keyframes capin{from{transform:translateY(10px); opacity:0}to{transform:none; opacity:1}}
 
   /* Dialogs that dock beside the board rather than covering it. A trade or a
@@ -1159,7 +1142,7 @@
     .modal p.sub{font-size:12.5px; margin-bottom:8px}
     .rules{font-size:12px}
     .warnbox, .okbox, .stack{font-size:12px; padding:7px 9px}
-    .showcap{font-size:14px; padding:6px 12px; border-width:1px}
+    .showcap{font-size:15px; padding:6px 13px}
     .counter{padding:2px 0}
     .modal .actions{
       position:sticky; bottom:-10px; margin-top:10px; padding:8px 0 2px;
@@ -1242,7 +1225,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-27r";
+const GAME_VERSION = "2026-08-27s";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -6803,23 +6786,42 @@ function checkShowcase(){
   }
 }
 
-/* What colour a card's moment is, by what the card DOES rather than by what
-   it is called. The caption used to be the same plain grey whether somebody
-   had just taken your whole hand or bought themselves a point, which threw
-   away the one instant everybody at the table is definitely looking at the
-   screen. Same five meanings the log codes its left edge with. */
-const CARD_TONE = {
-  skip:"attack", explode:"attack", attack:"attack", favor:"attack", knight:"attack",
-  nope:"defend", defuse:"defend",
-  vp:"gain",
-  alter:"big", reverse:"big", implode:"attack"
-};
+/* Put the players' own colours back into a line of plain text.
+
+   A caption is built from the journal's plain-text copy of the line, which is
+   what it is for: `plain` is the sentence with every tag stripped, so by the
+   time a card is turned over the markup naming anybody is long gone. The names
+   are found again here and re-marked in the colour that player already wears
+   everywhere else — their pieces, the bar down their seat card, the dot beside
+   their name in the log.
+
+   Longest name first, so a player called Jo cannot eat half of Josh. Escaped
+   before matching, because the text being searched has been escaped too and a
+   name with an & in it would otherwise never be found. One pass of replace(),
+   which does not re-scan what it has just inserted — so a name cannot be
+   found a second time inside the markup wrapping it. */
+function tintNames(plain){
+  const text = esc(plain === null || plain === undefined ? "" : String(plain));
+  if (!S) return text;
+  const seats = S.players.filter(q => q.name)
+                         .slice()
+                         .sort((a, b) => String(b.name).length - String(a.name).length);
+  if (!seats.length) return text;
+  const colour = {};
+  const parts = seats.map(q => {
+    const e = esc(q.name);
+    colour[e] = q.color;
+    return e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  });
+  return text.replace(new RegExp("(" + parts.join("|") + ")", "g"),
+    m => '<b class="capname" style="color:' + colour[m] + '">' + m + "</b>");
+}
 
 function showEntry(e){
   if (e.show === "seven"){
     showcase('<div class="showseven">7</div>',
-             esc(S.players[e.actor] ? S.players[e.actor].name : "") +
-             " rolls a seven — hands over 7 are cut, and the robber moves", "seven");
+             tintNames((S.players[e.actor] ? S.players[e.actor].name : "") +
+             " rolls a seven — hands over 7 are cut, and the robber moves"), "seven");
     return;
   }
   // The Imploding Kitten never reaches a hand, so it would otherwise be the
@@ -6831,7 +6833,7 @@ function showEntry(e){
     showcase('<div class="showcard implode">' +
                (iface ? '<img src="' + iface + '" alt="">'
                       : '<span class="kn">Imploding Kitten</span>') +
-             "</div>", esc(e.plain).replace(/\s+/g, " "), "implode", 4600, true);
+             "</div>", tintNames(String(e.plain).replace(/\s+/g, " ")), "implode", 4600, true);
     return;
   }
   const def = KITTEN[e.show];
@@ -6839,7 +6841,7 @@ function showEntry(e){
   const face = cardArt({ key: e.show, flavor: (e.card && e.card.flavor) || null });
   showcase('<div class="showcard">' +
              (face ? '<img src="' + face + '" alt="">' : '<span class="kn">' + esc(def.name) + "</span>") +
-           "</div>", esc(e.plain).replace(/\s+/g, " "), CARD_TONE[e.show] || "");
+           "</div>", tintNames(String(e.plain).replace(/\s+/g, " ")));
 }
 
 /* ══ SIDE PANELS ═════════════════════════════════════════════════
@@ -7531,13 +7533,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27r"></script>
+<script src="ai.js?v=2026-08-27s"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27r"></script>
-<script src="net.js?v=2026-08-27r"></script>
+<script src="firebase-config.js?v=2026-08-27s"></script>
+<script src="net.js?v=2026-08-27s"></script>
 </body>
 </html>

@@ -556,33 +556,27 @@ refused, and the action bar says so instead of showing buttons. Dropping a
 Nope or a Defuse on a log entry, and Noping somebody's turn, stay open: they
 are what folding is for.
 
-### What a colour means
+### The card reveal
 
-Five, used the same way everywhere they appear — declared once as `--tAttack`,
-`--tDefend`, `--tGain`, `--tBig` and `--tRoll` near the top of the stylesheet:
+A card turning over in the middle of the board is the one instant everybody at
+the table is definitely looking at the screen, and its caption was 14px of
+plain grey. It is 19px and bold now (21px for the Imploding Kitten, which is
+the card nobody ever holds), and **the players' names in it wear their own
+colours** — the same colour as their pieces on the board, the bar down their
+seat card and the dot beside their name in the log.
 
-| | |
-|---|---|
-| **red** | something is being taken from somebody |
-| **blue** | an answer — a Nope, a Defuse |
-| **green** | a purchase, a payout, a card drawn |
-| **gold** | the whole table should look up |
-| **grey** | the dice, and everything else ordinary |
+Only the names. The box itself stays out of it: a caption tinted end to end by
+what kind of card it was is a second colour scheme to learn, and the one that
+was already there — one colour per player — says the more useful thing.
 
-The log has coded its left edge this way for a long time and the words next to
-it stayed grey, which is half a signal: you had to read the line to find out
-whether the bar mattered. The words carry the colour now, and so does the
-caption under a card turning over in the middle of the board — coded by what
-the card *does* rather than by what it is called, so an Exploding Kitten and an
-Attack read alike and a Feral Kitten does not read like either. That caption is
-the one instant everybody at the table is definitely looking at the screen, and
-it was 14px of plain grey.
+The caption is built from the journal's plain-text copy of the line, so the
+markup naming anybody is long gone by then and the names have to be found again
+and re-marked. Longest name first, so a player called Jo cannot eat half of
+Josh, and escaped before matching so a name with an `&` in it is still found.
 
-Dialogs got the same treatment for a plainer reason: titles were the same
-weight as the body text and the body text was dim on dim, so nothing on a popup
-told you where to start reading. Titles are gold and heavier, explanation lines
-are lighter and bigger, and the warning and confirmation boxes are bold in
-their own colour.
+The **running log is deliberately untouched** by any of this: coloured left
+edge, plain words. It is a log — something you scan and scroll back through —
+and a wall of coloured sentences reads worse than a wall of grey ones.
 
 ### Advice, and turning it off
 
