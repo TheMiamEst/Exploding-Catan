@@ -113,27 +113,26 @@ Small labels ("next turn", "1 VP", "react") are drawn in the top-right corner
 of a card when relevant, so avoid putting anything critical there.
 
 
-PORTRAITS — PNG, square, 256x256
----------------------------------
-  avatar-1.png  …  avatar-12.png
+PROFILE PICTURES — in profile/, PNG, square, 256x256
+----------------------------------------------------
+  profile/1.png  …  profile/24.png
 
-Optional, and the only optional set here. Players pick a picture from the
-New Game dialog, from Online before hosting or joining, or by clicking their
-own portrait on the seat card during a game.
+These live in a FOLDER OF THEIR OWN — art/profile/ — so that actual pictures
+of people stay separate from hex tiles and card faces. See the README in
+there. Optional, and the only optional set here; they are not counted in the
+"N of M found" figure in the Art dialog, which reports them separately.
 
-These come first in the picker, and after them it offers every kitten card
-face and terrain tile above — so there is a full set to choose from without
-drawing any of these. Missing ones are not counted in the "N of M found"
-figure in the Art dialog, which reports them separately.
+While that folder is empty the picker falls back to offering every kitten card
+face and terrain tile above, so there is a full set to choose from without
+drawing anything. Drop in one real portrait and they step aside.
 
-Shown in a CIRCLE, about 50px across, so keep the subject central and expect
-the corners to be cut off. Square, no transparency needed, and faces read
-better than scenes at that size.
+Shown in a CIRCLE, about 64px across, so keep the subject central and expect
+the corners to be cut off.
 
-Only the picture ID travels between browsers — not the file — so everybody
-does not need the same art folder. Somebody playing with a picture you have
-not got shows up on your screen as their initial on their seat colour, which
-is also what everyone gets before they pick anything.
+Only the picture's number travels between browsers — not the file — so
+everybody does not need the same folder. Somebody playing with a picture you
+have not got shows up on your screen as their initial on their seat colour,
+which is also what everyone gets before they pick anything.
 
 
 NOTES

@@ -49,27 +49,33 @@
 
   /* ── Player strip ────────────────────────────────────────────────── */
   #players{
-    display:flex; gap:8px; padding:8px 10px; background:var(--panel);
+    display:flex; gap:8px; padding:8px 10px 20px; background:var(--panel);
     border-bottom:1px solid var(--line); flex:0 0 auto; overflow-x:auto;
   }
   /* Laid out the way Catan Universe lays its player box out, because that is
      an arrangement most people at this table already know how to read: the
-     portrait on the left with the score in a ring over its corner, what is in
-     the hand hanging underneath it, the name across the top of the right
-     column and what is on the board hanging under that.
+     portrait on the left with the score in a ring over its corner, the name on
+     a banner across the top of the right column, and what is on the board
+     hanging under the banner.
 
-     A grid rather than two nested columns, so the short-screen layout can
-     fold the same four boxes into two rows without the markup changing. */
+     What is in the HAND hangs off the BOTTOM of the card, half in and half
+     out, which is the one thing here that is not ordinary layout. It buys the
+     portrait its size back: the two numbers you glance at most sit in the
+     strip's own padding rather than taking a row from a card that has a face
+     in it. The card is a grid so that the short-screen layout can fold the
+     same four boxes into two rows without the markup changing, and so that
+     pill can drop back into the flow when there is no height to hang into. */
   .pcard{
-    flex:1 1 0; min-width:154px; border-radius:8px; padding:5px 8px;
+    position:relative;
+    flex:1 1 0; min-width:168px; border-radius:8px; padding:6px 8px;
     background:var(--pcTint, var(--panel2));
     border:1px solid var(--pcEdge, var(--line));
     border-left:5px solid var(--pc, var(--line));
-    display:grid; gap:4px 8px; align-items:center;
+    display:grid; gap:5px 9px; align-items:center;
     grid-template-columns:auto minmax(0,1fr);
     grid-template-areas:
       "av   name"
-      "hand board"
+      "av   board"
       "rev  rev";
   }
   .pcard.active{
@@ -83,7 +89,7 @@
      dot that used to sit here can go: six people who have all picked the same
      cat are still six different colours. */
   .avwrap{
-    grid-area:av; position:relative; width:50px; height:50px; border-radius:50%;
+    grid-area:av; position:relative; width:64px; height:64px; border-radius:50%;
     border:2px solid var(--pc, var(--line)); background:#0b0d10;
     box-shadow:0 2px 8px #0008;
   }
@@ -96,7 +102,7 @@
      reads as a face-shaped thing at a glance. */
   .avwrap .avinit{
     width:100%; height:100%; display:flex; align-items:center; justify-content:center;
-    font-size:21px; font-weight:700; color:#0e1116; background:var(--pc, #4a5668);
+    font-size:27px; font-weight:700; color:#0e1116; background:var(--pc, #4a5668);
   }
   /* Yours, and therefore yours to change. */
   .avwrap.mine{cursor:pointer}
@@ -107,10 +113,10 @@
      one number on this card that says who is winning — and lined up as a fifth
      identical box among roads and knights they read as trivia. */
   .vpring{
-    position:absolute; top:-5px; left:-7px; z-index:2;
-    width:24px; height:24px; border-radius:50%;
+    position:absolute; top:-6px; left:-8px; z-index:2;
+    width:28px; height:28px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
-    font-size:13px; font-weight:700; font-variant-numeric:tabular-nums;
+    font-size:15px; font-weight:700; font-variant-numeric:tabular-nums;
     color:#161a20; background:var(--accent);
     box-shadow:0 1px 5px #0007, 0 0 0 2px #151a22;
   }
@@ -121,10 +127,10 @@
      One animation carries the whole life of it — in, hold, out — so nothing
      has to time the fade; the element is simply removed once it has run. */
   .emote{
-    position:absolute; top:-13px; right:-13px; z-index:3;
-    width:38px; height:38px; border-radius:50%;
+    position:absolute; top:-14px; right:-14px; z-index:3;
+    width:40px; height:40px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
-    font-size:21px; line-height:1; pointer-events:none;
+    font-size:22px; line-height:1; pointer-events:none;
     background:#0b0d10f2; border:2px solid var(--pc, var(--line));
     box-shadow:0 4px 14px #000b;
     /* 3400ms is EMOTE_MS in the script, and the two have to agree: the script
@@ -141,43 +147,53 @@
     100%{transform:translateY(-10px) scale(.85); opacity:0}
   }
 
+  /* The name on a banner rather than loose text: it gives the right-hand
+     column a top edge to hang from, and tinting it with the seat's own colour
+     means the card says whose it is twice over without saying it twice. */
   .pcard .pname{
-    grid-area:name; align-self:center; font-weight:600; font-size:13px;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
-    display:flex; align-items:center; gap:5px;
+    grid-area:name; align-self:end;
+    display:flex; align-items:center; gap:5px; min-width:0;
+    font-weight:600; font-size:13.5px; white-space:nowrap;
+    padding:3px 8px; border-radius:5px;
+    background:color-mix(in srgb, var(--pc, #4a5668) 34%, #0b0d10);
+    border-left:3px solid var(--pc, var(--line));
+    box-shadow:0 1px 3px #0006;
   }
-  .pcard .pname .nm{overflow:hidden; text-overflow:ellipsis}
+  .pcard .pname .nm{overflow:hidden; text-overflow:ellipsis; min-width:0}
   .pcard .pskip{font-size:10px; color:var(--danger); border:1px solid var(--danger);
-                border-radius:4px; padding:0 4px; flex:0 0 auto}
+                border-radius:4px; padding:0 4px; flex:0 0 auto; background:#0007}
 
   /* Two pills, not five boxes in a row: what is in the hand, and what is on
      the board. Reading a seat card should be a glance at two things. */
-  /* Both pills are as wide as their two counters and no wider, so the one
-     under the name does not stretch to the card and dwarf the one under the
-     portrait. They end up the same size, which is the point. */
   .statgroup{
     display:flex; min-width:0; align-self:start; justify-self:start;
-    background:#0004; border:1px solid var(--line); border-radius:6px; overflow:hidden;
+    background:#0006; border:1px solid var(--line); border-radius:7px; overflow:hidden;
   }
-  .statgroup.hand{grid-area:hand; min-width:50px}
   .statgroup.board{grid-area:board}
+  /* Half off the bottom edge, centred under the portrait. Solid rather than
+     translucent, because it is sitting across the card's own border. */
+  .statgroup.hand{
+    position:absolute; left:8px; bottom:-13px; z-index:2;
+    background:#12161d; border-color:var(--pcEdge, var(--line));
+    box-shadow:0 3px 9px #0009;
+  }
   .statgroup .stat + .stat{ border-left:1px solid var(--line) }
   .stat{
-    flex:1 1 0; min-width:27px; padding:1px 3px;
-    display:flex; align-items:center; justify-content:center; gap:3px;
+    flex:1 1 0; min-width:32px; padding:3px 5px;
+    display:flex; align-items:center; justify-content:center; gap:4px;
   }
-  .stat b{font-size:13px; line-height:1.15; font-variant-numeric:tabular-nums}
+  .stat b{font-size:15px; line-height:1.15; font-variant-numeric:tabular-nums}
   /* Icons rather than three-letter labels: at this size "Rd" and "Res" read
      as noise, and a glyph is taken in without being read. Each stat keeps its
      title attribute, so hovering still names it. */
-  .stat svg{flex:0 0 auto; width:12px; height:12px;
+  .stat svg{flex:0 0 auto; width:14px; height:14px;
             fill:none; stroke:var(--dim); stroke-width:1.7;
             stroke-linecap:round; stroke-linejoin:round}
   /* Longest Road and Largest Army are the same kind of thing — two points for
      holding something nobody else can — so they light the same gold. */
   .stat.holds b{color:var(--accent)}
   .stat.holds svg{stroke:var(--accent)}
-  .reveal{grid-area:rev; display:flex; flex-wrap:wrap; gap:3px}
+  .reveal{grid-area:rev; display:flex; flex-wrap:wrap; gap:3px; margin-top:2px}
   .revcard{
     font-size:9.5px; border:1px solid var(--line); border-radius:4px;
     padding:1px 4px; background:#0004; color:var(--ink); white-space:nowrap;
@@ -599,14 +615,16 @@
     #feed{top:78px}
   }
   @media (max-width:820px){
-    .pcard{min-width:140px; gap:4px 6px}
-    .pcard .pname{font-size:12px}
-    .avwrap{width:46px; height:46px}
-    .avwrap .avinit{font-size:19px}
-    .vpring{width:21px; height:21px; font-size:11.5px}
-    .emote{width:32px; height:32px; font-size:17px; top:-11px; right:-11px}
-    .statgroup.hand{min-width:46px}
-    .stat b{font-size:12.5px}
+    .pcard{min-width:148px; gap:4px 7px}
+    .pcard .pname{font-size:12px; padding:2px 6px}
+    .avwrap{width:54px; height:54px}
+    .avwrap .avinit{font-size:22px}
+    .vpring{width:24px; height:24px; font-size:13px}
+    .emote{width:34px; height:34px; font-size:18px; top:-12px; right:-12px}
+    .statgroup.hand{bottom:-12px; left:6px}
+    .stat{min-width:29px; padding:2px 4px}
+    .stat b{font-size:13.5px}
+    .stat svg{width:13px; height:13px}
     .slot,.kcard{width:44px; height:60px}
   }
 
@@ -968,14 +986,16 @@
         "av name name"
         "av hand board";
     }
-    .avwrap{width:38px; height:38px; border-width:2px}
-    .avwrap .avinit{font-size:16px}
-    .vpring{width:18px; height:18px; font-size:10.5px; top:-6px; left:-7px}
+    .avwrap{width:40px; height:40px; border-width:2px}
+    .avwrap .avinit{font-size:17px}
+    .vpring{width:19px; height:19px; font-size:11px; top:-6px; left:-7px}
     .emote{width:26px; height:26px; font-size:14px; top:-9px; right:-9px}
-    .pcard .pname{font-size:11px; align-self:center}
-    .statgroup.hand{min-width:0}
-    .stat{padding:0 3px; min-width:21px}
-    .stat b{font-size:11.5px; line-height:1.1}
+    .pcard .pname{font-size:11px; align-self:center; padding:1px 5px; border-radius:4px}
+    /* Back into the flow: there is no spare height to hang into, and the
+       strip's padding has gone with it. */
+    .statgroup.hand{position:static; grid-area:hand; box-shadow:none; background:#0006}
+    .stat{padding:0 3px; min-width:23px; gap:3px}
+    .stat b{font-size:12px; line-height:1.15}
     .stat svg{width:11px; height:11px}
     .reveal{display:none}             /* the standings table has the same thing */
 
@@ -1101,7 +1121,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-27f";
+const GAME_VERSION = "2026-08-27i";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1214,12 +1234,16 @@ const ART = { hex:{}, res:{}, piece:{}, token:{}, card:{}, avatar:{} };
 const ART_MANIFEST = [];
 let artLoaded = 0, artTotal = 0;
 
-/* How many avatar-N.png files are looked for. They are OPTIONAL in a way
-   nothing else in the folder is: with none of them the portrait picker
-   still has the whole card set to offer, so they are probed and not
-   counted, and their 404s are not a missing file so much as a question
-   nobody answered. */
-const AVATAR_FILES = 12;
+/* Portraits live in a folder of their own — art/profile/1.png upwards — so
+   that actual pictures of people stay separate from hex tiles and card faces.
+   Numbered rather than named because they are probed: the game asks for each
+   in turn and keeps whatever answers, so adding one is dropping a file in.
+
+   They are OPTIONAL in a way nothing else in the art folder is, so they are
+   not counted in the "N of M found" figure, and their 404s are not a missing
+   file so much as a question nobody answered. */
+const PROFILE_DIR = "profile/";
+const AVATAR_FILES = 24;
 
 function buildArtManifest(){
   for (const t of RES.concat(["desert"]))
@@ -1241,11 +1265,12 @@ function buildArtManifest(){
     ART_MANIFEST.push({ kind:"card", key:"knight-" + slug, file:`card-knight-${slug}.png` });
   }
   ART_MANIFEST.push({ kind:"card", key:"back", file:"card-back.png" });
-  // Portraits, if anybody drew any. Optional, so they stay out of the "N of M
+  // Portraits, if anybody put any in. Optional, so they stay out of the "N of M
   // found" count — otherwise an art folder with every real file in it would
-  // still report itself twelve short.
+  // still report itself two dozen short.
   for (let i = 1; i <= AVATAR_FILES; i++)
-    ART_MANIFEST.push({ kind:"avatar", key:String(i), file:`avatar-${i}.png`, optional:true });
+    ART_MANIFEST.push({ kind:"avatar", key:String(i),
+                        file:`${PROFILE_DIR}${i}.png`, optional:true });
   artTotal = ART_MANIFEST.filter(a => !a.optional).length;
 }
 
@@ -1279,7 +1304,7 @@ function cardArt(c){
 /* ── Portraits ────────────────────────────────────────────────────────
    A player's picture is a short id rather than a filename, so it can travel
    between browsers running different art folders and be resolved against
-   whatever each one actually has: "a:3" is avatar-3.png, "c:defuse" is the
+   whatever each one actually has: "a:3" is profile/3.png, "c:defuse" is the
    Defuse card's face, "h:wood" a wood tile. An id that resolves to nothing
    falls back to the initial on the seat colour, which is what everybody has
    before they pick anything and what an empty art folder leaves them with. */
@@ -1291,13 +1316,21 @@ function avatarSrc(id){
   return kind ? art(kind, id.slice(2)) : null;
 }
 
-/* Everything the folder can offer, best first: purpose-drawn portraits, then
-   the kitten faces (which every art folder already has), then the terrain.
-   Card backs are left out — a picture of the back of a card is not a face. */
+/* What the picker offers.
+
+   art/profile/ is the answer whenever it holds anything at all. The card faces
+   and tiles are a FALLBACK and nothing more: they are there so a fresh copy of
+   the game still has something to choose from, and they step aside the moment
+   a single real portrait exists — which is the whole point of giving
+   portraits a folder of their own. Card backs are left out either way; a
+   picture of the back of a card is not a face. */
 function avatarPool(){
-  const out = [];
+  const portraits = [];
   for (let i = 1; i <= AVATAR_FILES; i++)
-    if (ART.avatar[String(i)]) out.push("a:" + i);
+    if (ART.avatar[String(i)]) portraits.push("a:" + i);
+  if (portraits.length) return portraits;
+
+  const out = [];
   for (const k in ART.card) if (ART.card[k] && k !== "back") out.push("c:" + k);
   for (const k in ART.hex)  if (ART.hex[k])  out.push("h:" + k);
   for (const k in ART.res)  if (ART.res[k] && k !== "back") out.push("r:" + k);
@@ -1654,6 +1687,7 @@ function newGame(numPlayers, mode){
     setupOrder: buildSetupOrder(numPlayers, first),
     setupIdx: 0,
     rolled: null,
+    rollId: 0,                // bumped per throw, so every screen tumbles it once
     extraTurn: false,
     roadLens: S_zeroLens(numPlayers),
     longestRoad: { owner:null, len:0 },
@@ -1690,6 +1724,7 @@ function newGame(numPlayers, mode){
   forgetModalFold();
   clearShowcase();
   lastShowcased = -1;
+  lastRollShown = -1;
   boardWatch = null;
   clearFeed();
   clearChat();
@@ -2900,8 +2935,10 @@ function drawBottom(){
   } else if (owesAnswer() && S.phase !== "over"){
     // The buttons are gated anyway; this is so a folded-away window does not
     // read as a game that has stopped responding.
-    h += `<span class="thinking owed">⏳ ${S.select ? "finish the move on the board"
-                                                    : "finish the open window first"}</span>`;
+    h += `<span class="thinking owed">⏳ ${
+            S.select ? "finish the move on the board"
+          : (S.seven && !owesSevenCut(p.id)) ? "waiting on the seven to be paid"
+          : "finish the open window first"}</span>`;
   } else if (S.phase === "roll"){
     h += `<button class="primary" id="rollBtn" ${handoverActive() ? "disabled" : ""}
             onclick="rollDice()">Roll Dice</button>`;
@@ -3076,13 +3113,26 @@ function dieHTML(n, animate){
   return `<div class="die ${animate ? "roll" : ""}" title="${n}">${cells}</div>`;
 }
 
+/* Which throw this screen has already watched tumble.
+
+   This used to be a flag on the state that drawDice cleared as it read it —
+   and drawDice runs inside render(), which runs BEFORE the state is published.
+   So the dice were always already stale by the time they went out, and no
+   terminal ever saw a die move: the numbers simply appeared. Same fault the
+   flying cards had. A counter that only ever goes up cannot be consumed by
+   whoever looks at it first. */
+let lastRollShown = -1;
+
 function drawDice(){
   const el = document.getElementById("diceWrap");
   if (!el) return;
   if (!S.rolled || S.phase.startsWith("setup") || S.phase === "over"){ el.innerHTML = ""; return; }
   const [a, b] = S.rolled, sum = a + b;
-  const fresh = S.diceFresh;
-  S.diceFresh = false;
+  const id = S.rollId || 0;
+  // A screen that has not looked at this table before catches up quietly
+  // rather than tumbling a throw that happened before it sat down.
+  const fresh = lastRollShown >= 0 && id !== lastRollShown;
+  lastRollShown = id;
   el.innerHTML = dieHTML(a, fresh) + dieHTML(b, fresh) +
                  `<span class="dicesum ${sum === 7 ? "seven" : ""}">${sum}</span>`;
 }
@@ -3512,9 +3562,10 @@ function emoteHTML(pid){
 function avatarGridHTML(sel){
   const pool = avatarPool();
   if (!pool.length){
-    return `<div class="rules">No pictures in <b>${ART_DIR}</b> yet, so everybody plays as
-            their initial. Any card or tile art in there shows up here, and
-            <b>avatar-1.png</b> … <b>avatar-${AVATAR_FILES}.png</b> are looked for as portraits.</div>`;
+    return `<div class="rules">Nothing to choose from yet, so everybody plays as their
+            initial. Drop portraits into <b>${ART_DIR}${PROFILE_DIR}</b> as
+            <b>1.png</b> … <b>${AVATAR_FILES}.png</b>; failing that, any card or tile
+            art in <b>${ART_DIR}</b> is offered instead.</div>`;
   }
   let h = `<div class="avgrid">`;
   h += `<button class="avopt ${sel ? "" : "on"}" onclick="window.__avPick('')"
@@ -3560,7 +3611,7 @@ function setSeatAvatar(seat, id){
 function avatarDialog(){
   const refresh = () => {
     openModal("Your picture",
-      `<p class="sub">Taken from whatever is in <b>${ART_DIR}</b>. It shows on your seat card,
+      `<p class="sub">From <b>${ART_DIR}${PROFILE_DIR}</b>. It shows on your seat card,
        and everybody online sees it too.</p>` + avatarGridHTML(MY_AVATAR),
       [{ label:"Done", cls:"primary", fn: closeModal }]);
   };
@@ -3854,7 +3905,7 @@ function doRoll(){
   const d1 = 1 + Math.floor(Math.random() * 6);
   const d2 = 1 + Math.floor(Math.random() * 6);
   S.rolled = [d1, d2];
-  S.diceFresh = true;
+  S.rollId = (S.rollId || 0) + 1;
   const sum = d1 + d2;
   S.diceLog.push(sum);
   logMsg(`<b>${cur().name}</b> rolls <b>${sum}</b> (${d1}+${d2}).`);
@@ -3863,7 +3914,9 @@ function doRoll(){
     const rollEntry = logAction(pdot(cur()) + " rolls <b>7</b> <span style='opacity:.55'>(" +
              d1 + "+" + d2 + ")</span><br><span style='opacity:.75'>robber moves — " +
              "hands over 7 are cut</span>", "roll", { snap: snapBefore, show: "seven" });
-    S.phase = "main"; startSevenSequence(S.cur, rollEntry.id); return;
+    S.phase = "main";
+    startSevenSequence(S.cur, rollEntry.id);
+    return;
   }
 
   const out = produce(sum);
@@ -3922,6 +3975,13 @@ function produce(sum){
 function startSevenSequence(actor, jid){
   S.seven = { actor: actor, jid: jid,
               queue: S.players.filter(p => totalRes(p) > 7).map(p => p.id) };
+  // Repaint before anybody is asked to pay, and after the queue exists so the
+  // bar knows a seven is owed. The seven branch of doRoll used to return
+  // without a repaint at all, which left the bottom bar showing whatever it
+  // showed when the dice were thrown — in the roll phase, the Roll Dice
+  // button, sitting there through a seven, looking live and doing nothing at
+  // all when pressed.
+  render();
   stepSeven();
 }
 
@@ -3960,6 +4020,40 @@ function stepSeven(){
 function owesSevenCut(pid){
   return !!(S && S.seven && S.seven.queue.indexOf(pid) >= 0);
 }
+
+/* ── the seven's watchdog ─────────────────────────────────────
+   A seven is the one thing that stops the table until it is paid, and the only
+   one whose prompt going missing wedges the whole game: the queue says who
+   still owes, and nothing re-asks. It did go missing at least once, somebody
+   part-way through discarding a big hand, and a table that can never move
+   again is a far worse bug than whatever dropped the window.
+
+   So rather than hunt every path that can dismiss a dialog, this asks again.
+   stepSeven has always been safe to call twice — "the queue says what is
+   still owed rather than what has been asked" — and the guard here is the
+   strongest one available: it fires only when there is no dialog ANYWHERE on
+   the table. No overlay on this screen, no panel, nothing outstanding on
+   anybody else's. In that state re-asking cannot interrupt a soul, because
+   there is nobody left to interrupt.
+
+   Two quiet passes rather than one, so a dialog in the act of being handed
+   from one screen to another is never mistaken for one that has gone. */
+const SEVEN_WATCH_MS = 1500;
+let sevenWatchIdle = 0;
+
+function sevenWatchdog(){
+  if (!S || !S.seven || !S.seven.queue.length){ sevenWatchIdle = 0; return; }
+  // A terminal decides nothing, here as everywhere else.
+  if (window.NET && NET.isGuest && NET.isGuest()) return;
+  if (typeof humanPromptOpen === "function" && humanPromptOpen()){ sevenWatchIdle = 0; return; }
+  if (++sevenWatchIdle < 2) return;
+  sevenWatchIdle = 0;
+  logMsg("<span style='color:#d98b4b'>The seven was left unanswered — asking again.</span>");
+  announce("⏳ Nobody was holding the seven — asking again", "info");
+  stepSeven();
+  render();
+}
+setInterval(sevenWatchdog, SEVEN_WATCH_MS);
 
 /* Robber moves QUEUE rather than overwrite each other. Two can be owed at
    once — a seven, and a Knight played in the gap while that seven's discards
@@ -4876,12 +4970,23 @@ function defuseSeven(e, defuserId){
             { actor: defuserId, snap: snapBefore, nopeable: true, turnSafe: true,
               spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
 
-  closeModal();
-  // Only re-ask when the queue has actually moved on. Defusing from your own
-  // discard window changes the head; defusing from the log while somebody else
-  // is mid-discard does not, and reopening their dialog would clear the pile
-  // they had already counted out.
-  if (S.seven.queue[0] !== head) stepSeven();
+  // closeModal takes away EVERY forced dialog on the table, this screen's and
+  // any shipped to another — including the discard window belonging to
+  // whoever is at the head of the queue, who is very often somebody else
+  // entirely, part-way through counting out a big hand. It used to be called
+  // unconditionally and then re-ask only if the head had CHANGED, so Defusing
+  // from the log while another player was mid-discard took their window away
+  // and asked nobody for anything. That is a seven nobody is being asked to
+  // pay, which stops the table for good — and it is the softlock that was
+  // reported from a real game.
+  //
+  // So the dialog is only closed when it is the defuser's OWN, which is only
+  // when they were the one being asked. Everybody else keeps the pile they had
+  // counted out, and the queue carries on from where it stood.
+  if (head === defuserId){
+    closeModal();
+    stepSeven();
+  }
   render();
   return true;
 }
@@ -5392,15 +5497,18 @@ function bankTradeDialog(){
     // 4:1 is the default, so printing it on all five buttons is noise that also
     // wraps the row. The badge appears only where a port beats it — which is
     // the only time the rate is worth reading.
-    let h = `<p class="sub">Click to add, click past the limit to clear. 4:1 unless a
-             port says otherwise; lots and cards must match.</p>`;
+    let h = `<p class="sub">Click to add, the − in the corner takes one back, and
+             clicking past the limit clears it. 4:1 unless a port says otherwise;
+             lots and cards must match.</p>`;
 
     h += `<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Give — one lot at your rate</div>
           <div class="pick tight">`;
     for (const r of RES){
       const rate = tradeRate(p, r);
-      h += `<button ${p.res[r] >= rate ? "" : "disabled"} onclick="window.__bGive('${r}')"
+      h += `<button ${p.res[r] >= rate ? "" : "disabled"} onclick="window.__bGive('${r}',1)"
               title="${RES_NAME[r]} — ${rate}:1, you hold ${p.res[r]}">
+              ${give_[r] ? `<span class="ct minus" title="Take one lot back"
+                              onclick="event.stopPropagation();window.__bGive('${r}',-1)">−</span>` : ""}
               <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
               ${RES_NAME[r]}${rate < 4 ? ` <span class="rate">${rate}:1</span>` : ""}<b
                 class="ct ${give_[r] ? "" : "off"}">×${give_[r] || 1}</b></button>`;
@@ -5410,8 +5518,10 @@ function bankTradeDialog(){
     h += `<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Take — one card each</div>
           <div class="pick tight">`;
     for (const r of RES){
-      h += `<button ${S.bank[r] > 0 ? "" : "disabled"} onclick="window.__bGet('${r}')"
+      h += `<button ${S.bank[r] > 0 ? "" : "disabled"} onclick="window.__bGet('${r}',1)"
               title="${RES_NAME[r]} — bank holds ${S.bank[r]}">
+              ${get_[r] ? `<span class="ct minus" title="Take one card back"
+                             onclick="event.stopPropagation();window.__bGet('${r}',-1)">−</span>` : ""}
               <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
               ${RES_NAME[r]}<b class="ct ${get_[r] ? "" : "off"}">×${get_[r] || 1}</b></button>`;
     }
@@ -5441,13 +5551,15 @@ function bankTradeDialog(){
     ]);
   };
 
-  window.__bGive = (r) => {
+  window.__bGive = (r, d) => {
     const rate = tradeRate(p, r);
-    give_[r] = p.res[r] >= (give_[r] + 1) * rate ? give_[r] + 1 : 0;
+    give_[r] = d < 0 ? Math.max(0, give_[r] - 1)
+                     : (p.res[r] >= (give_[r] + 1) * rate ? give_[r] + 1 : 0);
     refresh();
   };
-  window.__bGet = (r) => {
-    get_[r] = S.bank[r] > get_[r] ? get_[r] + 1 : 0;
+  window.__bGet = (r, d) => {
+    get_[r] = d < 0 ? Math.max(0, get_[r] - 1)
+                    : (S.bank[r] > get_[r] ? get_[r] + 1 : 0);
     refresh();
   };
   refresh();
@@ -7032,11 +7144,12 @@ function showArt(){
   const avN = ART_MANIFEST.filter(a => a.kind === "avatar" && ART.avatar[a.key]).length;
   h += `<h4 style="margin:12px 0 4px;font-size:13px">Portraits (optional)</h4>`;
   h += `<div class="artrow"><span class="${avN ? "ok" : "no"}">${avN ? "✓" : "✗"}</span>
-          <span class="f">${ART_DIR}avatar-1.png … avatar-${AVATAR_FILES}.png</span>
+          <span class="f">${ART_DIR}${PROFILE_DIR}1.png … ${AVATAR_FILES}.png</span>
           <span style="color:var(--dim);font-size:11.5px">${avN} found</span></div>`;
   h += `<p class="rules">Square, 256×256, drawn to the middle — they are shown in a circle.
-        These are extra: the picture picker offers every card face and tile above as well,
-        so there is something to choose from with none of these present.</p>`;
+        A folder of their own, so that actual pictures of people stay separate from tiles and
+        card faces. While it is empty the picker falls back to the card faces and tiles above;
+        drop in one real portrait and they step aside.</p>`;
   h += `<div class="okbox" style="margin-top:14px">Pieces are used as a silhouette and flooded with the
         player's colour, so whatever colour you draw them in makes no difference — only the transparent
         background matters. Hex tiles should be squares that bleed to the edges; the hexagon is clipped
@@ -7147,13 +7260,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27f"></script>
+<script src="ai.js?v=2026-08-27i"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27f"></script>
-<script src="net.js?v=2026-08-27f"></script>
+<script src="firebase-config.js?v=2026-08-27i"></script>
+<script src="net.js?v=2026-08-27i"></script>
 </body>
 </html>

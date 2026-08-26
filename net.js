@@ -189,7 +189,7 @@ function serializeGame(){
 
     bank: Object.assign({}, S.bank),
     robber: S.robber, cur: S.cur, dir: S.dir, phase: S.phase,
-    turnCounter: S.turnCounter, rolled: S.rolled, diceFresh: !!S.diceFresh,
+    turnCounter: S.turnCounter, rolled: S.rolled, rollId: S.rollId || 0,
     extraTurn: S.extraTurn, armed: S.armed, select: S.select,
     setupNeed: S.setupNeed,
     deckLen: S.deck.length, discardLen: S.discard.length,
@@ -288,7 +288,7 @@ function applyGame(b){
 
   S.bank = Object.assign({}, b.bank);
   S.robber = b.robber; S.cur = b.cur; S.dir = b.dir; S.phase = b.phase;
-  S.turnCounter = b.turnCounter; S.rolled = b.rolled || null; S.diceFresh = b.diceFresh;
+  S.turnCounter = b.turnCounter; S.rolled = b.rolled || null; S.rollId = b.rollId || 0;
   S.extraTurn = b.extraTurn; S.armed = b.armed || null; S.select = b.select || null;
   S.setupNeed = b.setupNeed;
   S.longestRoad = b.longestRoad || { owner:null, len:0 };

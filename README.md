@@ -210,6 +210,13 @@ no longer disagree with the board about how many cards changed hands — which
 it could: a player owed three wood off two hexes and paid one by a nearly empty
 bank watched three cards arrive and their counter go up by one.
 
+**The dice tumble travels too**, and used to be the last thing that did not.
+It was a flag on the state that the drawing cleared as it read it — and the
+drawing runs inside `render()`, which runs *before* the state is published. So
+the dice were always already stale by the time they went out, and no terminal
+ever saw a die move: the numbers simply appeared. It is a counter now, and a
+counter that only goes up cannot be consumed by whoever looks at it first.
+
 Face down means face down **on the wire** too. Now that flights travel, a
 robbery naming its resource would put it in every player's copy of the state,
 readable by anyone who opened devtools — so only the count goes out and the
@@ -235,25 +242,35 @@ Laid out the way Catan Universe lays its player box out, because that is an
 arrangement most people at this table already know how to read:
 
 ```
-  ③─┐
-  │ ● │   Josh
-  └───┘
-  [ 7 │ 2 ]   [ 4 │ 3 ]
-   res  kit      road knights
+  ③───┐  ┌──────────┐
+  │ ●  │  │   Josh   │   ← name banner
+  │    │  └──────────┘
+  └┬───┬┘  [ 4 │ 3 ]       road, knights
+   │ 7 │ 2 │                 ← hangs off the bottom
+   └───┴───┘                   res, kitten cards
 ```
 
-The portrait on the left, the score in a ring riding its top-left corner, what
-is in the hand hanging under the portrait, the name across the top of the right
-column and what is on the board hanging under that. Points get the ring of
-their own because they are the score — lined up as a fifth identical box among
-roads and knights they read as trivia. The two pills are deliberately the same
-size, so the card is a glance at two things rather than five. Largest Army
-lights the same gold as Longest Road, because they are the same kind of thing:
-two points for holding something nobody else can.
+The portrait on the left, the score in a ring riding its top-left corner, the
+name on a banner across the top of the right column, and what is on the board
+hanging under the banner. Points get the ring of their own because they are the
+score — lined up as a fifth identical box among roads and knights they read as
+trivia. Largest Army lights the same gold as Longest Road, because they are the
+same kind of thing: two points for holding something nobody else can.
+
+**What is in the hand hangs off the bottom of the card**, half in and half out.
+That is the one thing here that is not ordinary layout, and it buys the
+portrait its size back: the two numbers you glance at most sit in the strip's
+own padding rather than taking a row from a card that has a face in it. The
+strip carries the extra padding itself, because `overflow-x: auto` clips
+vertically too — a pill hanging past the strip would simply be cut off.
+
+The name banner is tinted with the seat's own colour, so the card says whose it
+is twice over without saying it twice.
 
 The card is a **grid**, not two nested columns, and that is the whole reason
 the short-screen layout can re-parcel the same four boxes into two rows beside
-the portrait without the markup changing. The coloured dot that used to sit by
+the portrait without the markup changing — and why the hanging pill can drop
+back into the flow when there is no height to hang into. The coloured dot that used to sit by
 the name is gone — the portrait is ringed in the seat's colour, so six people
 who all picked the same cat are still six different colours.
 
@@ -263,13 +280,18 @@ Everybody picks a face, from the **New Game** dialog, from **Online** before
 you host or join, or by clicking your own portrait at any point in a game. The
 choice is remembered between games.
 
-The pool is whatever is in `art/`: purpose-drawn `avatar-1.png` …
-`avatar-12.png` if you have made any, and after them every kitten card face and
-terrain tile the folder already holds — so there is something to choose from
-without drawing anything. With an empty art folder everyone plays as their
-initial on their seat colour, which is also what you get by picking **None**.
+They live in a folder of their own — `art/profile/1.png` … `24.png` — so that
+actual pictures of people stay separate from hex tiles and card faces. Numbered
+rather than named because the game probes for them: adding one is dropping a
+file in, with no list to edit.
 
-What travels between browsers is an id like `c:defuse` or `h:wood`, not a file,
+While that folder is empty the picker falls back to every kitten card face and
+terrain tile in `art/`, so a fresh copy still has something to choose from.
+Drop in one real portrait and they step aside. With no art at all everyone
+plays as their initial on their seat colour, which is also what you get by
+picking **None**.
+
+What travels between browsers is an id like `a:3` or `c:defuse`, not a file,
 and each browser resolves it against its own folder. Nobody has to have the
 same art as anybody else: somebody with art you have not just shows up as their
 initial on your screen. Bots are dealt faces of their own at the start of a
@@ -369,6 +391,7 @@ all, where the same walk used to find six.
 
 ### Composing a trade
 
+Both the player-to-player offer and the bank/port panel work the same way.
 Click a resource to put one in, click past the most you could put in and it
 wraps back to none, and the **− in the corner** takes one back out — which
 is the way you actually fix a slip, rather than clicking a five all the way
@@ -447,6 +470,40 @@ folded — rolling, building, buying, trading and ending the turn are all
 refused, and the action bar says so instead of showing buttons. Dropping a
 Nope or a Defuse on a log entry, and Noping somebody's turn, stay open: they
 are what folding is for.
+
+### When a seven is rolled
+
+Rolling a seven used to leave the bottom bar showing whatever it showed when
+the dice were thrown — in the roll phase, the **Roll Dice** button, sitting
+there through a seven, looking live and doing nothing at all when pressed. That
+branch returned without a repaint; it repaints now, after the queue of who owes
+exists, so the bar can say which it is: *finish the open window first* if the
+roll caught you too, *waiting on the seven to be paid* if it did not.
+
+**One way the window went missing.** Defusing a seven closed *every* forced
+dialog on the table — this screen's and any shipped to another — and then
+re-asked only if the head of the queue had changed. So a bystander Defusing
+from the log while somebody else was part-way through counting out a big hand
+took that player's window away and asked nobody for anything: a seven nobody is
+being asked to pay, and a table that never moves again. The dialog is now only
+closed when it is the defuser's own, which is only when they were the one being
+asked. Everybody else keeps the pile they had counted out.
+
+There is also a **watchdog** on it, because that was one path and there is no
+reason to believe it was the only one. A seven is the one thing that stops the
+table until it is paid, and the only one whose prompt going missing wedges the
+whole game: the queue says who still owes, and nothing re-asks. A table that
+can never move again is a far worse bug than whatever dropped the window. So
+rather than trust that every path has been found, the game asks again —
+`stepSeven` has always been safe to call twice, because the queue says what is
+still *owed* rather than what has been *asked*.
+
+The guard on it is deliberately the strongest available: it fires only when
+there is no dialog anywhere on the table — no overlay on this screen, no panel,
+nothing outstanding on anybody else's. In that state re-asking cannot interrupt
+a soul, because there is nobody left to interrupt. It waits two quiet passes
+rather than one, so a dialog in the act of being handed from one screen to
+another is never mistaken for one that has gone.
 
 ### What a Nope reaches
 
