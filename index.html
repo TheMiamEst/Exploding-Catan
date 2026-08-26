@@ -1689,6 +1689,22 @@ function backToIdle(){
   renderIdle();
 }
 
+function showIdle(on){
+  let el = document.getElementById("idleCard");
+  if (!on){ if (el) el.remove(); return; }
+  if (el) return;
+  el = document.createElement("div");
+  el.id = "idleCard";
+  el.innerHTML = '<h2>Exploding <span>Catan</span></h2>' +
+    '<p>Catan with the development deck torn out and 54 kitten cards put in its place.</p>' +
+    '<div class="pick">' +
+      '<button class="primary" onclick="newGameDialog()">New game here</button>' +
+      '<button onclick="onlineDialog()">Play online</button>' +
+      '<button onclick="showRules()">Rules</button>' +
+    '</div>';
+  const area = document.getElementById("boardArea");
+  if (area) area.appendChild(el);
+}
 
 /* A banner, not a dialog: the state arriving from the host would close a
    dialog on the next update, and this needs to stay put until it is fixed. */
