@@ -110,11 +110,19 @@ build from a private GitHub repo on their free tiers.
    https://themiamest.github.io/Exploding-Catan/
    ```
 
-The build tag in the header — top right, next to the buttons — is the version
-you are running. It changes with every release, so after a `git push` you can
-reload and check the tag actually moved before blaming the game. Everyone
-playing together has to be on the same one, and a terminal on a different
-build says so out loud.
+There is a **build stamp** in `index.html` — `GAME_VERSION`, near the top of
+the script — and it is not shown anywhere on the page. It has two jobs, both
+machine-facing:
+
+- The three script tags at the bottom of the file carry it as `?v=`, which is
+  what stops GitHub Pages serving ten-minute-old JavaScript after a push.
+- The host stamps it into the state, so a player on different code gets a
+  banner saying so rather than a game that misbehaves for no visible reason.
+
+**Bump it on every release, in both places** — the constant and the three
+`?v=` query strings, which have to match each other. Miss it and everybody
+keeps the old code for ten minutes and blames the game. A date is a good stamp
+precisely because it is not a decision.
 
 To ship a change after that:
 
@@ -310,7 +318,7 @@ Everybody picks a face, from the **New Game** dialog, from **Online** before
 you host or join, or by clicking your own portrait at any point in a game. The
 choice is remembered between games.
 
-They live in a folder of their own — `art/profile/1.png` … `24.png` — so that
+They live in a folder of their own — `art/profile/1.png` … `40.png` — so that
 actual pictures of people stay separate from hex tiles and card faces. Numbered
 rather than named because the game probes for them: adding one is dropping a
 file in, with no list to edit.
@@ -326,10 +334,8 @@ and each browser resolves it against its own folder. Nobody has to have the
 same art as anybody else: somebody with art you have not just shows up as their
 initial on your screen.
 
-**Bots do not take pictures.** They keep their colour and their initial, which
-is a better answer than a random cat: it is instantly legible, it is the same
-colour as their pieces on the board, and it leaves a portrait meaning
-"somebody chose this" rather than "the game picked one".
+Bots are dealt faces of their own at the start of a game, all different, and
+never the one you chose.
 
 ### Talking at the table
 
@@ -547,7 +553,9 @@ window: 24 pixels of chrome, permanently, for a line that is empty most of the
 time and never longer than a sentence. It sits in the header now, beside the
 title, where it takes the width it needs and gives the board back the height.
 **Tips** in the header turns it off for good, remembered between games —
-somebody who has switched it off has decided they know how to play.
+somebody who has switched it off has decided they know how to play. The advice
+sits as far right along the bar as it goes without touching the buttons, and
+takes a line of its own on a screen narrow enough that the header wraps.
 
 ### Which way round the table
 

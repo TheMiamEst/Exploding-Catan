@@ -5,7 +5,7 @@ Drop files in this folder using the exact names below, then reload the game.
 Anything missing falls back to the built-in drawing, so partial sets are fine —
 add one hex tile and only that hex changes.
 
-Open the game and click "Art" in the header to see which files were found.
+To see which files were found, open the browser console and run showArt().
 
 
 HEX TERRAIN — PNG or JPG, square, 512x512

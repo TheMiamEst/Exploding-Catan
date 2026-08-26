@@ -1,7 +1,7 @@
 PROFILE PICTURES
 ================
 
-Drop portraits in here as 1.png, 2.png, 3.png … up to 24.png, then reload the
+Drop portraits in here as 1.png, 2.png, 3.png … up to 40.png, then reload the
 game. They show up in the picture picker: New Game, Online before you host or
 join, or by clicking your own portrait on your seat card during a game.
 
@@ -13,8 +13,9 @@ No transparency needed.
 
 Numbered rather than named because the game probes for them: it asks for each
 in turn and keeps whatever answers. So adding one is dropping a file in — no
-list to edit anywhere. 404s in the browser console for the numbers you have
-not used are expected and harmless.
+list to edit anywhere, and gaps are fine: a missing number just means nobody
+drew that one. 404s in the browser console for the numbers you have not used
+are expected and harmless.
 
 A folder of its own so that actual pictures of people stay separate from hex
 tiles and card faces. While this folder is empty the picker falls back to

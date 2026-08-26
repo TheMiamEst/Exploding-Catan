@@ -127,12 +127,16 @@
   /* Points ride the top-left corner of the portrait. They are the score — the
      one number on this card that says who is winning — and lined up as a fifth
      identical box among roads and knights they read as trivia. */
-  /* Nine o'clock, not the corner. On the corner it sat above the portrait —
-     which now overhangs the top of the card — and the top of the seat strip
-     cut the number in half. On the side there is nothing above it to be
-     clipped by, and it still reads as riding the edge of the picture. */
+  /* As near the top-left corner as it can sit without being clipped.
+
+     It used to ride above the portrait, which was fine until the portrait
+     started overhanging the top of the card — then the top edge of the seat
+     strip took a bite out of the number. Level with the top of the circle is
+     as high as it can go: nothing of it is above the picture, so there is
+     nothing for the strip to cut, and it still reads as riding the corner
+     rather than sitting beside it. */
   .vpring{
-    position:absolute; top:50%; left:-11px; margin-top:-14px; z-index:2;
+    position:absolute; top:0; left:-11px; z-index:2;
     width:28px; height:28px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
     font-size:15px; font-weight:700; font-variant-numeric:tabular-nums;
@@ -504,18 +508,14 @@
   .vcol.seven .vn{color:var(--danger)}
   .vcol .vc{font-size:11px; font-weight:600; margin-bottom:3px; font-variant-numeric:tabular-nums}
   /* Its own strip between board and bottom bar, so it can never cover a hex. */
-  /* Advice, centred in the header.
-
-     Taken out of the flow to get there: laid out in line it lands in the middle
-     of whatever space is left between the title and the buttons, and those two
-     are nothing like the same width — so "centred" came out well over a
-     hundred pixels left of centre. Absolute and it is centred on the bar
-     itself, which is where the eye looks and where the old bar across the
-     bottom used to put it. It never takes a click: there is nothing to click,
-     and a button behind it would lose one. */
+  /* Advice, pushed as far right along the bar as it will go without touching
+     anything. The spacer ahead of it takes up all the slack, so it comes to
+     rest against the left edge of the buttons — and being in the flow rather
+     than laid over the top, it cannot overlap them however narrow the window
+     gets. It gives up width before the title does, and truncates with an
+     ellipsis rather than pushing anything off the end. */
   #hintslot{
-    position:absolute; left:50%; transform:translateX(-50%);
-    max-width:46%; text-align:center; pointer-events:none;
+    flex:0 1 auto; min-width:0; text-align:center;
     color:var(--accent); font-size:12.5px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     opacity:0; transition:opacity .12s;
@@ -671,18 +671,15 @@
     header{gap:7px; padding:5px 8px}
     header h1{font-size:14px}
     /* Narrow enough that the header wraps anyway, so the advice takes a line
-       of its own rather than being laid over the title. */
-    #hintslot{
-      position:static; transform:none; max-width:none;
-      flex:1 0 100%; order:9; font-size:11.5px;
-    }
+       of its own rather than squeezing itself down to three words. */
+    #hintslot{flex:1 0 100%; order:9; font-size:11.5px}
     #leftbtns{flex-wrap:wrap; max-width:250px}
   }
   @media (max-width:820px){
     .pcard{min-width:148px; gap:4px 7px; --avW:60px; --avPull:10px; --emW:74px; --pillDrop:15px}
     .pcard .pname{font-size:12px; padding:2px 6px}
     .avwrap .avinit{font-size:22px}
-    .vpring{width:24px; height:24px; font-size:13px; margin-top:-12px; left:-10px}
+    .vpring{width:24px; height:24px; font-size:13px; left:-10px}
 
     .stat{min-width:29px; padding:2px 4px}
     .stat b{font-size:13.5px}
@@ -1039,7 +1036,7 @@
     header{padding:3px 8px; gap:8px}
     header h1{font-size:13px}
     button.sm{padding:2px 6px; font-size:11px}
-    #verTag, #modeTag{font-size:9px}
+    #modeTag{font-size:9px}
 
     /* The seat card folds onto TWO rows beside the portrait rather than three
        down the card: the name across the top, both pills under it. Stacked,
@@ -1059,7 +1056,7 @@
     .avwrap{align-self:center}
     .avwrap{border-width:2px}
     .avwrap .avinit{font-size:17px}
-    .vpring{width:19px; height:19px; font-size:11px; margin-top:-9.5px; left:-8px}
+    .vpring{width:19px; height:19px; font-size:11px; left:-8px}
     .pcard .pname{font-size:11px; align-self:center; padding:1px 5px; border-radius:4px}
     /* Back into the flow: there is no spare height to hang into, and the
        strip's padding has gone with it. */
@@ -1138,14 +1135,12 @@
        pixels of chrome, permanently, for a line that is empty most of the time
        and never longer than a sentence. It shares the header's spare width
        now, and the board keeps the height. -->
-  <span id="hintslot"></span>
   <div class="spacer"></div>
+  <span id="hintslot"></span>
   <button class="sm" id="tipBtn" onclick="toggleTips()" title="Show or hide the
     one-line advice in this bar">Tips</button>
   <span id="modeTag" hidden></span>
-  <span id="verTag" title="Build. Everyone playing together must match."></span>
   <button class="sm" onclick="onlineDialog()">Online</button>
-  <button class="sm" onclick="showArt()">Art</button>
   <button class="sm" onclick="showRules()">Rules</button>
   <button class="sm" onclick="newGameDialog()">New Game</button>
 </header>
@@ -1195,13 +1190,17 @@
    CONSTANTS
    ══════════════════════════════════════════════════════════════════════ */
 
-/* Bump this on any change to what travels between browsers, AND bump the ?v=
-   on the three script tags at the bottom of this file to match — GitHub Pages
-   serves assets with max-age=600, so without it players sit on stale code for
-   ten minutes and the game misbehaves in ways that look like game bugs.
-   The host stamps this into the state; a terminal on a different build says
-   so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-27n";
+/* The build stamp. Bump it on EVERY release, and bump the ?v= on the three
+   script tags at the bottom of this file to match — GitHub Pages serves
+   assets with max-age=600, so without it players sit on stale code for ten
+   minutes and the game misbehaves in ways that look like game bugs.
+
+   Nothing on the page shows it. It has two jobs, both machine-facing: busting
+   that cache, and letting a terminal notice it is on different code from the
+   host and say so instead of quietly misbehaving. A date rather than a version
+   name on purpose — a name has to be decided, and a stamp that has to be
+   decided is a stamp somebody forgets to change. */
+const GAME_VERSION = "2026-08-27p";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1303,7 +1302,9 @@ const TARGETED = new Set(["skip","explode","attack","favor"]);
    only the silhouette matters. Hex art is clipped to the hexagon, so send
    squares that bleed to the edges rather than pre-cut hexes.
 
-   Header → "Art" lists every expected file and whether it loaded.
+   showArt() in the browser console lists every expected file and whether it
+   loaded. It had a button in the header until the header ran out of room; the
+   audit is worth keeping, a permanent button for it was not.
    ══════════════════════════════════════════════════════════════════════ */
 /* Bots deliberately move slowly. The window for a Nope or a Defuse now
    closes as soon as the NEXT entry reaches the log, so a fast bot would slam
@@ -1323,7 +1324,7 @@ let artLoaded = 0, artTotal = 0;
    not counted in the "N of M found" figure, and their 404s are not a missing
    file so much as a question nobody answered. */
 const PROFILE_DIR = "profile/";
-const AVATAR_FILES = 24;
+const AVATAR_FILES = 40;
 
 function buildArtManifest(){
   for (const t of RES.concat(["desert"]))
@@ -1441,12 +1442,20 @@ function setMyAvatar(id){
   try { localStorage.setItem("ec_avatar", MY_AVATAR); } catch(e){}
 }
 
-/* Nobody is dealt a picture. Bots keep their colour and their initial, which
-   is a better answer than a random cat: it is instantly legible, it is the
-   same colour as their pieces on the board, and it leaves a portrait meaning
-   "somebody chose this" rather than "the game picked one".
+/* Deal the bots faces of their own, all different, and never the one the
+   person at the keyboard chose. Called at the start of a game, before anyone
+   knows which seats are bots — the human's seat is written over afterwards by
+   applyMyAvatar, and online the roster does it instead. */
+function dealAvatars(players){
+  const pool = avatarPool().filter(id => id !== MY_AVATAR);
+  for (let i = pool.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+  }
+  players.forEach((p, i) => { p.avatar = pool.length ? pool[i % pool.length] : ""; });
+}
 
-   Whoever is sitting at this screen gets the picture they chose. Run after the
+/* Whoever is sitting at this screen gets the picture they chose. Run after the
    bots are switched on, because that is the moment it becomes knowable which
    seat that is. Online the roster answers it instead — see net.js. */
 function applyMyAvatar(){
@@ -1743,6 +1752,7 @@ function newGame(numPlayers, mode){
       roads: 0, settlements: 0, cities: 0
     });
   }
+  dealAvatars(players);
 
   const desert = hexes.find(h => h.terrain === "desert");   // either one, on the large board
   const first = Math.floor(Math.random() * numPlayers);   // nobody always leads
@@ -7461,21 +7471,19 @@ preloadArt(() => {
 window.addEventListener("load", function(){
   initBoardControls();
   drawTipBtn();
-  const vt = document.getElementById("verTag");
-  if (vt) vt.textContent = GAME_VERSION;
   renderIdle();                 // no forced dialog: the header stays reachable
 });
 window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27n"></script>
+<script src="ai.js?v=2026-08-27p"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27n"></script>
-<script src="net.js?v=2026-08-27n"></script>
+<script src="firebase-config.js?v=2026-08-27p"></script>
+<script src="net.js?v=2026-08-27p"></script>
 </body>
 </html>
