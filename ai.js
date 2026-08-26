@@ -1223,6 +1223,11 @@ const BORED   = ["\u{1F971}","\u{1F644}"];
 const TAUNT_POLL     = 700;    // ms between looks at the journal
 const TAUNT_GAP      = 2200;   // ms the whole table stays quiet after any throw
 const TAUNT_COOLDOWN = 9000;   // ms one bot stays quiet after its own
+/* Every chance below is multiplied by this. Turned down from 1 because they
+   were funny at the old rate and wearing at it — the joke is the timing, and
+   timing needs gaps. One number rather than re-tuning a dozen, so the tuning
+   underneath still reads as "how much does THIS deserve a laugh". */
+const TAUNT_RATE     = 0.7;
 
 let tauntTimer = null;
 let seenEntry  = 0;            // newest journal entry any bot has reacted to
@@ -1244,7 +1249,7 @@ function taunt(pid, list, chance){
   const now = Date.now();
   if (now - lastTaunt < TAUNT_GAP) return false;
   if ((botQuiet[pid] || 0) > now) return false;
-  if (Math.random() > (chance === undefined ? 1 : chance)) return false;
+  if (Math.random() > (chance === undefined ? 1 : chance) * TAUNT_RATE) return false;
   const e = pickEmoji(list);
   if (!e) return false;
   lastTaunt = now;
@@ -1331,7 +1336,10 @@ function reactToEnd(){
   const winner = S.winner;
   const bots = otherBots([]);
   bots.forEach((pid, i) => {
-    // Staggered, so it reads as a table reacting rather than one event.
+    // Staggered, so it reads as a table reacting rather than one event. Thinned
+    // by the same rate as everything else — not every seat has something to
+    // say about it.
+    if (pid !== winner && Math.random() > TAUNT_RATE) return;
     setTimeout(() => {
       if (!S || S.phase !== "over") return;
       const list = pid === winner ? SMUG
@@ -1395,7 +1403,7 @@ function heard(seat){
   if (agentOf(seat)) return;                       // bots do not answer bots
   const bots = otherBots([]);
   if (!bots.length) return;
-  if (Math.random() > 0.4) return;
+  if (Math.random() > 0.4 * TAUNT_RATE) return;
   // A beat late, so it reads as an answer rather than an echo.
   setTimeout(() => {
     if (S) taunt(bots[0], Math.random() < 0.75 ? JEER : BORED, 1);

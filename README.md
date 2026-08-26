@@ -71,7 +71,9 @@ properly closed, the next step up is Firebase Anonymous Auth and
 ### 3. Play
 
 - **Host:** open the game, press **Online**, type your name, press
-  *Host N seats*. Read the four-letter room code out to everyone.
+  *Host N seats*. Read the four-letter room code out to everyone. Starting a
+  local game from **New Game** leaves the room first, and says so before it
+  does — if you are the host, leaving ends it for everybody.
 - **Everyone else:** open the same URL, press **Online**, type a name and the
   room code, press *Join room*.
 - The host presses **Start game** when everyone is in. Any seat nobody took is
@@ -217,6 +219,16 @@ the dice were always already stale by the time they went out, and no terminal
 ever saw a die move: the numbers simply appeared. It is a counter now, and a
 counter that only goes up cannot be consumed by whoever looks at it first.
 
+That turned out to be half of it. The tumble was invisible to the **host** as
+well, on any roll that paid out: producing resources asks for a repaint of its
+own, so a roll rendered twice, and the second pass replaced the very elements
+that were mid-animation with identical ones that were not. A CSS animation runs
+from the moment its element is created, so the second write threw the first away
+before the browser had drawn a frame of it. The dice are now written only when
+the throw itself changes — the same compare-first guard the chat window and the
+side panels already use. Worth remembering for anything else that animates on
+creation: a repaint is not free if the thing you are animating is rebuilt by it.
+
 Face down means face down **on the wire** too. Now that flights travel, a
 robbery naming its resource would put it in every player's copy of the state,
 readable by anyone who opened devtools — so only the count goes out and the
@@ -256,6 +268,13 @@ hanging under the banner. Points get the ring of their own because they are the
 score — lined up as a fifth identical box among roads and knights they read as
 trivia. Largest Army lights the same gold as Longest Road, because they are the
 same kind of thing: two points for holding something nobody else can.
+
+The portrait is **bigger than the box has room for, and breaks its top edge to
+get there**. The negative margin is what makes that free: a grid item's margins
+are what its row is sized against, so the portrait contributes its old height to
+the layout and renders at its new one, growing upwards out of the card. The card
+does not get taller for it — it got 6px shorter — and the strip's existing top
+padding is what the overhang grows into.
 
 **What is in the hand hangs off the bottom of the card**, half in and half out.
 That is the one thing here that is not ordinary layout, and it buys the
@@ -325,6 +344,10 @@ Both hang off the bottom of the button strip, in the same place: they are two
 answers to the same question, so only one is ever out and opening either puts
 the other away.
 
+A kitten card bought off the deck flies to the **kitten counter** rather than
+the middle of the seat card, which is where the counters used to be before the
+portrait took that space.
+
 **The bots throw them too, and they are not gracious.** They read the journal
 — the public record of what was played, by whom, at whom — and react to it:
 whoever just took your whole hand laughs at you, whoever just lost theirs
@@ -332,9 +355,13 @@ blames the dice, and a landed Nope is the smuggest moment available to anybody.
 They congratulate a human who wins, about half the time. They cannot see a hand
 to decide whether to laugh, so `AI.selfCheck`'s promise is untouched, and it is
 funnier this way round anyway — they are reacting to what the table saw. Rate
-limits keep it to roughly one throw every couple of turns rather than a wall of
+limits keep it to roughly one throw every few turns rather than a wall of
 faces: two and a bit seconds of quiet across the whole table after any throw,
-nine seconds for the bot that made it.
+nine seconds for the bot that made it, and every chance thinned by a single
+`TAUNT_RATE` on top. They were funny at the old rate and wearing at it — the
+joke is the timing, and timing needs gaps. One number rather than a dozen
+re-tuned, so the tuning underneath still reads as "how much does THIS deserve
+a laugh".
 
 Both ride on the state rather than in the DOM, for the reason the feed does:
 online, the host's browser is the only one that sees anything happen. A
@@ -421,6 +448,13 @@ plus always did.
 
 ### Dialogs that do not take the screen
 
+These take the **full height of the board area**. They used to be inset top and
+bottom to keep clear of the dice and the kitten deck, which on a shorter screen
+left a trade offer scrolling inside itself — and a dialog you have to scroll
+before you can answer it is a dialog half the table answers wrong. Overlapping
+the deck is the better trade: the deck is not going anywhere, and the panel is
+gone in a few seconds.
+
 Trades and card purchases open as **panels beside the board** rather than
 modals over it, so the log, the board and your hand all stay reachable — you
 can drop a Nope on something mid-trade. Each panel belongs to a seat, and one
@@ -488,6 +522,15 @@ folded — rolling, building, buying, trading and ending the turn are all
 refused, and the action bar says so instead of showing buttons. Dropping a
 Nope or a Defuse on a log entry, and Noping somebody's turn, stay open: they
 are what folding is for.
+
+### Advice, and turning it off
+
+The one-line advice used to have a bar of its own across the bottom of the
+window: 24 pixels of chrome, permanently, for a line that is empty most of the
+time and never longer than a sentence. It sits in the header now, beside the
+title, where it takes the width it needs and gives the board back the height.
+**Tips** in the header turns it off for good, remembered between games —
+somebody who has switched it off has decided they know how to play.
 
 ### Which way round the table
 
@@ -564,9 +607,12 @@ Three cases are worth calling out:
 - **A seven can also be Defused**, which is the cheaper answer: it buys one
   hand out of the cut and leaves the rest of the roll standing. The robber
   still moves and everybody else still pays. Anyone the seven is about to take
-  from may spend it — except whoever rolled it. Your own seven is yours to
-  wear; you can Nope it and roll again, which costs you the number rather than
-  sparing you the cut.
+  from may spend it, **including whoever rolled it**. The roller used to be
+  excluded, on the grounds that their own seven was theirs to wear — which in
+  practice meant rolling a seven on a fat hand while holding both cards offered
+  you exactly one of them, for a reason nothing on screen explained. Either
+  answers it now: a Nope throws the dice again and costs you the number, a
+  Defuse spares your hand alone and lets the rest of the seven stand.
 - **The robbery is Defusable too**, separately from the roll: drop a Defuse on
   the *"moves the robber onto…"* line. It is a "no you" like every other
   Defuse — the robbery is undone, and **you move the robber yourself**, and

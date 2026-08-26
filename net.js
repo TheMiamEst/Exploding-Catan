@@ -917,6 +917,17 @@ window.onlineDialog = function(){
 
 /* ══ hooks the game asks about ══════════════════════════════════════════ */
 
+/* Get out of the room and go back to being a browser on its own. The local
+   New Game dialog calls this before dealing: starting a bot game while still
+   seated in a room left the host publishing to people who were no longer in
+   the game it was publishing, and left a guest drawing whatever the host sent
+   over the top of the table they had just dealt themselves. */
+NET.leave = function(){
+  if (!online()) return false;
+  teardown();
+  return true;
+};
+
 NET.isOnline   = online;
 NET.isHost     = isHost;
 NET.isGuest    = isGuest;

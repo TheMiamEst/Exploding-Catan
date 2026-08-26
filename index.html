@@ -22,8 +22,11 @@
        magnify it still can — it is only the accidental double tap that goes. */
     touch-action:manipulation;
   }
+  /* Wraps rather than overflows. On a phone the row of buttons has never
+     actually fitted, and without this the right-hand end of it was simply off
+     the side of the screen with no way to reach it. */
   header{
-    display:flex; align-items:center; gap:14px; padding:8px 14px;
+    display:flex; align-items:center; flex-wrap:wrap; gap:14px; padding:8px 14px;
     background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto;
   }
   header h1{font-size:16px;margin:0;letter-spacing:.5px}
@@ -71,6 +74,7 @@
     background:var(--pcTint, var(--panel2));
     border:1px solid var(--pcEdge, var(--line));
     border-left:5px solid var(--pc, var(--line));
+    --avW:70px; --avPull:12px; --emW:86px; --pillDrop:17px;
     display:grid; gap:5px 9px; align-items:center;
     grid-template-columns:auto minmax(0,1fr);
     grid-template-areas:
@@ -87,9 +91,18 @@
      Ringed in the seat's own colour, which is the whole reason the coloured
      dot that used to sit here can go: six people who have all picked the same
      cat are still six different colours. */
+  /* Bigger than the box has room for, and it breaks the top edge to get there.
+
+     The negative margin is what makes that free: a grid item's margins are
+     what the row is sized against, so the portrait contributes its old height
+     to the layout and renders at its new one, growing UPWARDS out of the card.
+     The card does not get taller, the pill hanging under it does not move, and
+     the strip's existing top padding is what the overhang grows into. */
   .avwrap{
-    grid-area:av; position:relative;
-    width:var(--avW, 64px); height:var(--avW, 64px); border-radius:50%;
+    grid-area:av; position:relative; align-self:start;
+    width:var(--avW, 70px); height:var(--avW, 70px);
+    margin-top:calc(var(--avPull, 12px) * -1);
+    border-radius:50%;
     border:2px solid var(--pc, var(--line)); background:#0b0d10;
     box-shadow:0 2px 8px #0008;
   }
@@ -102,7 +115,8 @@
      reads as a face-shaped thing at a glance. */
   .avwrap .avinit{
     width:100%; height:100%; display:flex; align-items:center; justify-content:center;
-    font-size:27px; font-weight:700; color:#0e1116; background:var(--pc, #4a5668);
+    font-size:calc(var(--avW, 70px) * 0.43); font-weight:700;
+    color:#0e1116; background:var(--pc, #4a5668);
   }
   /* Yours, and therefore yours to change. */
   .avwrap.mine{cursor:pointer}
@@ -135,10 +149,10 @@
      run. */
   .emote{
     position:absolute; top:50%; left:50%; z-index:3;
-    width:var(--emW, 68px); height:var(--emW, 68px);
-    margin:calc(var(--emW, 68px) / -2) 0 0 calc(var(--emW, 68px) / -2);
+    width:var(--emW, 86px); height:var(--emW, 86px);
+    margin:calc(var(--emW, 86px) / -2) 0 0 calc(var(--emW, 86px) / -2);
     display:flex; align-items:center; justify-content:center;
-    font-size:calc(var(--emW, 68px) * 0.68); line-height:1; pointer-events:none;
+    font-size:calc(var(--emW, 86px) * 0.7); line-height:1; pointer-events:none;
     filter:drop-shadow(0 2px 3px #000) drop-shadow(0 0 9px #000c);
     /* 3400ms is EMOTE_MS in the script, and the two have to agree: the script
        resumes a bubble caught mid-life with a negative animation-delay, which
@@ -184,8 +198,8 @@
      Solid rather than translucent, because it sits across the card's border. */
   .statgroup.hand{
     position:absolute; z-index:2;
-    left:calc(8px + var(--avW, 64px) / 2); transform:translateX(-50%);
-    bottom:-13px;
+    left:calc(8px + var(--avW, 70px) / 2); transform:translateX(-50%);
+    bottom:calc(var(--pillDrop, 17px) * -1);
     background:#12161d; border-color:var(--pcEdge, var(--line));
     box-shadow:0 3px 9px #0009;
   }
@@ -485,14 +499,16 @@
   .vcol.seven .vn{color:var(--danger)}
   .vcol .vc{font-size:11px; font-weight:600; margin-bottom:3px; font-variant-numeric:tabular-nums}
   /* Its own strip between board and bottom bar, so it can never cover a hex. */
-  #hintbar{
-    flex:0 0 auto; height:24px; line-height:24px; text-align:center;
-    color:var(--accent); font-size:12.5px; background:#0f1218;
-    border-top:1px solid var(--line); padding:0 10px;
+  /* Advice, in the header beside the title. It takes the width it needs and no
+     more, shrinks before the title does on a narrow window, and disappears
+     entirely rather than wrapping the header onto two lines. */
+  #hintslot{
+    flex:0 1 auto; min-width:0; color:var(--accent); font-size:12.5px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     opacity:0; transition:opacity .12s;
   }
-  #hintbar.on{opacity:1}
+  #hintslot.on{opacity:1}
+  #tipBtn.off{opacity:.5}
 
   /* Kitten deck */
   .deck{
@@ -625,7 +641,7 @@
   .recent span.seven{border-color:var(--danger); color:var(--danger)}
 
   @media (max-width:900px){
-    #panels{width:min(300px, 54%); top:80px; bottom:124px}
+    #panels{width:min(300px, 54%)}
     /* Full-size dice would eat a narrow board. */
     .die{width:58px; height:58px; border-radius:11px; padding:7px}
     .die i{width:10px; height:10px}
@@ -636,14 +652,17 @@
     /* Stacked into a column these ran down past the top of the log and sat on
        it. Wrapped they stay two rows deep, and the log is placed underneath
        whatever height they end up — see placeFeed. */
+    header{gap:7px; padding:5px 8px}
+    header h1{font-size:14px}
+    #hintslot{font-size:11.5px}
     #leftbtns{flex-wrap:wrap; max-width:250px}
   }
   @media (max-width:820px){
-    .pcard{min-width:148px; gap:4px 7px; --avW:54px; --emW:58px}
+    .pcard{min-width:148px; gap:4px 7px; --avW:60px; --avPull:10px; --emW:74px; --pillDrop:15px}
     .pcard .pname{font-size:12px; padding:2px 6px}
     .avwrap .avinit{font-size:22px}
     .vpring{width:24px; height:24px; font-size:13px}
-    .statgroup.hand{bottom:-12px}
+
     .stat{min-width:29px; padding:2px 4px}
     .stat b{font-size:13.5px}
     .stat svg{width:13px; height:13px}
@@ -836,8 +855,14 @@
      board and your hand all sit behind an .overlay. These leave all three
      reachable. Several can stand at once, one per seat, which is what lets a
      trade offer go to everybody together instead of round the table. */
+  /* The full height of the board area. These used to be inset top and bottom
+     to keep clear of the dice and the kitten deck, which on a shorter screen
+     left a trade offer scrolling inside itself — and a dialog you have to
+     scroll to answer is a dialog half the table will answer wrong. Overlapping
+     the deck is the better trade: the deck is not going anywhere, and the
+     panel is gone in a few seconds. */
   #panels{
-    position:absolute; right:12px; top:100px; bottom:130px;
+    position:absolute; right:12px; top:12px; bottom:12px;
     width:min(330px, 46%); z-index:6;
     display:flex; flex-direction:column; gap:8px; align-items:stretch;
     overflow-y:auto; scrollbar-width:none;
@@ -1008,7 +1033,9 @@
         "av name name"
         "av hand board";
     }
-    .pcard{--avW:40px; --emW:44px}
+    /* No spare height on a short screen, so nothing overhangs anything. */
+    .pcard{--avW:40px; --avPull:0px; --emW:52px}
+    .avwrap{align-self:center}
     .avwrap{border-width:2px}
     .avwrap .avinit{font-size:17px}
     .vpring{width:19px; height:19px; font-size:11px; top:-6px; left:-7px}
@@ -1054,17 +1081,17 @@
     #emojiTray{grid-template-columns:repeat(5, 1fr); padding:5px}
     #emojiTray button{font-size:17px; padding:2px 4px}
 
-    /* The panels get the whole height they can, and each one scrolls inside
-       itself with its buttons pinned to the bottom — on a short screen the
-       Trade button was below the fold with nothing obvious to scroll. */
-    #panels{top:40px; bottom:52px; width:min(280px, 60%)}
-    .panel{max-height:100%; overflow-y:auto; padding:7px 9px}
+    /* Whole, not scrolling inside itself: a panel that has to be scrolled to
+       be answered is the thing this was meant to avoid. If one is ever taller
+       than the screen the column behind it scrolls, which is the fallback
+       rather than the plan. */
+    #panels{width:min(280px, 60%)}
+    .panel{padding:7px 9px}
     .panel h3{font-size:12px}
     .panel .sub{font-size:10.5px; margin-bottom:5px}
-    .panel .actions{
-      position:sticky; bottom:-1px; margin-top:6px; padding-top:6px;
-      background:var(--panel); border-top:1px solid var(--line);
-    }
+    /* The buttons used to be pinned to the bottom of a panel that scrolled
+       inside itself. Nothing scrolls inside a panel now, so there is nothing
+       for them to be pinned against. */
     .pick.tight button{font-size:10.5px; padding:3px 5px}
 
     /* Same for a forced dialog: it can be taller than the screen, so its
@@ -1086,7 +1113,14 @@
 
 <header>
   <h1>Exploding <span>Catan</span></h1>
+  <!-- Advice used to have a bar of its own across the bottom of the window: 24
+       pixels of chrome, permanently, for a line that is empty most of the time
+       and never longer than a sentence. It shares the header's spare width
+       now, and the board keeps the height. -->
+  <span id="hintslot"></span>
   <div class="spacer"></div>
+  <button class="sm" id="tipBtn" onclick="toggleTips()" title="Show or hide the
+    one-line advice in this bar">Tips</button>
   <span id="modeTag" hidden></span>
   <span id="verTag" title="Build. Everyone playing together must match."></span>
   <button class="sm" onclick="onlineDialog()">Online</button>
@@ -1131,8 +1165,6 @@
   <div id="feed"></div>
 </div>
 
-<div id="hintbar"></div>
-
 <div id="bottom"></div>
 
 <script>
@@ -1148,7 +1180,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-27l";
+const GAME_VERSION = "2026-08-27m";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1742,7 +1774,7 @@ function newGame(numPlayers, mode){
   forgetModalFold();
   clearShowcase();
   lastShowcased = -1;
-  lastRollShown = -1;
+  lastRollShown = 0;
   boardWatch = null;
   clearFeed();
   clearChat();
@@ -3135,12 +3167,34 @@ function pdot(p){
          ';display:inline-block;vertical-align:-2px;margin-right:5px"></span><b>' + p.name + '</b>';
 }
 
+/* Whether the one-line advice is wanted at all. Remembered, because somebody
+   who has turned it off has decided they know how to play. */
+let TIPS_ON = (function(){
+  try { return localStorage.getItem("ec_tips") !== "off"; } catch(e){ return true; }
+})();
+
+function toggleTips(){
+  TIPS_ON = !TIPS_ON;
+  try { localStorage.setItem("ec_tips", TIPS_ON ? "on" : "off"); } catch(e){}
+  drawTipBtn();
+  if (!TIPS_ON) hint(null);
+  else if (S) drawHint();
+}
+
+function drawTipBtn(){
+  const b = document.getElementById("tipBtn");
+  if (!b) return;
+  b.classList.toggle("off", !TIPS_ON);
+  b.title = TIPS_ON ? "Tips are on — click to stop showing them"
+                    : "Tips are off — click to show them again";
+}
+
 let hintTimer = null;
 function hint(msg, sticky){
-  const el = document.getElementById("hintbar");
+  const el = document.getElementById("hintslot");
   if (!el) return;
   clearTimeout(hintTimer);
-  if (!msg){ el.className = ""; el.textContent = ""; return; }
+  if (!msg || !TIPS_ON){ el.className = ""; el.textContent = ""; return; }
   el.textContent = msg;
   el.className = "on";
   if (!sticky) hintTimer = setTimeout(() => { el.className = ""; }, 2600);
@@ -3159,20 +3213,36 @@ function dieHTML(n, animate){
    This used to be a flag on the state that drawDice cleared as it read it —
    and drawDice runs inside render(), which runs BEFORE the state is published.
    So the dice were always already stale by the time they went out, and no
-   terminal ever saw a die move: the numbers simply appeared. Same fault the
-   flying cards had. A counter that only ever goes up cannot be consumed by
-   whoever looks at it first. */
-let lastRollShown = -1;
+   terminal ever saw a die move: the numbers simply appeared. A counter that
+   only ever goes up cannot be consumed by whoever looks at it first. */
+let lastRollShown = 0;
 
 function drawDice(){
   const el = document.getElementById("diceWrap");
   if (!el) return;
-  if (!S.rolled || S.phase.startsWith("setup") || S.phase === "over"){ el.innerHTML = ""; return; }
+  if (!S.rolled || S.phase.startsWith("setup") || S.phase === "over"){
+    if (el.dataset.sig){ el.innerHTML = ""; el.dataset.sig = ""; }
+    return;
+  }
   const [a, b] = S.rolled, sum = a + b;
   const id = S.rollId || 0;
-  // A screen that has not looked at this table before catches up quietly
-  // rather than tumbling a throw that happened before it sat down.
-  const fresh = lastRollShown >= 0 && id !== lastRollShown;
+
+  /* Written only when the throw itself changes.
+
+     This is what was eating the tumble, and it ate it for everybody — host
+     and terminal alike — on any roll that paid out. Producing resources asks
+     for a repaint of its own, so a roll rendered TWICE: once with the dice
+     animating, and again a microtask later, which replaced the very elements
+     that were mid-animation with identical ones that were not. A CSS
+     animation runs from the moment its element is created, so the second
+     write threw the first away before the browser had drawn a single frame of
+     it. Same guard the chat window and the side panels already use: compare
+     first, and do not rewrite what is already on screen. */
+  const sig = id + ":" + a + ":" + b;
+  if (el.dataset.sig === sig) return;
+  el.dataset.sig = sig;
+
+  const fresh = id !== lastRollShown;
   lastRollShown = id;
   el.innerHTML = dieHTML(a, fresh) + dieHTML(b, fresh) +
                  `<span class="dicesum ${sum === 7 ? "seven" : ""}">${sum}</span>`;
@@ -4720,13 +4790,19 @@ function canDefuseEntry(e, pid){
   if (!canNopeEntry(e)) return false;
   // A seven is not a card, but it is aimed at everybody holding more than
   // seven, and a Defuse answers it for exactly one of them. Only while the cut
-  // is still owed, and only by somebody it is still owed by — and never by the
-  // player who rolled it. Their own seven is theirs to wear: a Defuse would be
-  // a one-card exemption from a roll they made, where everybody else is only
-  // buying out of somebody else's bad luck. They can still Nope it and roll
-  // again, which costs them the number rather than sparing them the cut.
+  // is still owed, and only by somebody it is still owed by.
+  //
+  // The roller used to be excluded, on the grounds that their own seven was
+  // theirs to wear. In practice that meant rolling a seven on a fat hand while
+  // holding both cards offered you exactly one of them, for a reason nothing
+  // on screen explained — so whichever card you had was the card you played.
+  // Either answers it now: a Nope throws the dice again and costs you the
+  // number, a Defuse spares your hand alone and lets the rest of the seven
+  // stand. That defuseSeven already marks itself turnSafe "so it must not end
+  // the turn of a roller who Defused their own seven" says this was always the
+  // intended shape.
   if (e.kind === "roll")
-    return e.show === "seven" && e.actor !== pid && owesSevenCut(pid);
+    return e.show === "seven" && owesSevenCut(pid);
   // The robber landing on you is the other half of a seven, and the half that
   // keeps costing after the roll is forgotten. Anybody settled on that hex may
   // answer it — not only whoever the card came off — and only once between
@@ -6050,6 +6126,14 @@ function seatResPoint(pid){
   return centreOf(document.querySelector('.pcard[data-pid="' + pid + '"] .stat.res')) ||
          seatPoint(pid);
 }
+/* And a kitten card lands on ITS counter, which sits beside the resource one.
+   It used to fly to the middle of the seat card, which is where the counters
+   were before the portrait took that space — so the one card that arrives
+   face down was also the one that arrived nowhere in particular. */
+function seatKitPoint(pid){
+  return centreOf(document.querySelector('.pcard[data-pid="' + pid + '"] .stat.kit')) ||
+         seatPoint(pid);
+}
 function boardPoint(x, y){
   const area = document.getElementById("boardArea");
   const pt = area && svgToScreen(x, y);
@@ -6419,7 +6503,7 @@ function playProduction(src){
 
 function playKitten(pid){
   fxSoon(function(){
-    flyCard(deckPoint(), seatPoint(pid), kittenBackHTML(), "kit", 60, 0);
+    flyCard(deckPoint(), seatKitPoint(pid), kittenBackHTML(), "kit", 60, 0);
   });
 }
 
@@ -6850,6 +6934,14 @@ function newGameDialog(){
     if (!haveAI)
       h = `<div class="warnbox">ai.js did not load, so there is nobody to play against.
            Check that it is next to index.html.</div>` + h;
+    // Say so before, not after. Dealing here leaves the room, and if this
+    // browser is the one hosting, leaving the room ends the game for everybody
+    // in it.
+    if (window.NET && NET.isOnline && NET.isOnline())
+      h = `<div class="warnbox">You are ` + (NET.isHost() ? "hosting" : "playing in") +
+          ` an online game. Starting one here leaves it` +
+          (NET.isHost() ? ` — and since you are the host, that ends it for everybody.` : `.`) +
+          `</div>` + h;
     openModal("New Game", h,
       [{ label:"Cancel", fn: () => { closeModal(); if (!S) renderIdle(); } }]);
   };
@@ -6858,6 +6950,11 @@ function newGameDialog(){
   window.__avRefresh = refresh;
   window.__ng = (n) => {
     closeModal();
+    // Still sitting in a room. A local game cannot start on top of an online
+    // one: the host would go on publishing to people who are no longer in the
+    // game it is publishing, and a guest would have whatever the host sent
+    // drawn straight over the table they had just dealt themselves.
+    if (window.NET && NET.leave) NET.leave();
     window.AGENTS = {};
     newGame(n, GAME_MODE);
     if (typeof window.AI !== "undefined") window.AI.enable([0]);
@@ -7303,6 +7400,7 @@ preloadArt(() => {
    player opened the dialog a second time. */
 window.addEventListener("load", function(){
   initBoardControls();
+  drawTipBtn();
   const vt = document.getElementById("verTag");
   if (vt) vt.textContent = GAME_VERSION;
   renderIdle();                 // no forced dialog: the header stays reachable
@@ -7311,13 +7409,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27l"></script>
+<script src="ai.js?v=2026-08-27m"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27l"></script>
-<script src="net.js?v=2026-08-27l"></script>
+<script src="firebase-config.js?v=2026-08-27m"></script>
+<script src="net.js?v=2026-08-27m"></script>
 </body>
 </html>
