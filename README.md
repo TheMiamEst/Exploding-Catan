@@ -556,6 +556,34 @@ refused, and the action bar says so instead of showing buttons. Dropping a
 Nope or a Defuse on a log entry, and Noping somebody's turn, stay open: they
 are what folding is for.
 
+### What a colour means
+
+Five, used the same way everywhere they appear — declared once as `--tAttack`,
+`--tDefend`, `--tGain`, `--tBig` and `--tRoll` near the top of the stylesheet:
+
+| | |
+|---|---|
+| **red** | something is being taken from somebody |
+| **blue** | an answer — a Nope, a Defuse |
+| **green** | a purchase, a payout, a card drawn |
+| **gold** | the whole table should look up |
+| **grey** | the dice, and everything else ordinary |
+
+The log has coded its left edge this way for a long time and the words next to
+it stayed grey, which is half a signal: you had to read the line to find out
+whether the bar mattered. The words carry the colour now, and so does the
+caption under a card turning over in the middle of the board — coded by what
+the card *does* rather than by what it is called, so an Exploding Kitten and an
+Attack read alike and a Feral Kitten does not read like either. That caption is
+the one instant everybody at the table is definitely looking at the screen, and
+it was 14px of plain grey.
+
+Dialogs got the same treatment for a plainer reason: titles were the same
+weight as the body text and the body text was dim on dim, so nothing on a popup
+told you where to start reading. Titles are gold and heavier, explanation lines
+are lighter and bigger, and the warning and confirmation boxes are bold in
+their own colour.
+
 ### Advice, and turning it off
 
 The one-line advice used to have a bar of its own across the bottom of the

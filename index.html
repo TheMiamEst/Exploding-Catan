@@ -9,6 +9,18 @@
     --bg:#14171c; --panel:#1c2129; --panel2:#232936; --line:#333c4a;
     --ink:#e7ebf1; --dim:#95a1b3; --accent:#e2b33c; --danger:#d94b4b;
     --wood:#2f6b3a; --brick:#a4472a; --sheep:#7fb85c; --wheat:#dfae32; --ore:#78838f; --desert:#cdbb8e;
+
+    /* What kind of thing just happened, as a colour. The log has coded its
+       left edge this way for a long time and the words next to it stayed
+       grey, which is half a signal: you had to read the line to find out
+       whether the bar mattered. These are the same five meanings as text —
+       lightened, because a colour chosen to read as a 4px bar against a dark
+       panel is far too dark to read as a sentence. */
+    --tAttack:#ff9b9b;    /* something is being taken from somebody */
+    --tDefend:#89d7f4;    /* an answer: a Nope, a Defuse */
+    --tGain:#93d9a6;      /* a purchase, a payout, a card drawn */
+    --tBig:#ffd77a;       /* the whole table should look up */
+    --tRoll:#c6cfdb;      /* the dice, and everything else ordinary */
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -411,7 +423,7 @@
     flex:0 0 auto; animation:evin .2s ease-out; backdrop-filter:blur(3px);
     box-shadow:0 3px 12px #0007; position:relative;
   }
-  .ev b{font-weight:700}
+  .ev b{font-weight:800}
   .ev .evturn{
     display:block; font-size:9.5px; letter-spacing:.4px; color:var(--dim);
     text-transform:uppercase; margin-bottom:2px;
@@ -429,14 +441,14 @@
   .rchip .rdot{display:inline-block; width:7px; height:7px; border-radius:2px;
                background:var(--rc); margin-right:4px; vertical-align:0}
   .rchip.none{--rc:#5a6478; font-style:italic; opacity:.75}
-  .ev.roll{border-left-color:#7f8ba0}
-  .ev.buy{border-left-color:#5a8f68}
-  .ev.attack{border-left-color:var(--danger)}
-  .ev.defend{border-left-color:#4bb1d9}
+  .ev.roll{border-left-color:#7f8ba0; color:var(--tRoll)}
+  .ev.buy{border-left-color:#5a8f68; color:var(--tGain)}
+  .ev.attack{border-left-color:var(--danger); color:var(--tAttack)}
+  .ev.defend{border-left-color:#4bb1d9; color:var(--tDefend)}
   .ev.info{border-left-color:#5a6478}
   .ev.big{
-    border-left-color:var(--accent); background:#232a1c; font-size:13.5px;
-    box-shadow:0 0 0 1px #e2b33c33 inset;
+    border-left-color:var(--accent); background:#232a1c; color:var(--tBig);
+    font-size:14.5px; box-shadow:0 0 0 1px #e2b33c33 inset;
   }
 
   /* ── "you can answer this" markers ──────────────────────────────────
@@ -473,9 +485,9 @@
      from the window it opened rather than after paying for it. */
   .reactnote{
     margin-top:10px; border-top:1px solid var(--line); padding-top:9px;
-    font-size:12px; color:var(--dim);
+    font-size:12.5px; color:#b9c4d3; line-height:1.45;
   }
-  .reactnote b{color:var(--ink)}
+  .reactnote b{color:var(--ink); font-weight:700}
   .modal .actions button.react{background:#1d3a49; border-color:#4bb1d9; color:#dff2fb}
   .modal .actions button.react:hover:not(:disabled){background:#265066}
   .modal .actions button.reactno{background:#4a2230; border-color:#c76b6b; color:#ffdede}
@@ -812,7 +824,7 @@
   body.hasmodal .showseven{
     width:clamp(40px, 5.6vh, 52px); font-size:clamp(19px, 3vh, 26px); border-width:2px;
   }
-  body.hasmodal .showcap{ font-size:12px; padding:5px 10px; max-width:min(340px, 62%) }
+  body.hasmodal .showcap{ font-size:14px; padding:6px 12px; max-width:min(360px, 64%) }
   #showcase.out{animation:showout .4s ease-in forwards}
   @keyframes showout{to{opacity:0; transform:scale(.94)}}
   .showcard{
@@ -823,7 +835,7 @@
     animation:flipin .55s cubic-bezier(.2,.85,.3,1.25) both;
   }
   .showcard img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
-  .showcard .kn{position:relative; z-index:1; font-size:15px; font-weight:600;
+  .showcard .kn{position:relative; z-index:1; font-size:17px; font-weight:800;
                 text-align:center; padding:0 8px; text-shadow:0 2px 6px #000}
   @keyframes flipin{
     0%  {transform:perspective(900px) rotateY(-115deg) scale(.5);  opacity:0}
@@ -844,7 +856,8 @@
     7%  {opacity:1}
     100%{transform:scale(1) rotate(5turn)}
   }
-  .showcap.implode{border-color:var(--danger); color:#ffd9d9; font-weight:600}
+  .showcap.implode{border-color:var(--danger); color:#ffc2c2; font-weight:800;
+                   font-size:19px; box-shadow:0 10px 30px #000a, 0 0 0 5px #d94b4b3d}
 
   /* A seven gets the same moment without a card to turn over. */
   .showseven{
@@ -860,11 +873,25 @@
     100%{transform:scale(1) rotate(0)}
   }
   .showcap{
-    background:#0b0d10e8; border:1px solid var(--line); border-radius:9px;
-    padding:7px 14px; font-size:14px; max-width:min(420px, 76%); text-align:center;
+    background:#0b0d10ee; border:2px solid var(--line); border-radius:10px;
+    padding:9px 18px; font-size:17px; font-weight:700; letter-spacing:.2px;
+    line-height:1.35; max-width:min(460px, 78%); text-align:center;
+    text-shadow:0 2px 8px #000c;
     box-shadow:0 10px 30px #000a; animation:capin .45s .12s ease-out both;
   }
-  .showcap.seven{border-color:var(--danger); color:#ffd9d9}
+  .showcap b{font-weight:800}
+  /* Coded the same five ways the log is, so the card and the line it wrote
+     say the same thing in the same colour. */
+  .showcap.attack{border-color:var(--danger); color:var(--tAttack);
+                  box-shadow:0 10px 30px #000a, 0 0 0 4px #d94b4b26}
+  .showcap.defend{border-color:#4bb1d9; color:var(--tDefend);
+                  box-shadow:0 10px 30px #000a, 0 0 0 4px #4bb1d926}
+  .showcap.gain{border-color:#5a8f68; color:var(--tGain);
+                box-shadow:0 10px 30px #000a, 0 0 0 4px #5a8f6826}
+  .showcap.big{border-color:var(--accent); color:var(--tBig);
+               box-shadow:0 10px 30px #000a, 0 0 0 4px #e2b33c26}
+  .showcap.seven{border-color:var(--danger); color:var(--tAttack);
+                 box-shadow:0 10px 30px #000a, 0 0 0 4px #d94b4b33}
   @keyframes capin{from{transform:translateY(10px); opacity:0}to{transform:none; opacity:1}}
 
   /* Dialogs that dock beside the board rather than covering it. A trade or a
@@ -894,8 +921,10 @@
     animation:panelin .16s ease-out;
   }
   @keyframes panelin{from{transform:translateX(14px);opacity:0}to{transform:none;opacity:1}}
-  .panel h3{margin:0 0 5px; font-size:13.5px; letter-spacing:.2px}
-  .panel .sub{margin:0 0 8px; color:var(--dim); font-size:11.5px; line-height:1.4}
+  .panel h3{margin:0 0 6px; font-size:15px; font-weight:700;
+            color:var(--accent); letter-spacing:.2px}
+  .panel .sub{margin:0 0 8px; color:#b9c4d3; font-size:12.5px; line-height:1.45}
+  .panel .sub b{color:var(--ink); font-weight:700}
   .panel .actions{display:flex; gap:5px; justify-content:flex-end; margin-top:9px; flex-wrap:wrap}
   .panel .actions button{padding:6px 11px; font-size:12.5px}
   .panel .counter{margin-bottom:3px}
@@ -952,7 +981,8 @@
     max-width:560px; width:100%; max-height:88vh; overflow-y:auto; padding:18px;
     box-shadow:0 18px 50px #0008;
   }
-  .modal h2{margin:0 0 4px; font-size:17px}
+  .modal h2{margin:0 0 6px; font-size:19px; font-weight:700;
+            color:var(--accent); letter-spacing:.2px}
 
   /* A forced dialog you can push out of the way. Discarding for a seven or
      paying an Attack used to mean paying FIRST and reacting afterwards: the
@@ -993,30 +1023,39 @@
   .overlay.mini .minibtn .down{display:none}
   .overlay.mini .minibtn .up{display:inline}
   .mininote{
-    margin:6px 0 0; font-size:11.5px; color:var(--dim); line-height:1.45;
+    margin:6px 0 0; font-size:12px; color:#a7b2c2; line-height:1.45;
     border-top:1px solid var(--line); padding-top:7px;
   }
-  .modal p.sub{margin:0 0 14px; color:var(--dim); font-size:13px}
+  .modal p.sub{margin:0 0 14px; color:#b9c4d3; font-size:13.5px; line-height:1.5}
+  .modal p.sub b{color:var(--ink); font-weight:700}
   .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap}
   .counter{display:flex; align-items:center; gap:8px; padding:5px 0}
-  .counter .lbl{flex:1; display:flex; align-items:center; gap:6px}
+  .counter .lbl{flex:1; display:flex; align-items:center; gap:6px; font-weight:600}
   .counter .val{width:26px; text-align:center; font-variant-numeric:tabular-nums}
   .pick{display:flex; gap:6px; flex-wrap:wrap}
   .pick button.on{background:#2f5d3a; border-color:#4d8a5f}
-  .stack{background:#0003; border:1px solid var(--line); border-radius:6px; padding:8px; margin:8px 0; font-size:12.5px}
+  .stack{background:#0003; border:1px solid var(--line); border-radius:6px;
+         padding:9px; margin:8px 0; font-size:13px}
+  .stack b{font-weight:700; color:var(--ink)}
   .stack div{padding:2px 0}
   table.trade{width:100%; border-collapse:collapse; font-size:12.5px}
   table.trade td{padding:3px 4px}
-  .warnbox{background:#4a2020; border:1px solid #7a3535; border-radius:6px; padding:8px 10px; font-size:12.5px; margin:8px 0}
-  .okbox{background:#1f3a28; border:1px solid #3a6b47; border-radius:6px; padding:8px 10px; font-size:12.5px; margin:8px 0}
+  .warnbox{background:#4a2020; border:1px solid #7a3535; border-radius:6px;
+           padding:9px 11px; font-size:13px; font-weight:600; color:#ffcaca;
+           line-height:1.45; margin:8px 0}
+  .okbox{background:#1f3a28; border:1px solid #3a6b47; border-radius:6px;
+         padding:9px 11px; font-size:13px; font-weight:600; color:#c6ecd3;
+         line-height:1.45; margin:8px 0}
+  .warnbox b, .okbox b{color:#fff; font-weight:800}
   /* One line of a list inside a dialog: a marker, then the thing. Used by
      the art audit and by the seat list in the online lobby. */
   .artrow{display:flex; align-items:center; gap:8px; padding:2px 0; font-size:12.5px}
   .artrow .f{flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis}
   .artrow .ok{color:#7fc48f; flex:0 0 auto}
   .artrow .no{color:var(--dim); flex:0 0 auto}
-  .rules{font-size:12.5px; color:var(--dim)}
-  .rules h4{color:var(--ink); margin:12px 0 4px; font-size:13px}
+  .rules{font-size:13px; color:#a7b2c2; line-height:1.5}
+  .rules b{color:var(--ink); font-weight:700}
+  .rules h4{color:var(--accent); margin:13px 0 5px; font-size:14px; font-weight:700}
   .rules ul{margin:4px 0; padding-left:18px}
   .rules li{margin-bottom:3px}
 
@@ -1105,8 +1144,8 @@
        rather than the plan. */
     #panels{width:min(280px, 60%)}
     .panel{padding:7px 9px}
-    .panel h3{font-size:12px}
-    .panel .sub{font-size:10.5px; margin-bottom:5px}
+    .panel h3{font-size:13.5px}
+    .panel .sub{font-size:11.5px; margin-bottom:5px}
     /* The buttons used to be pinned to the bottom of a panel that scrolled
        inside itself. Nothing scrolls inside a panel now, so there is nothing
        for them to be pinned against. */
@@ -1116,8 +1155,11 @@
        buttons stay put while the rest of it scrolls under them. */
     .overlay{padding:8px}
     .modal{max-height:96vh; padding:10px 12px}
-    .modal h2{font-size:14px}
-    .modal p.sub{font-size:11.5px; margin-bottom:8px}
+    .modal h2{font-size:16px}
+    .modal p.sub{font-size:12.5px; margin-bottom:8px}
+    .rules{font-size:12px}
+    .warnbox, .okbox, .stack{font-size:12px; padding:7px 9px}
+    .showcap{font-size:14px; padding:6px 12px; border-width:1px}
     .counter{padding:2px 0}
     .modal .actions{
       position:sticky; bottom:-10px; margin-top:10px; padding:8px 0 2px;
@@ -1200,7 +1242,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-27q";
+const GAME_VERSION = "2026-08-27r";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -6741,19 +6783,37 @@ function runShowcase(){
    drawn, so the one card in the deck nobody ever holds was also the one card
    nobody ever saw. They queue now, in the order they happened. */
 function checkShowcase(){
-  if (!S || !S.journal.length) return;
+  if (!S) return;
   // Same rule the flights follow: a screen that has not looked at this table
   // before catches up silently. Without it, joining a game in progress turned
   // over every card still on the journal, one after another, at somebody who
   // had just sat down.
-  const newest = S.journal[S.journal.length - 1].id;
+  //
+  // The catch-up has to happen on an EMPTY journal too. Returning early on one
+  // left the mark at "never looked", so the first entry of a fresh game was
+  // taken for history and swallowed — which cost the reveal of any card played
+  // before anything else had been journalled.
+  const newest = S.journal.length ? S.journal[S.journal.length - 1].id : 0;
   if (lastShowcased < 0 || newest < lastShowcased){ lastShowcased = newest; return; }
+  if (!S.journal.length) return;
   for (const e of S.journal){
     if (e.id <= lastShowcased) continue;
     lastShowcased = e.id;
     if (e.show) showEntry(e);
   }
 }
+
+/* What colour a card's moment is, by what the card DOES rather than by what
+   it is called. The caption used to be the same plain grey whether somebody
+   had just taken your whole hand or bought themselves a point, which threw
+   away the one instant everybody at the table is definitely looking at the
+   screen. Same five meanings the log codes its left edge with. */
+const CARD_TONE = {
+  skip:"attack", explode:"attack", attack:"attack", favor:"attack", knight:"attack",
+  nope:"defend", defuse:"defend",
+  vp:"gain",
+  alter:"big", reverse:"big", implode:"attack"
+};
 
 function showEntry(e){
   if (e.show === "seven"){
@@ -6779,7 +6839,7 @@ function showEntry(e){
   const face = cardArt({ key: e.show, flavor: (e.card && e.card.flavor) || null });
   showcase('<div class="showcard">' +
              (face ? '<img src="' + face + '" alt="">' : '<span class="kn">' + esc(def.name) + "</span>") +
-           "</div>", esc(e.plain).replace(/\s+/g, " "));
+           "</div>", esc(e.plain).replace(/\s+/g, " "), CARD_TONE[e.show] || "");
 }
 
 /* ══ SIDE PANELS ═════════════════════════════════════════════════
@@ -7471,13 +7531,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27q"></script>
+<script src="ai.js?v=2026-08-27r"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27q"></script>
-<script src="net.js?v=2026-08-27q"></script>
+<script src="firebase-config.js?v=2026-08-27r"></script>
+<script src="net.js?v=2026-08-27r"></script>
 </body>
 </html>
