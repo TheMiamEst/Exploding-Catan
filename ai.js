@@ -1009,6 +1009,11 @@ let guard = 0;
 
 function stop(){ if (timer){ clearTimeout(timer); timer = null; } }
 
+/* Putting the table away for good. Distinct from stop(), which is the step
+   loop pausing itself between actions and is called before every one of
+   them — the taunts have their own clock and must outlive that. */
+function stopAll(){ stop(); stopTaunts(); }
+
 function schedule(ms){
   stop();
   timer = setTimeout(tickNow, ms === undefined ? AI_PACE : ms);
@@ -1123,6 +1128,216 @@ window.botTick = function(){
 };
 
 /* ══════════════════════════════════════════════════════════════════════════
+   TAUNTS
+   ══════════════════════════════════════════════════════════════════════════
+   Bots throw the same emoji people do, out of the same tray, through the same
+   pushEmote — so a terminal draws a bot's jeer exactly the way it draws a
+   player's, and nothing new had to be taught to travel.
+
+   Everything here reads the JOURNAL, which is the public record: what was
+   played, by whom, at whom. No bot looks in a hand to decide whether to
+   laugh, so AI.selfCheck's promise is untouched — and it is funnier this way
+   round anyway, because then the bots are reacting to what the table saw
+   rather than to what they know.
+
+   The tuning is deliberately mean. A bot that has just taken your whole hand
+   laughs at you; a bot that has just lost its own hand blames the dice. The
+   only thing they are gracious about is losing the game, and only sometimes.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Named for what they mean, resolved against the tray at the moment of use:
+   pushEmote refuses anything the tray does not hold, and a bot with a wider
+   vocabulary than a player is a bot that has been given something extra. */
+const JEER    = ["\u{1F639}","\u{1F602}","\u{1F921}","\u{1F480}","\u{1F476}",
+                 "\u{1F414}","\u{1F4A9}","\u{1F595}"];
+const SMUG    = ["\u{1F60F}","\u{1F9E0}","\u{1F525}","\u{1F971}"];
+const HURT    = ["\u{1F62D}","\u{1F631}","\u{1F644}","\u{1F480}"];
+const RESPECT = ["\u{1F44F}","\u{1F91D}","\u{1F64F}"];
+const BORED   = ["\u{1F971}","\u{1F644}"];
+
+const TAUNT_POLL     = 700;    // ms between looks at the journal
+const TAUNT_GAP      = 2200;   // ms the whole table stays quiet after any throw
+const TAUNT_COOLDOWN = 9000;   // ms one bot stays quiet after its own
+
+let tauntTimer = null;
+let seenEntry  = 0;            // newest journal entry any bot has reacted to
+let lastTaunt  = 0;            // when anybody last threw one
+let sawOver    = false;        // the end has been reacted to
+const botQuiet = {};           // pid -> when that bot may throw again
+
+function pickEmoji(list){
+  const tray = (typeof EMOJIS !== "undefined") ? EMOJIS : null;
+  const ok = tray ? list.filter(e => tray.indexOf(e) >= 0) : list;
+  return ok.length ? ok[Math.floor(Math.random() * ok.length)] : null;
+}
+
+/* One throw, if this bot is allowed one and the dice say so. Everything funnels
+   through here so the rate limits cannot be got round by adding a trigger. */
+function taunt(pid, list, chance){
+  if (typeof pushEmote !== "function") return false;
+  if (!agentOf(pid)) return false;                         // humans throw their own
+  const now = Date.now();
+  if (now - lastTaunt < TAUNT_GAP) return false;
+  if ((botQuiet[pid] || 0) > now) return false;
+  if (Math.random() > (chance === undefined ? 1 : chance)) return false;
+  const e = pickEmoji(list);
+  if (!e) return false;
+  lastTaunt = now;
+  botQuiet[pid] = now + TAUNT_COOLDOWN;
+  pushEmote(pid, e);
+  return true;
+}
+
+/* Every bot except the ones named, in a random order — so the same seat is
+   not always the one that gets the joke in first. */
+function otherBots(exclude){
+  const out = [];
+  for (const p of S.players){
+    if (!agentOf(p.id)) continue;
+    if (exclude.indexOf(p.id) >= 0) continue;
+    out.push(p.id);
+  }
+  for (let i = out.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = out[i]; out[i] = out[j]; out[j] = t;
+  }
+  return out;
+}
+
+/* What one line of the record is worth reacting to. At most one throw comes
+   out of any entry: the first seat that takes it ends the matter. */
+function reactTo(e){
+  const actor  = e.actor;
+  const target = (e.target === null || e.target === undefined) ? -1 : e.target;
+
+  // Somebody was named and something was done to them: a card with their name
+  // on it, a knight's steal, a robbery. Not every one of these carries a card
+  // — a robbery is a hex and a victim — so it is the target that decides, not
+  // the card. The best joke at the table belongs to whoever threw it; failing
+  // that, to whoever was hit; failing that, to anybody watching.
+  if (target >= 0 && target !== actor){
+    const loud = !!e.card;
+    if (taunt(actor, JEER, loud ? 0.75 : 0.5)) return;
+    if (taunt(target, HURT, 0.4)) return;
+    for (const pid of otherBots([actor, target]))
+      if (taunt(pid, JEER, loud ? 0.28 : 0.18)) return;
+    return;
+  }
+
+  // A card that answered another card. Landing a Nope is the smuggest moment
+  // available to anybody, bot or not.
+  if (e.kind === "defend" || e.kind === "nope" || e.kind === "defuse"){
+    if (taunt(actor, SMUG, 0.7)) return;
+    for (const pid of otherBots([actor]))
+      if (taunt(pid, JEER, 0.2)) return;
+    return;
+  }
+
+  if (e.kind === "roll"){
+    // A seven: everybody at the table is about to pay, so the roller is the
+    // one seat with nothing to be sorry about.
+    if (e.show === "seven"){
+      if (taunt(actor, JEER, 0.6)) return;
+      for (const pid of otherBots([actor]))
+        if (taunt(pid, HURT, 0.3)) return;
+      return;
+    }
+    // A roll nobody collected on. Read off the line rather than recomputed:
+    // if that wording ever changes this joke goes quiet, and nothing else
+    // about the game notices.
+    if (String(e.plain || "").indexOf("nobody collects") >= 0){
+      for (const pid of otherBots([]))
+        if (taunt(pid, BORED, 0.3)) return;
+    }
+    return;
+  }
+
+  // Somebody bought a card, built something, took Longest Road off somebody.
+  // Mild, and rare, or the strip is nothing but faces.
+  if (e.kind === "buy" || e.kind === "big"){
+    for (const pid of otherBots([actor]))
+      if (taunt(pid, JEER, 0.12)) return;
+  }
+}
+
+/* The end of the game, which is the one moment worth breaking the rate limit
+   for: everyone gets to say something about it. */
+function reactToEnd(){
+  const winner = S.winner;
+  const bots = otherBots([]);
+  bots.forEach((pid, i) => {
+    // Staggered, so it reads as a table reacting rather than one event.
+    setTimeout(() => {
+      if (!S || S.phase !== "over") return;
+      const list = pid === winner ? SMUG
+                 : (winner !== null && winner !== undefined && !agentOf(winner))
+                     ? (Math.random() < 0.45 ? RESPECT : HURT)   // a human won
+                     : HURT;
+      const e = pickEmoji(list);
+      if (e) pushEmote(pid, e);
+    }, 400 + i * 650);
+  });
+}
+
+function tauntTick(){
+  if (!S || typeof pushEmote !== "function") return;
+  // Online, only the host decides anything — including who is laughing.
+  if (window.NET && NET.isGuest && NET.isGuest()) return;
+  if (!S.players.some(p => agentOf(p.id))) return;
+
+  const j = S.journal || [];
+  // A fresh game, or one applied from elsewhere: the ids went backwards, so
+  // nothing here has been seen. Catch up silently rather than react to a
+  // whole game at once.
+  if (j.length && j[j.length - 1].id < seenEntry){
+    seenEntry = j[j.length - 1].id;
+    return;
+  }
+
+  if (S.phase === "over"){
+    if (!sawOver){ sawOver = true; reactToEnd(); }
+    return;
+  }
+  sawOver = false;
+
+  // Nothing to say during the opening placements — there is nothing to laugh
+  // at yet, and six faces before the first roll is just noise.
+  const quiet = !S.turnCounter || String(S.phase).indexOf("setup") === 0;
+
+  for (const e of j){
+    if (e.id <= seenEntry) continue;
+    seenEntry = e.id;
+    if (quiet || e.noped) continue;
+    try { reactTo(e); } catch (err){ console.error("taunt failed:", err); }
+  }
+}
+
+function startTaunts(){
+  if (!tauntTimer) tauntTimer = setInterval(tauntTick, TAUNT_POLL);
+  // Whatever is already on the record happened before anybody was watching.
+  seenEntry = (S && S.journal && S.journal.length) ? S.journal[S.journal.length - 1].id : 0;
+  sawOver = false;
+}
+function stopTaunts(){
+  if (tauntTimer){ clearInterval(tauntTimer); tauntTimer = null; }
+}
+
+/* Somebody typed something. Bots cannot read it and would not care if they
+   could, which is roughly the response it deserves. */
+function heard(seat){
+  if (!S || typeof pushEmote !== "function") return;
+  if (window.NET && NET.isGuest && NET.isGuest()) return;
+  if (agentOf(seat)) return;                       // bots do not answer bots
+  const bots = otherBots([]);
+  if (!bots.length) return;
+  if (Math.random() > 0.4) return;
+  // A beat late, so it reads as an answer rather than an echo.
+  setTimeout(() => {
+    if (S) taunt(bots[0], Math.random() < 0.75 ? JEER : BORED, 1);
+  }, 900 + Math.random() * 1400);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    PUBLIC API
    ══════════════════════════════════════════════════════════════════════════ */
 
@@ -1137,11 +1352,14 @@ window.AI = {
     }
     logMsg("Bots enabled for " +
            S.players.filter(p => agentOf(p.id)).map(p => p.name).join(", ") + ".");
+    startTaunts();
     render();
     window.botTick();
   },
-  disable(){ window.AGENTS = {}; stop(); render(); },
-  stop, makeAgent,
+  disable(){ window.AGENTS = {}; stopAll(); render(); },
+  stop: stopAll, makeAgent,
+  /* Called by the chat when somebody says something. */
+  heard,
   pace(ms){ AI_PACE = ms; },
 
   /* Internals, exposed for diagnosis and weight tuning. */

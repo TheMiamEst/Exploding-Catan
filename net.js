@@ -181,6 +181,7 @@ function serializeGame(){
 
     players: S.players.map(p => ({
       name: p.name,                    // the host renames seats from the lobby
+      avatar: p.avatar || null,        // and everybody picks their own face
       res: Object.assign({}, p.res), cards: p.cards.slice(),
       knights: p.knights, skipTokens: p.skipTokens,
       roads: p.roads, settlements: p.settlements, cities: p.cities
@@ -221,7 +222,21 @@ function serializeGame(){
       // second player drag a card the host is only going to turn away.
       answered: !!e.answered
     })),
-    feed: (S.feed || []).slice(-FEED_KEEP)
+    feed: (S.feed || []).slice(-FEED_KEEP),
+
+    // Said and thrown. Public to the whole table by definition, so both ride
+    // in the shared half with the feed rather than being copied per seat.
+    // msgId travels with them because it is what tells a terminal which of
+    // these it has already seen — the whole state is resent after every
+    // action, so the same emote arrives over and over.
+    chat: (S.chat || []).slice(-CHAT_KEEP),
+    emotes: (S.emotes || []).slice(-EMOTE_KEEP),
+    // Cards in flight. The same for every seat — a robbery travels face down
+    // for everybody, including the two people who can see it in their own
+    // hands — so it rides in the shared half too. Without this, only the
+    // browser running the game ever watched anything move.
+    fx: (S.fx || []).slice(-FX_KEEP),
+    msgId: S.msgId || 0
   };
 }
 
@@ -264,6 +279,7 @@ function applyGame(b){
   S.players.forEach((p, i) => {
     const q = ps[i]; if (!q) return;
     if (q.name) p.name = q.name;
+    p.avatar = q.avatar || "";
     p.res = Object.assign({ wood:0, brick:0, sheep:0, wheat:0, ore:0 }, q.res);
     p.cards = arr(q.cards, (q.cards && q.cards.length) || 0).filter(Boolean);
     p.knights = q.knights || 0; p.skipTokens = q.skipTokens || 0;
@@ -299,10 +315,16 @@ function applyGame(b){
   S.journal = arr(b.journal, (b.journal && b.journal.length) || 0).filter(Boolean)
                 .map(e => Object.assign({ payload:null, card:null }, e));
   S.feed = arr(b.feed, (b.feed && b.feed.length) || 0).filter(Boolean);
+  S.chat = arr(b.chat, (b.chat && b.chat.length) || 0).filter(Boolean);
+  S.emotes = arr(b.emotes, (b.emotes && b.emotes.length) || 0).filter(Boolean);
+  S.fx = arr(b.fx, (b.fx && b.fx.length) || 0).filter(Boolean)
+           .map(f => Object.assign({}, f, { src: f.src ? arr(f.src, f.src.length).filter(Boolean) : null }));
+  S.msgId = b.msgId || 0;
 
   NET.roster = arr(b.roster, b.n).map((r, i) => r || { seat:i, name: PLAYER_NAMES[i], bot:true });
 
   drawFeedFromState();
+  if (typeof drawChat === "function") drawChat();
   if (typeof mirrorClocks === "function") mirrorClocks();
 }
 
@@ -331,9 +353,13 @@ function publish(){
   // The log and the feed are the same for everyone — they ARE the public
   // record — so they go out once rather than six near-identical times. They
   // are also most of the bytes, which is the practical reason.
-  const pub = { journal: blob.journal, feed: blob.feed };
+  const pub = { journal: blob.journal, feed: blob.feed,
+                chat: blob.chat, emotes: blob.emotes, fx: blob.fx, msgId: blob.msgId };
   delete blob.journal;
   delete blob.feed;
+  delete blob.chat;
+  delete blob.emotes;
+  delete blob.fx;
 
   const out = {};
   for (let s = 0; s < blob.n; s++) out[s] = clean(viewFor(blob, s));
@@ -382,6 +408,13 @@ function handleIntent(m){
     case "drop":        applyRemoteDrop(seat, a[0], a[1], a[2]); break;
     case "modalBtn":    remoteModalButton(seat, a[0], a[1]); break;
     case "modalCall":   remoteModalCall(seat, a[0], a[1]); break;
+    // Talking is not taking a turn: these three are legal from anybody at any
+    // time, which is the whole point of them. Both pushes re-check what they
+    // were handed — a message is escaped before it is drawn, and an emote has
+    // to be one of the eighteen in the tray.
+    case "chat":        pushChat(seat, a[0]); break;
+    case "emote":       pushEmote(seat, a[0]); break;
+    case "avatar":      setSeatAvatar(seat, a[0]); break;
   }
   } finally { window.__netApplying = false; }
   render();
@@ -577,9 +610,19 @@ function seatRowsHTML(){
   let h = '<div class="rules" style="margin:8px 0 4px">Seats</div>';
   for (let i = 0; i < NET.roster.length; i++){
     const r = NET.roster[i] || {};
-    h += '<div class="artrow"><span class="dot" style="background:' + PLAYER_COLORS[i] +
-         ';display:inline-block;width:10px;height:10px;border-radius:50%"></span>' +
-         '<span class="f">' + esc(r.name || PLAYER_NAMES[i]) + (r.bot ? " (bot)" : "") +
+    const nm = r.name || PLAYER_NAMES[i];
+    // Resolved against THIS browser's art folder: an id names a picture, not a
+    // file, so somebody who has not got that file sees the initial instead of
+    // a broken image. Nobody has to have the same art as anybody else.
+    const src = (typeof avatarSrc === "function") ? avatarSrc(r.av) : null;
+    h += '<div class="artrow">' +
+         '<span class="avnow" style="width:26px;height:26px;border-width:2px;border-color:' +
+           PLAYER_COLORS[i] + '">' +
+           (src ? '<img src="' + src + '" alt="">'
+                : '<span class="none" style="font-size:12px">' +
+                  esc(initialOf(nm)) + '</span>') +
+         '</span>' +
+         '<span class="f">' + esc(nm) + (r.bot ? " (bot)" : "") +
          (i === NET.seat ? " ← you" : "") + "</span></div>";
   }
   return h;
@@ -606,7 +649,12 @@ function startTable(){
     const humans = NET.roster.map((r, i) => r.bot ? -1 : i).filter(i => i >= 0);
     window.AI.enable(humans);
   }
-  S.players.forEach((p, i) => { if (NET.roster[i] && !NET.roster[i].bot) p.name = NET.roster[i].name; });
+  S.players.forEach((p, i) => {
+    const r = NET.roster[i];
+    if (!r || r.bot) return;                  // bots keep the face newGame dealt them
+    p.name = r.name;
+    p.avatar = r.av || "";
+  });
   beginSetupStep();
   publish();
 }
@@ -651,7 +699,7 @@ function guestLobby(){
   refresh();
 }
 
-function startHost(n, name){
+function startHost(n, name, av){
   dropLocalGame();
   connect();
   NET.role = "host"; NET.on = true; NET.dead = null;
@@ -659,7 +707,7 @@ function startHost(n, name){
   NET.room = NET.db.ref("rooms/" + NET.code);
   NET.roster = [];
   for (let i = 0; i < n; i++) NET.roster.push({ seat:i, name: PLAYER_NAMES[i], bot: i !== 0 });
-  NET.roster[0] = { seat:0, name: name, bot:false, uid: NET.uid };
+  NET.roster[0] = { seat:0, name: name, bot:false, uid: NET.uid, av: av || "" };
 
   NET.room.set(clean({ meta: { host: NET.uid, n: n, started: false, at: Date.now() },
                        seats: NET.roster }));
@@ -672,7 +720,8 @@ function startHost(n, name){
     let seat = NET.roster.findIndex(r => r.uid === j.uid);
     if (seat < 0) seat = NET.roster.findIndex(r => r.bot);
     if (seat < 0) return;                                   // table is full
-    NET.roster[seat] = { seat: seat, name: j.name || PLAYER_NAMES[seat], bot:false, uid: j.uid };
+    NET.roster[seat] = { seat: seat, name: j.name || PLAYER_NAMES[seat], bot:false,
+                         uid: j.uid, av: typeof j.av === "string" ? j.av.slice(0, 40) : "" };
     NET.room.child("seats").set(clean(NET.roster));
     if (NET.onRoster) NET.onRoster();
   });
@@ -686,7 +735,7 @@ function startHost(n, name){
   hostLobby();
 }
 
-function startGuest(code, name){
+function startGuest(code, name, av){
   dropLocalGame();
   connect();
   NET.role = "guest"; NET.on = true; NET.dead = null;
@@ -701,7 +750,7 @@ function startGuest(code, name){
         'letters matter.</p>', [{ label:"Back", cls:"primary", fn: onlineDialog }]);
       return;
     }
-    NET.room.child("join").push(clean({ uid: NET.uid, name: name }));
+    NET.room.child("join").push(clean({ uid: NET.uid, name: name, av: av || "" }));
 
     NET.room.child("seats").on("value", s => {
       NET.roster = arr(s.val(), (s.val() || []).length) .filter(Boolean);
@@ -721,7 +770,9 @@ function startGuest(code, name){
       NET.started = true;
       if (document.querySelector(".overlay") && NET.shownKind !== "modal") closeModal();
       applyGame(Object.assign({}, NET.lastView,
-                { journal: NET.lastPub.journal, feed: NET.lastPub.feed }));
+                { journal: NET.lastPub.journal, feed: NET.lastPub.feed,
+                  chat: NET.lastPub.chat, emotes: NET.lastPub.emotes,
+                  fx: NET.lastPub.fx, msgId: NET.lastPub.msgId }));
       render();
     };
     NET.room.child("pub").on("value", s => { NET.lastPub = s.val() || {}; tryApply(); });
@@ -803,41 +854,65 @@ window.onlineDialog = function(){
   }
 
   const saved = (function(){ try { return localStorage.getItem("ec_name") || ""; } catch(e){ return ""; } })();
-  const body =
-    '<p class="sub">One browser hosts and runs the game; everyone else joins with the room code. ' +
-    'Up to six seats, and any seat nobody takes is played by a bot.</p>' +
-    '<div class="counter"><span class="lbl">Your name</span>' +
-    '<input id="netName" maxlength="14" value="' + esc(saved) + '" placeholder="Josh" ' +
-    'style="flex:1;background:#0004;border:1px solid var(--line);border-radius:5px;color:var(--ink);' +
-    'padding:5px 8px;font:inherit"></div>' +
-    '<div class="counter"><span class="lbl">Room code to join</span>' +
-    '<input id="netCode" maxlength="4" placeholder="ABCD" ' +
-    'style="width:110px;background:#0004;border:1px solid var(--line);border-radius:5px;color:var(--ink);' +
-    'padding:5px 8px;font:inherit;text-transform:uppercase;letter-spacing:3px"></div>' +
-    '<div class="rules" style="margin-top:10px">To host instead, leave the code blank and pick how ' +
-    'many seats the table has.</div>' +
-    '<div class="pick" style="margin-top:6px">' +
-    [2,3,4,5,6].map(n => '<button onclick="window.__hostN(' + n + ')">Host ' + n + ' seats</button>').join("") +
-    "</div>";
 
-  openModal("Play online", body, [
-    { label:"Cancel", fn: closeModal },
-    { label:"Join room", cls:"primary", fn: () => {
-        const name = (document.getElementById("netName").value || "Player").trim().slice(0, 14);
-        const code = (document.getElementById("netCode").value || "").trim().toUpperCase();
-        if (code.length !== 4){ hint("A room code is four letters."); return; }
-        try { localStorage.setItem("ec_name", name); } catch(e){}
-        closeModal();
-        startGuest(code, name);
-      } }
-  ]);
+  // Typed so far, so that picking a picture — which redraws the dialog — does
+  // not throw away a half-typed name or room code.
+  let typedName = saved, typedCode = "";
+  const readFields = () => {
+    const n = document.getElementById("netName"), c = document.getElementById("netCode");
+    if (n) typedName = n.value;
+    if (c) typedCode = c.value;
+  };
+  const theName = () => (typedName || "Player").trim().slice(0, 14) || "Player";
+
+  const refresh = function(){
+    const body =
+      '<p class="sub">One browser hosts and runs the game; everyone else joins with the room code. ' +
+      'Up to six seats, and any seat nobody takes is played by a bot.</p>' +
+      '<div class="counter" style="gap:10px"><span class="lbl">You</span>' +
+      (typeof avatarNowHTML === "function" ? avatarNowHTML(MY_AVATAR) : "") +
+      '<input id="netName" maxlength="14" value="' + esc(typedName) + '" placeholder="Josh" ' +
+      'style="flex:1;background:#0004;border:1px solid var(--line);border-radius:5px;color:var(--ink);' +
+      'padding:5px 8px;font:inherit"></div>' +
+      (typeof avatarGridHTML === "function" ? avatarGridHTML(MY_AVATAR) : "") +
+      '<div class="counter" style="margin-top:8px"><span class="lbl">Room code to join</span>' +
+      '<input id="netCode" maxlength="4" placeholder="ABCD" value="' + esc(typedCode) + '" ' +
+      'style="width:110px;background:#0004;border:1px solid var(--line);border-radius:5px;color:var(--ink);' +
+      'padding:5px 8px;font:inherit;text-transform:uppercase;letter-spacing:3px"></div>' +
+      '<div class="rules" style="margin-top:10px">To host instead, leave the code blank and pick how ' +
+      'many seats the table has.</div>' +
+      '<div class="pick" style="margin-top:6px">' +
+      [2,3,4,5,6].map(n => '<button onclick="window.__hostN(' + n + ')">Host ' + n + ' seats</button>').join("") +
+      "</div>";
+
+    openModal("Play online", body, [
+      { label:"Cancel", fn: closeModal },
+      { label:"Join room", cls:"primary", fn: () => {
+          readFields();
+          const code = (typedCode || "").trim().toUpperCase();
+          if (code.length !== 4){ hint("A room code is four letters."); return; }
+          const name = theName();
+          try { localStorage.setItem("ec_name", name); } catch(e){}
+          closeModal();
+          startGuest(code, name, MY_AVATAR);
+        } }
+    ]);
+  };
+
+  window.__avPick = function(id){ readFields(); setMyAvatar(id); refresh(); };
 
   window.__hostN = function(n){
-    const name = (document.getElementById("netName").value || "Player").trim().slice(0, 14);
+    readFields();
+    const name = theName();
     try { localStorage.setItem("ec_name", name); } catch(e){}
     closeModal();
-    startHost(n, name);
+    startHost(n, name, MY_AVATAR);
   };
+
+  // The art folder is probed asynchronously, so a dialog opened in the first
+  // moment can be showing an empty picker when the pictures land.
+  window.__avRefresh = function(){ readFields(); refresh(); };
+  refresh();
 };
 
 /* ══ hooks the game asks about ══════════════════════════════════════════ */

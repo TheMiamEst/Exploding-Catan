@@ -52,72 +52,151 @@
     display:flex; gap:8px; padding:8px 10px; background:var(--panel);
     border-bottom:1px solid var(--line); flex:0 0 auto; overflow-x:auto;
   }
-  /* Tinted with the seat's own colour, and with a solid bar down the left,
-     so you can tell who is who at a glance however people rename themselves.
-     The colours arrive as custom properties rather than a plain inline style
-     so that .active can still take the border over for whose turn it is. */
+  /* Laid out the way Catan Universe lays its player box out, because that is
+     an arrangement most people at this table already know how to read: the
+     portrait on the left with the score in a ring over its corner, what is in
+     the hand hanging underneath it, the name across the top of the right
+     column and what is on the board hanging under that.
+
+     A grid rather than two nested columns, so the short-screen layout can
+     fold the same four boxes into two rows without the markup changing. */
   .pcard{
-    flex:1 1 0; min-width:128px; border-radius:8px; padding:7px 9px;
+    flex:1 1 0; min-width:154px; border-radius:8px; padding:5px 8px;
     background:var(--pcTint, var(--panel2));
     border:1px solid var(--pcEdge, var(--line));
     border-left:5px solid var(--pc, var(--line));
+    display:grid; gap:4px 8px; align-items:center;
+    grid-template-columns:auto minmax(0,1fr);
+    grid-template-areas:
+      "av   name"
+      "hand board"
+      "rev  rev";
   }
   .pcard.active{
     border-color:var(--accent); border-left-color:var(--pc);
     box-shadow:0 0 0 2px var(--accent) inset;
   }
   .pcard.done{opacity:.55}
-  .pcard .phead{display:flex; align-items:center; gap:6px; margin-bottom:6px}
-  .pcard .pname{font-weight:600; font-size:13px; flex:1; white-space:nowrap;
-                overflow:hidden; text-overflow:ellipsis; min-width:0}
-  .pcard .you{font-size:9px; color:var(--accent); border:1px solid var(--accent);
-              border-radius:3px; padding:0 3px; letter-spacing:.3px; flex:0 0 auto}
+
+  /* ── The portrait ────────────────────────────────────────────────────
+     Ringed in the seat's own colour, which is the whole reason the coloured
+     dot that used to sit here can go: six people who have all picked the same
+     cat are still six different colours. */
+  .avwrap{
+    grid-area:av; position:relative; width:50px; height:50px; border-radius:50%;
+    border:2px solid var(--pc, var(--line)); background:#0b0d10;
+    box-shadow:0 2px 8px #0008;
+  }
+  .avwrap .avin{
+    position:absolute; inset:0; border-radius:50%; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .avwrap img{width:100%; height:100%; object-fit:cover; display:block}
+  /* Nobody picked a picture: their initial on the seat colour, which still
+     reads as a face-shaped thing at a glance. */
+  .avwrap .avinit{
+    width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+    font-size:21px; font-weight:700; color:#0e1116; background:var(--pc, #4a5668);
+  }
+  /* Yours, and therefore yours to change. */
+  .avwrap.mine{cursor:pointer}
+  .avwrap.mine:hover{border-color:var(--accent)}
+  .avwrap.mine:hover .avin{filter:brightness(1.15)}
+
+  /* Points ride the top-left corner of the portrait. They are the score — the
+     one number on this card that says who is winning — and lined up as a fifth
+     identical box among roads and knights they read as trivia. */
+  .vpring{
+    position:absolute; top:-5px; left:-7px; z-index:2;
+    width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:700; font-variant-numeric:tabular-nums;
+    color:#161a20; background:var(--accent);
+    box-shadow:0 1px 5px #0007, 0 0 0 2px #151a22;
+  }
+  /* Your own, with the Feral Kittens counted in — see vpStat. */
+  .vpring.hidden{ box-shadow:0 1px 5px #0007, 0 0 0 2px #151a22, 0 0 0 4px #e2b33c66 }
+
+  /* An emoji somebody just threw, sitting on the far corner from the score.
+     One animation carries the whole life of it — in, hold, out — so nothing
+     has to time the fade; the element is simply removed once it has run. */
+  .emote{
+    position:absolute; top:-13px; right:-13px; z-index:3;
+    width:38px; height:38px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:21px; line-height:1; pointer-events:none;
+    background:#0b0d10f2; border:2px solid var(--pc, var(--line));
+    box-shadow:0 4px 14px #000b;
+    /* 3400ms is EMOTE_MS in the script, and the two have to agree: the script
+       resumes a bubble caught mid-life with a negative animation-delay, which
+       lands in the wrong place if this duration is not the one it measured
+       against. */
+    animation:emotepop 3400ms cubic-bezier(.2,.9,.3,1) forwards;
+  }
+  @keyframes emotepop{
+    0%  {transform:translateY(8px) scale(.2); opacity:0}
+    8%  {transform:translateY(-3px) scale(1.18); opacity:1}
+    16% {transform:none; opacity:1}
+    84% {transform:none; opacity:1}
+    100%{transform:translateY(-10px) scale(.85); opacity:0}
+  }
+
+  .pcard .pname{
+    grid-area:name; align-self:center; font-weight:600; font-size:13px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
+    display:flex; align-items:center; gap:5px;
+  }
+  .pcard .pname .nm{overflow:hidden; text-overflow:ellipsis}
   .pcard .pskip{font-size:10px; color:var(--danger); border:1px solid var(--danger);
                 border-radius:4px; padding:0 4px; flex:0 0 auto}
 
-  /* Points sit beside the name in a ring of their own. They are the score —
-     the one number on this card that says who is winning — and lined up as a
-     sixth identical box among roads and knights they read as trivia. */
-  .vpring{
-    flex:0 0 auto; width:25px; height:25px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-size:14px; font-weight:700; font-variant-numeric:tabular-nums;
-    color:#161a20; background:var(--accent); box-shadow:0 1px 5px #0007;
-  }
-  /* Your own, with the Feral Kittens counted in — see vpStat. */
-  .vpring.hidden{ box-shadow:0 1px 5px #0007, 0 0 0 2px #e2b33c66 }
-
-  /* Two groups, not five boxes in a row: what is in your hand, and what is on
+  /* Two pills, not five boxes in a row: what is in the hand, and what is on
      the board. Reading a seat card should be a glance at two things. */
-  .stats{display:flex; gap:6px}
+  /* Both pills are as wide as their two counters and no wider, so the one
+     under the name does not stretch to the card and dwarf the one under the
+     portrait. They end up the same size, which is the point. */
   .statgroup{
-    flex:1 1 0; display:flex; min-width:0;
+    display:flex; min-width:0; align-self:start; justify-self:start;
     background:#0004; border:1px solid var(--line); border-radius:6px; overflow:hidden;
   }
+  .statgroup.hand{grid-area:hand; min-width:50px}
+  .statgroup.board{grid-area:board}
   .statgroup .stat + .stat{ border-left:1px solid var(--line) }
-  .stat{ flex:1 1 0; padding:3px 0; text-align:center; min-width:0 }
-  .stat b{display:block; font-size:14px; line-height:1.15; font-variant-numeric:tabular-nums}
+  .stat{
+    flex:1 1 0; min-width:27px; padding:1px 3px;
+    display:flex; align-items:center; justify-content:center; gap:3px;
+  }
+  .stat b{font-size:13px; line-height:1.15; font-variant-numeric:tabular-nums}
   /* Icons rather than three-letter labels: at this size "Rd" and "Res" read
      as noise, and a glyph is taken in without being read. Each stat keeps its
      title attribute, so hovering still names it. */
-  .stat svg{display:block; margin:2px auto 0; width:13px; height:13px;
+  .stat svg{flex:0 0 auto; width:12px; height:12px;
             fill:none; stroke:var(--dim); stroke-width:1.7;
             stroke-linecap:round; stroke-linejoin:round}
   /* Longest Road and Largest Army are the same kind of thing — two points for
      holding something nobody else can — so they light the same gold. */
   .stat.holds b{color:var(--accent)}
   .stat.holds svg{stroke:var(--accent)}
-  .reveal{margin-top:6px; display:flex; flex-wrap:wrap; gap:3px}
+  .reveal{grid-area:rev; display:flex; flex-wrap:wrap; gap:3px}
   .revcard{
     font-size:9.5px; border:1px solid var(--line); border-radius:4px;
     padding:1px 4px; background:#0004; color:var(--ink); white-space:nowrap;
+  }
+
+  /* The coloured seat dot, used in the log, in trade offers and in the "who is
+     thinking" line. It carries its own colour inline. */
+  .dot{
+    display:inline-block; flex:0 0 auto; width:9px; height:9px;
+    border-radius:50%; box-shadow:0 0 0 1px #0006;
   }
 
   /* ── Stage (board + floating overlays) ───────────────────────────── */
   #stage{flex:1; position:relative; min-height:0; padding:6px}
   #boardArea{position:absolute; inset:6px}
   svg{width:100%; height:100%; touch-action:none; display:block}
-  #leftbtns{position:absolute; left:10px; top:10px; z-index:5; display:flex; gap:6px}
+  /* Above the panels, so the emoji tray hanging off these buttons is not
+     drawn under an open trade. */
+  #leftbtns{position:absolute; left:10px; top:10px; z-index:7; display:flex; gap:6px}
   #leftbtns button{white-space:nowrap}
   /* Sits under the dice, which share this right edge — the offset has to
      clear their full height or the two overlap. */
@@ -171,6 +250,97 @@
   #feed::-webkit-scrollbar{width:0; height:0}
   #feed.hidden{display:none}
   #leftbtns button.on{background:#2f5d3a; border-color:#4d8a5f}
+  /* Somebody said something while the window was shut. */
+  #chatBtn{position:relative}
+  #chatBtn .unread{
+    position:absolute; top:-7px; right:-7px; min-width:16px; height:16px; padding:0 4px;
+    border-radius:9px; background:var(--danger); color:#fff;
+    font-size:10px; font-weight:700; line-height:16px; text-align:center;
+    box-shadow:0 1px 4px #0009;
+  }
+
+  /* ── Chat ────────────────────────────────────────────────────────────
+     Shares the left column with the log rather than floating over it: with
+     the window open the log gives up the bottom of the column and keeps the
+     top, so nothing you were reading is covered by what somebody typed.
+     One height, named once, because both rules have to agree on it. */
+  #stage{--chatH:min(300px, 42%)}
+  #chatbox{
+    position:absolute; left:10px; bottom:8px; z-index:6;
+    width:clamp(200px, 21%, 300px); height:var(--chatH);
+    display:none; flex-direction:column; overflow:hidden;
+    background:#151a22f2; border:1px solid var(--line); border-radius:8px;
+    box-shadow:0 10px 30px #000a; backdrop-filter:blur(3px);
+  }
+  body.haschat #chatbox{display:flex}
+  body.haschat #feed{bottom:calc(var(--chatH) + 16px)}
+  #chatlog{
+    flex:1 1 auto; min-height:0; overflow-y:auto; scrollbar-width:none;
+    padding:7px 8px; display:flex; flex-direction:column; gap:5px;
+  }
+  #chatlog::-webkit-scrollbar{width:0}
+  /* Bottom-aligned the same way the log is, so a near-empty chat sits down by
+     the box you type into instead of floating at the top of nothing. */
+  #chatlog > *:first-child{margin-top:auto}
+  .msg{
+    font-size:12px; line-height:1.4; word-break:break-word;
+    border-left:3px solid var(--mc, var(--line)); padding-left:6px;
+  }
+  .msg .who{font-weight:700; color:var(--mc, var(--ink)); margin-right:5px}
+  .msg.sys{border-left-color:#0000; color:var(--dim); font-style:italic; font-size:11px}
+  #chatrow{
+    flex:0 0 auto; display:flex; gap:5px; padding:6px;
+    border-top:1px solid var(--line); background:#0b0d1099;
+  }
+  #chatin{
+    flex:1 1 auto; min-width:0; background:#0006; border:1px solid var(--line);
+    border-radius:5px; color:var(--ink); padding:5px 7px; font:inherit; font-size:12px;
+  }
+  #chatin:focus{outline:none; border-color:var(--accent)}
+  #chatin:disabled{opacity:.5}
+  #chatrow button{padding:3px 9px; font-size:12px}
+
+  /* ── Emoji tray ──────────────────────────────────────────────────────
+     Hung off the button strip itself rather than positioned against the
+     board, so it follows the buttons when a narrow screen stacks them. */
+  #emojiTray{
+    position:absolute; top:calc(100% + 6px); left:0; z-index:7;
+    display:none; grid-template-columns:repeat(6, 1fr); gap:4px;
+    width:max-content; max-width:min(272px, 74vw); padding:7px;
+    background:#151a22f2; border:1px solid var(--line); border-radius:8px;
+    box-shadow:0 10px 30px #000a; backdrop-filter:blur(3px);
+  }
+  body.hastray #emojiTray{display:grid}
+  #emojiTray button{
+    font-size:20px; line-height:1; padding:3px 5px; background:#0004;
+    border:1px solid #0000; border-radius:6px;
+  }
+  #emojiTray button:hover:not(:disabled){background:#2d3546; border-color:var(--accent)}
+
+  /* ── Picking a portrait ──────────────────────────────────────────── */
+  .avgrid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(54px, 1fr));
+    gap:7px; margin:6px 0 2px; padding:2px;
+    max-height:242px; overflow-y:auto;
+  }
+  .avopt{
+    width:100%; aspect-ratio:1; padding:0; overflow:hidden;
+    border-radius:50%; border:2px solid var(--line); background:#0b0d10;
+  }
+  .avopt img{width:100%; height:100%; object-fit:cover; display:block}
+  .avopt .none{
+    width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+    color:var(--dim); font-size:10.5px; letter-spacing:.3px;
+  }
+  .avopt.on{border-color:var(--accent); box-shadow:0 0 0 3px #e2b33c33}
+  /* The chosen one, shown large beside the name field it belongs to. */
+  .avnow{
+    width:54px; height:54px; border-radius:50%; overflow:hidden; flex:0 0 auto;
+    border:2px solid var(--accent); background:#0b0d10;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .avnow img{width:100%; height:100%; object-fit:cover; display:block}
+  .avnow .none{color:var(--dim); font-size:20px; font-weight:700}
   .ev{
     background:#151a22ee; border:1px solid #ffffff14; border-left:4px solid var(--line);
     border-radius:6px; padding:6px 9px; font-size:12.5px; line-height:1.4;
@@ -422,12 +592,20 @@
     #zoomWrap{top:80px}
     #feed{width:150px}
     .ev{font-size:11px; padding:4px 6px}
-    #leftbtns{flex-direction:column}
+    /* Four buttons, not two. Stacked into a column they ran down past the top
+       of the log and sat on it; wrapped into two rows of two they are the same
+       height the pair used to be, so the log keeps its start. */
+    #leftbtns{flex-wrap:wrap; max-width:190px}
     #feed{top:78px}
   }
   @media (max-width:820px){
-    .pcard{min-width:132px}
+    .pcard{min-width:140px; gap:4px 6px}
     .pcard .pname{font-size:12px}
+    .avwrap{width:46px; height:46px}
+    .avwrap .avinit{font-size:19px}
+    .vpring{width:21px; height:21px; font-size:11.5px}
+    .emote{width:32px; height:32px; font-size:17px; top:-11px; right:-11px}
+    .statgroup.hand{min-width:46px}
     .stat b{font-size:12.5px}
     .slot,.kcard{width:44px; height:60px}
   }
@@ -652,6 +830,16 @@
     box-shadow:0 1px 4px #0009;
   }
   .pick.tight .ct.off{display:none}
+  /* Take one back out. A span rather than a button because it lives inside
+     one, and its click is stopped from reaching the button underneath — which
+     would otherwise put the card straight back in. Only drawn when there is
+     something to take back, so it never sits there doing nothing. */
+  .pick.tight .ct.minus{
+    right:auto; left:-4px; top:-6px; padding:0 5px;
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    font-size:11px; line-height:1.3; cursor:pointer;
+  }
+  .pick.tight .ct.minus:hover{border-color:var(--accent); color:var(--accent)}
   .pick.tight .swatch{width:8px; height:8px; border-radius:2px}
   .panel .stack{font-size:12.5px}
   /* An offer should be judgeable at a glance, so the resources are chips in
@@ -738,6 +926,12 @@
   table.trade td{padding:3px 4px}
   .warnbox{background:#4a2020; border:1px solid #7a3535; border-radius:6px; padding:8px 10px; font-size:12.5px; margin:8px 0}
   .okbox{background:#1f3a28; border:1px solid #3a6b47; border-radius:6px; padding:8px 10px; font-size:12.5px; margin:8px 0}
+  /* One line of a list inside a dialog: a marker, then the thing. Used by
+     the art audit and by the seat list in the online lobby. */
+  .artrow{display:flex; align-items:center; gap:8px; padding:2px 0; font-size:12.5px}
+  .artrow .f{flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis}
+  .artrow .ok{color:#7fc48f; flex:0 0 auto}
+  .artrow .no{color:var(--dim); flex:0 0 auto}
   .rules{font-size:12.5px; color:var(--dim)}
   .rules h4{color:var(--ink); margin:12px 0 4px; font-size:13px}
   .rules ul{margin:4px 0; padding-left:18px}
@@ -761,22 +955,28 @@
     button.sm{padding:2px 6px; font-size:11px}
     #verTag, #modeTag{font-size:9px}
 
-    /* The seat card folds onto ONE row: name and score on the left, the two
-       groups on the right. Stacked, four of these ate a sixth of the screen. */
+    /* The seat card folds onto TWO rows beside the portrait rather than three
+       down the card: the name across the top, both pills under it. Stacked,
+       four of these ate a sixth of the screen. Same four boxes, same order,
+       re-parcelled — which is why the card is a grid and not nested columns. */
     #players{padding:3px 5px; gap:5px}
     .pcard{
       padding:3px 5px; border-left-width:4px; border-radius:6px; min-width:0;
-      display:flex; align-items:center; gap:5px;
+      gap:2px 5px;
+      grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);
+      grid-template-areas:
+        "av name name"
+        "av hand board";
     }
-    .pcard .phead{margin:0; flex:1 1 auto; min-width:26px; gap:4px}
-    .pcard .pname{font-size:11px}
-    .pcard .you{display:none}         /* the border already says which is yours */
-    .vpring{width:19px; height:19px; font-size:11px}
-    .stats{flex:0 0 auto; gap:4px}
-    .statgroup{flex:0 0 auto}
-    .stat{padding:1px 3px; min-width:21px}
+    .avwrap{width:38px; height:38px; border-width:2px}
+    .avwrap .avinit{font-size:16px}
+    .vpring{width:18px; height:18px; font-size:10.5px; top:-6px; left:-7px}
+    .emote{width:26px; height:26px; font-size:14px; top:-9px; right:-9px}
+    .pcard .pname{font-size:11px; align-self:center}
+    .statgroup.hand{min-width:0}
+    .stat{padding:0 3px; min-width:21px}
     .stat b{font-size:11.5px; line-height:1.1}
-    .stat svg{width:11px; height:11px; margin:0 auto}
+    .stat svg{width:11px; height:11px}
     .reveal{display:none}             /* the standings table has the same thing */
 
     #stage{padding:3px}
@@ -799,7 +999,16 @@
     .dicesum{font-size:16px; padding:3px 8px}
     #feed{top:34px; width:132px}
     .ev{font-size:10px; padding:3px 5px}
-    #leftbtns{top:6px; left:6px}
+    /* Wide and short: there is room across the top for all four on one line,
+       and no height to spare for a second row. */
+    #leftbtns{top:6px; left:6px; flex-wrap:nowrap; max-width:none}
+    /* Chat takes a bigger share of a short column, or it is two lines deep. */
+    #stage{--chatH:min(190px, 54%)}
+    #chatbox{width:clamp(160px, 24%, 240px); left:6px; bottom:4px}
+    .msg{font-size:11px}
+    #chatin{font-size:11px; padding:4px 6px}
+    #emojiTray{grid-template-columns:repeat(5, 1fr); padding:5px}
+    #emojiTray button{font-size:17px; padding:2px 4px}
 
     /* The panels get the whole height they can, and each one scrolls inside
        itself with its buttons pinned to the bottom — on a short screen the
@@ -860,8 +1069,19 @@
   <div id="leftbtns">
     <button class="sm on" id="logBtn" onclick="toggleFeed()">Game log</button>
     <button class="sm" onclick="showDice()">Dice history</button>
+    <button class="sm" id="chatBtn" onclick="toggleChat()">Chat</button>
+    <button class="sm" id="emojiBtn" onclick="toggleEmojiTray()">Emoji</button>
+    <div id="emojiTray"></div>
   </div>
   <div id="feed"></div>
+  <div id="chatbox">
+    <div id="chatlog"></div>
+    <div id="chatrow">
+      <input id="chatin" maxlength="140" placeholder="Say something…" autocomplete="off"
+             onkeydown="chatKey(event)">
+      <button onclick="sendChatFromInput()">Send</button>
+    </div>
+  </div>
 </div>
 
 <div id="hintbar"></div>
@@ -881,7 +1101,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-27d";
+const GAME_VERSION = "2026-08-27f";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -990,9 +1210,16 @@ const TARGETED = new Set(["skip","explode","attack","favor"]);
    it shut before a human could reach for a card. */
 let AI_PACE = 3000;         // ms between visible bot actions
 const ART_DIR = "art/";
-const ART = { hex:{}, res:{}, piece:{}, token:{}, card:{} };
+const ART = { hex:{}, res:{}, piece:{}, token:{}, card:{}, avatar:{} };
 const ART_MANIFEST = [];
 let artLoaded = 0, artTotal = 0;
+
+/* How many avatar-N.png files are looked for. They are OPTIONAL in a way
+   nothing else in the folder is: with none of them the portrait picker
+   still has the whole card set to offer, so they are probed and not
+   counted, and their 404s are not a missing file so much as a question
+   nobody answered. */
+const AVATAR_FILES = 12;
 
 function buildArtManifest(){
   for (const t of RES.concat(["desert"]))
@@ -1014,7 +1241,12 @@ function buildArtManifest(){
     ART_MANIFEST.push({ kind:"card", key:"knight-" + slug, file:`card-knight-${slug}.png` });
   }
   ART_MANIFEST.push({ kind:"card", key:"back", file:"card-back.png" });
-  artTotal = ART_MANIFEST.length;
+  // Portraits, if anybody drew any. Optional, so they stay out of the "N of M
+  // found" count — otherwise an art folder with every real file in it would
+  // still report itself twelve short.
+  for (let i = 1; i <= AVATAR_FILES; i++)
+    ART_MANIFEST.push({ kind:"avatar", key:String(i), file:`avatar-${i}.png`, optional:true });
+  artTotal = ART_MANIFEST.filter(a => !a.optional).length;
 }
 
 /* Probing with <img> rather than fetch() on purpose: fetch() is blocked by
@@ -1025,7 +1257,9 @@ function preloadArt(done){
   let pending = ART_MANIFEST.length;
   for (const a of ART_MANIFEST){
     const img = new Image();
-    img.onload  = () => { ART[a.kind][a.key] = a.file; artLoaded++; if (!--pending) done(); };
+    img.onload  = () => { ART[a.kind][a.key] = a.file;
+                          if (!a.optional) artLoaded++;
+                          if (!--pending) done(); };
     img.onerror = () => { ART[a.kind][a.key] = null;              if (!--pending) done(); };
     img.src = ART_DIR + a.file;
   }
@@ -1040,6 +1274,81 @@ function knightArtKey(c){
 }
 function cardArt(c){
   return c.key === "knight" ? art("card", knightArtKey(c)) : art("card", c.key);
+}
+
+/* ── Portraits ────────────────────────────────────────────────────────
+   A player's picture is a short id rather than a filename, so it can travel
+   between browsers running different art folders and be resolved against
+   whatever each one actually has: "a:3" is avatar-3.png, "c:defuse" is the
+   Defuse card's face, "h:wood" a wood tile. An id that resolves to nothing
+   falls back to the initial on the seat colour, which is what everybody has
+   before they pick anything and what an empty art folder leaves them with. */
+const AV_KIND = { a:"avatar", c:"card", h:"hex", r:"res" };
+
+function avatarSrc(id){
+  if (!id || typeof id !== "string" || id[1] !== ":") return null;
+  const kind = AV_KIND[id[0]];
+  return kind ? art(kind, id.slice(2)) : null;
+}
+
+/* Everything the folder can offer, best first: purpose-drawn portraits, then
+   the kitten faces (which every art folder already has), then the terrain.
+   Card backs are left out — a picture of the back of a card is not a face. */
+function avatarPool(){
+  const out = [];
+  for (let i = 1; i <= AVATAR_FILES; i++)
+    if (ART.avatar[String(i)]) out.push("a:" + i);
+  for (const k in ART.card) if (ART.card[k] && k !== "back") out.push("c:" + k);
+  for (const k in ART.hex)  if (ART.hex[k])  out.push("h:" + k);
+  for (const k in ART.res)  if (ART.res[k] && k !== "back") out.push("r:" + k);
+  return out;
+}
+
+/* For the picker's tooltip: what the player is looking at. */
+function avatarLabel(id){
+  if (!id) return "No picture";
+  const key = id.slice(2);
+  if (id[0] === "a") return "Portrait " + key;
+  if (id[0] === "h") return (key === "desert" ? "Desert" : RES_NAME[key] || key) + " tile";
+  if (id[0] === "r") return (RES_NAME[key] || key) + " card";
+  if (key.indexOf("knight-") === 0){
+    const f = KNIGHT_FLAVOR.find(x => x.split(" ")[0].toLowerCase() === key.slice(7));
+    return f || "Knight";
+  }
+  return (KITTEN[key] && KITTEN[key].name) || key;
+}
+
+/* The portrait this browser plays as, remembered so it is picked once and not
+   once a game. Empty means the initial, which is a perfectly good answer. */
+let MY_AVATAR = (function(){
+  try { return localStorage.getItem("ec_avatar") || ""; } catch(e){ return ""; }
+})();
+function setMyAvatar(id){
+  MY_AVATAR = id || "";
+  try { localStorage.setItem("ec_avatar", MY_AVATAR); } catch(e){}
+}
+
+/* Deal the bots faces of their own, all different, and none of them the one
+   the person at the keyboard chose. Called at the start of a game, before
+   anyone knows which seats are bots — the human's seat is written over
+   afterwards by applyMyAvatar. */
+function dealAvatars(players){
+  const pool = avatarPool().filter(id => id !== MY_AVATAR);
+  for (let i = pool.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+  }
+  players.forEach((p, i) => { p.avatar = pool.length ? pool[i % pool.length] : ""; });
+}
+
+/* Whoever is sitting at this screen gets the picture they chose. Run after the
+   bots are switched on, because that is the moment it becomes knowable which
+   seat that is. Online the roster answers it instead — see net.js. */
+function applyMyAvatar(){
+  if (!S) return;
+  const me = S.players[viewSeat()];
+  if (me) me.avatar = MY_AVATAR;
+  render();
 }
 
 let HEX_SIZE = 54;
@@ -1323,12 +1632,13 @@ function newGame(numPlayers, mode){
   const players = [];
   for (let i = 0; i < numPlayers; i++){
     players.push({
-      id: i, name: PLAYER_NAMES[i], color: PLAYER_COLORS[i],
+      id: i, name: PLAYER_NAMES[i], color: PLAYER_COLORS[i], avatar: "",
       res: { wood:0, brick:0, sheep:0, wheat:0, ore:0 },
       cards: [], knights: 0, skipTokens: 0,
       roads: 0, settlements: 0, cities: 0
     });
   }
+  dealAvatars(players);
 
   const desert = hexes.find(h => h.terrain === "desert");   // either one, on the large board
   const first = Math.floor(Math.random() * numPlayers);   // nobody always leads
@@ -1367,6 +1677,10 @@ function newGame(numPlayers, mode){
     implodeBy: null,          // who drew it, so the seal outlives their turn
     implodeUntil: 0,          // wall-clock deadline for that turn
     feed: [],                 // the on-screen event list, so it can be sent online
+    chat: [],                 // what has been said, for the same reason
+    emotes: [],               // emoji thrown recently — see syncEmotes
+    fx: [],                   // cards in flight — see checkFlights
+    msgId: 0,                 // one counter for all three: they are all messages
     rewinds: 0,               // bumped whenever a Nope or Defuse rewinds the board
     log: [],
     winner: null
@@ -1375,9 +1689,11 @@ function newGame(numPlayers, mode){
   closeAllPanels();
   forgetModalFold();
   clearShowcase();
-  lastShowcased = 0;
+  lastShowcased = -1;
   boardWatch = null;
   clearFeed();
+  clearChat();
+  clearFx();
   if (S.mode === "fastplus") dealOpeningKittens();
   logMsg("New game — " + numPlayers + " players. Deck: 54 kitten cards.");
   if (S.mode !== "normal")
@@ -1453,9 +1769,79 @@ function noteGain(p, r, n){
   S.turnRec.gained[r] += n;
 }
 
+/* Where this turn was standing before it started.
+
+   Every recorded action carries the state that preceded it, so the earliest
+   entry of the turn carries exactly that picture. Anything un-Nopeable draws a
+   line under itself and moves the mark forward: the Imploding Kitten says in
+   as many words that not even a cancelled turn undoes it, so the rewind point
+   lands just after it rather than back over it. */
+function turnStartSnap(){
+  let snap = null;
+  for (const e of S.journal){
+    if (e.turn !== S.turnCounter) continue;
+    if (e.nopeable === false){ snap = null; continue; }   // begin again after it
+    if (!snap && e.snap) snap = e.snap;
+  }
+  return snap;
+}
+
+/* Seats whose resources this turn is NOT responsible for: somebody else threw
+   a card during it. An Attack aimed at Green by Blue while Red is playing is
+   Blue's doing and survives Red's turn being cancelled, so neither of them is
+   rewound. Entries with nobody on the other end — a Nope, a roll — move
+   nothing between players and disqualify nobody, which matters: whoever Nopes
+   the turn is very often the player who was exploded during it. */
+function notThisTurnsDoing(ownerId){
+  const out = {};
+  for (const e of S.journal){
+    if (e.turn !== S.turnCounter) continue;
+    if (e.actor === ownerId) continue;
+    if (e.target === null || e.target === undefined) continue;
+    out[e.actor] = 1;
+    out[e.target] = 1;
+  }
+  return out;
+}
+
 function wipeNopedTurn(){
   const p = cur(), rec = S.turnRec;
   const lost = [];
+
+  /* ── what the turn did to everybody ELSE ──
+     A cancelled turn used to strip only what its owner GAINED, and everything
+     it had done to the rest of the table stood: Nope somebody's turn after
+     they threw an Exploding Kitten and the victim's hand was still sitting in
+     the bank. The turn is cancelled, so the damage is cancelled with it.
+
+     Resources and skip tokens only — those are the only things one player's
+     turn takes from another. Kitten hands are deliberately left alone: a Nope
+     or a Defuse somebody spent answering this turn stays spent, which is the
+     rule everywhere else.
+
+     Nothing is conjured. Whatever a victim gets back comes out of the bank,
+     and the owner's own gains go into it a few lines further down — the two
+     halves of the same sum, because the bank is where an exploded hand went. */
+  const start = turnStartSnap();
+  const skip = notThisTurnsDoing(p.id);
+  const given = [];
+  if (start){
+    S.players.forEach((q, i) => {
+      if (i === p.id || skip[i]) return;
+      let back = 0;
+      for (const r of RES){
+        const d = start.res[i][r] - q.res[r];
+        if (!d) continue;
+        q.res[r] = start.res[i][r];
+        S.bank[r] -= d;
+        if (d > 0) back += d;
+      }
+      q.skipTokens = start.skips[i];
+      if (back > 0) given.push(q.name + " " + back);
+    });
+    // A knight moved it, and the knight is being undone.
+    S.robber = start.robber;
+  }
 
   for (const eid of rec.edges){ edges[eid].owner = null; p.roads--; }
   if (rec.edges.length) lost.push(rec.edges.length + " road" + (rec.edges.length === 1 ? "" : "s"));
@@ -1491,10 +1877,15 @@ function wipeNopedTurn(){
   updateLongestRoad();
   updateLargestArmy();
   announce("🚫 " + pdot(p) + "'s turn is <b>cancelled</b>" +
-           (lost.length ? " — lost " + lost.join(", ") : ""), "big", 5200);
+           (lost.length ? " — lost " + lost.join(", ") : "") +
+           (given.length ? "<br><span style='opacity:.85'>everything it took is handed "
+                           + "back</span>" : ""), "big", 5200);
   logMsg(`<span style="color:#d98b4b"><b>${p.name}</b>'s turn is cancelled — `
        + (lost.length ? "lost " + lost.join(", ") : "nothing to lose")
        + `. Resources already spent are gone too.</span>`);
+  if (given.length)
+    logMsg(`<span style="color:#d98b4b">Cards the turn took are handed back: ` +
+           given.map(esc).join(", ") + `.</span>`);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1675,6 +2066,8 @@ function renderIdle(){
     '<span class="emptyhand">No game running.</span></div><div class="bside right"></div>';
   hint(null);
   drawModeTag();
+  drawChat();
+  closeEmojiTray();
   showIdle(true);
 }
 
@@ -1686,6 +2079,8 @@ function backToIdle(){
   S = null;
   closeAllPanels();
   clearFeed();
+  clearChat();
+  clearFx();
   renderIdle();
 }
 
@@ -1729,11 +2124,15 @@ function render(){
   // taken off this very pass so the animation can bring it in, rather than
   // being drawn and then hidden by a second render a moment later.
   checkBoardChanges();
+  // Before the strip is drawn, not after: a throw that has just arrived wants
+  // to be in this repaint rather than to cause another one.
+  syncEmotes();
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
-  drawModeTag();
+  drawModeTag(); drawChat();
   refreshFeedMarks();
   checkStalePanels();
   checkShowcase();
+  checkFlights();
   // A repaint in the middle of a drag (a bot moving, say) wipes the outlines
   // showing where the card may go. Put them straight back.
   if (dragCard) markDropTargets();
@@ -2143,13 +2542,28 @@ function initBoardControls(){
     if (down && down.moved) window.__panDragged = true;
     down = null;
   };
+  /* Two taps in the same spot mean "put the board back" ONLY on bare board.
+     Building is itself a two-click gesture — the first click arms the spot,
+     the second confirms it — so on anything clickable the double tap was the
+     placement, and treating it as a reset ate the confirming click and put
+     the zoom back instead. Which is why, zoomed in, you could not build at
+     all: every attempt reset the view, and only then did the next pair of
+     clicks land. Anything carrying an onclick is a hit target; the board
+     behind them is not, and still resets. */
+  const onHitTarget = function(e){
+    const t = e.target;
+    if (!t || !t.closest) return false;
+    if (S && S.armed) return true;             // a spot is waiting to be confirmed
+    return !!t.closest("[onclick]");
+  };
+
   svg.addEventListener("pointerup", function(e){
     // Two quick taps in the same spot put the board back where it started.
     // Without a way out, a stray pinch or a fat-fingered zoom left you stuck
     // at 2x with only a 30px minus button to climb back down.
     const now = Date.now();
     const near = lastTapAt && Math.hypot(e.clientX - lastTapAt.x, e.clientY - lastTapAt.y) < 34;
-    if (!(down && down.moved) && !pinch && near && now - lastTap < 320){
+    if (!(down && down.moved) && !pinch && near && now - lastTap < 320 && !onHitTarget(e)){
       lastTap = 0; lastTapAt = null;
       if (S && ((S.zoom || 1) > 1.001 || S.panX || S.panY)){
         window.__panDragged = true;              // a reset is not a placement
@@ -2210,6 +2624,29 @@ function drawModeTag(){
   if (m){ el.textContent = m.name; el.title = m.blurb; }
 }
 
+/* The first letter of a name, for a seat with no picture. Codepoint-aware, so
+   a name that opens with an emoji shows the emoji rather than half of it. */
+function initialOf(name){
+  const s = String(name || "?").trim();
+  return (Array.from(s)[0] || "?").toUpperCase();
+}
+
+/* The portrait, the score ring riding its top-left corner, and whatever emoji
+   somebody has just thrown at it. Your own is a button in all but name. */
+function avatarHTML(p){
+  const src = avatarSrc(p.avatar);
+  const mine = p.id === viewSeat() && ownsSeat(p.id) && S.phase !== "over";
+  const face = src
+    ? `<img src="${src}" alt="" draggable="false">`
+    : `<span class="avinit">${esc(initialOf(p.name))}</span>`;
+  return `<div class="avwrap ${mine ? "mine" : ""}"
+               ${mine ? 'onclick="avatarDialog()" title="Your picture — click to change it"' : ""}>
+            <span class="avin">${face}</span>
+            ${vpStat(p)}
+            ${emoteHTML(p.id)}
+          </div>`;
+}
+
 function drawPlayers(){
   let h = "";
   for (const p of S.players){
@@ -2217,27 +2654,24 @@ function drawPlayers(){
     h += `<div class="pcard ${active ? "active" : ""} ${p.skipTokens ? "done" : ""}"
                 data-pid="${p.id}"
                 style="--pc:${p.color}; --pcTint:${p.color}26; --pcEdge:${p.color}88">
-            <div class="phead">
-              <span class="dot" style="background:${p.color}"></span>
-              <span class="pname">${p.name}</span>
+            ${avatarHTML(p)}
+            <div class="pname">
+              <span class="nm">${esc(p.name)}</span>
               ${p.skipTokens ? `<span class="pskip">skip ×${p.skipTokens}</span>` : ""}
-              ${vpStat(p)}
             </div>
-            <div class="stats">
-              <div class="statgroup">
-                <div class="stat res" title="Resource cards"><b>${totalRes(p)}</b>${ICON.res}</div>
-                <div class="stat kit" title="Kitten cards in hand"><b>${p.cards.length}</b>${ICON.kit}</div>
-              </div>
-              <div class="statgroup">
-                <div class="stat road ${S.longestRoad.owner === p.id ? "holds" : ""}"
-                     title="Longest unbroken road (${p.roads} built)${
-                       S.longestRoad.owner === p.id ? " — holds Longest Road, +2" : ""}">
-                  <b>${(S.roadLens && S.roadLens[p.id] !== undefined) ? S.roadLens[p.id] : 0}</b>${ICON.road}</div>
-                <div class="stat knight ${S.largestArmy.owner === p.id ? "holds" : ""}"
-                     title="Knights played${
-                       S.largestArmy.owner === p.id ? " — holds Largest Army, +2" : ""}">
-                  <b>${p.knights}</b>${ICON.knight}</div>
-              </div>
+            <div class="statgroup hand">
+              <div class="stat res" title="Resource cards"><b>${totalRes(p)}</b>${ICON.res}</div>
+              <div class="stat kit" title="Kitten cards in hand"><b>${p.cards.length}</b>${ICON.kit}</div>
+            </div>
+            <div class="statgroup board">
+              <div class="stat road ${S.longestRoad.owner === p.id ? "holds" : ""}"
+                   title="Longest unbroken road (${p.roads} built)${
+                     S.longestRoad.owner === p.id ? " — holds Longest Road, +2" : ""}">
+                <b>${(S.roadLens && S.roadLens[p.id] !== undefined) ? S.roadLens[p.id] : 0}</b>${ICON.road}</div>
+              <div class="stat knight ${S.largestArmy.owner === p.id ? "holds" : ""}"
+                   title="Knights played${
+                     S.largestArmy.owner === p.id ? " — holds Largest Army, +2" : ""}">
+                <b>${p.knights}</b>${ICON.knight}</div>
             </div>`;
     if (S.revealed){
       const counts = {};
@@ -2812,6 +3246,337 @@ function showDice(){
 }
 
 /* ══════════════════════════════════════════════════════════════════════
+   CHAT AND EMOTES
+   ══════════════════════════════════════════════════════════════════════
+   Two more buttons beside the log. One opens a window people can type into;
+   the other throws an emoji, which lands on the thrower's own portrait in
+   the seat strip and fades on its own.
+
+   Both live on the state rather than in the DOM, for the reason the feed
+   does: online, the host's browser is the only one that sees anything
+   happen, and everything the rest of the table knows arrived in a published
+   state. A terminal sends what was typed as an intent and waits to be told
+   it landed, exactly like a card being played. Which also means neither can
+   be forged into anything but a message or one of the listed emoji — the
+   host re-checks both before they go anywhere.
+
+   Emoji rather than a second chat line for the bots, deliberately: a bot
+   that types is a bot writing sentences, and they are much funnier when the
+   whole vocabulary is eighteen faces and the timing is the joke.
+   ══════════════════════════════════════════════════════════════════════ */
+
+const CHAT_KEEP  = 60;        // messages kept on the state and sent online
+const CHAT_MAX   = 140;       // characters in one message
+const EMOTE_KEEP = 12;        // recent throws — enough that none is missed
+const EMOTE_MS   = 3400;      // how long one sits on a portrait; matches the CSS
+
+/* The tray, in the order it is drawn: six across, three down. Weighted the
+   way the table is — mockery first, grudging respect last. */
+const EMOJIS = ["\u{1F639}","\u{1F602}","\u{1F60F}","\u{1F644}","\u{1F971}","\u{1F921}",
+                "\u{1F480}","\u{1F595}","\u{1F4A9}","\u{1F476}","\u{1F414}","\u{1F9E0}",
+                "\u{1F44F}","\u{1F631}","\u{1F62D}","\u{1F64F}","\u{1F91D}","\u{1F525}"];
+
+/* ── Chat ───────────────────────────────────────────────────────────── */
+
+function chatIsOpen(){ return document.body.classList.contains("haschat"); }
+
+function clearChat(){
+  if (S){ S.chat = []; S.emotes = []; S.msgId = 0; }
+  chatSeen = 0;
+  lastEmoteId = 0;
+  for (const k in liveEmotes) delete liveEmotes[k];
+  const box = document.getElementById("chatlog");
+  if (box){ box.innerHTML = ""; box.dataset.h = ""; }
+  drawChatBadge();
+}
+
+function toggleChat(){
+  const on = document.body.classList.toggle("haschat");
+  if (on){
+    drawChat();
+    const log = document.getElementById("chatlog");
+    if (log) log.scrollTop = log.scrollHeight;
+    const inp = document.getElementById("chatin");
+    if (inp) inp.focus();
+  }
+  drawChatBadge();
+}
+
+/* Newest message this screen has actually been shown. Your own never count:
+   a badge telling you that you said something is a badge for nobody. */
+let chatSeen = 0;
+function chatUnread(){
+  if (!S || !S.chat) return 0;
+  const me = viewSeat();
+  let n = 0;
+  for (const m of S.chat) if (m.id > chatSeen && m.seat !== me) n++;
+  return n;
+}
+function markChatRead(){
+  if (S && S.chat && S.chat.length) chatSeen = S.chat[S.chat.length - 1].id;
+}
+
+function drawChatBadge(){
+  const btn = document.getElementById("chatBtn");
+  if (!btn) return;
+  const open = chatIsOpen();
+  const n = open ? 0 : chatUnread();
+  // Written only when it actually changes: this runs on every repaint, and
+  // rewriting a button's contents forty times a turn to say the same thing is
+  // a layout each time for nothing.
+  const want = String(n);
+  if (btn.dataset.n !== want){
+    btn.dataset.n = want;
+    btn.innerHTML = "Chat" + (n ? `<span class="unread">${n > 9 ? "9+" : n}</span>` : "");
+  }
+  btn.classList.toggle("on", open);
+}
+
+function drawChat(){
+  const box = document.getElementById("chatlog");
+  if (!box) return;
+  const msgs = (S && S.chat) || [];
+  const following = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  let h = "";
+  for (const m of msgs){
+    const p = S.players[m.seat];
+    h += `<div class="msg" style="--mc:${p ? p.color : "var(--dim)"}">` +
+         `<span class="who">${esc(p ? p.name : "?")}</span>${esc(m.text)}</div>`;
+  }
+  if (!h) h = S ? `<div class="msg sys">Nothing said yet. The bots are listening.</div>`
+                : `<div class="msg sys">No game running.</div>`;
+  // Nothing to say to nobody: there is no table to say it to yet.
+  const inp = document.getElementById("chatin");
+  if (inp) inp.disabled = !S;
+  // Compared before writing: an identical rewrite drops the caret out of any
+  // text being selected in here and costs a layout for nothing.
+  if (box.dataset.h !== h){
+    box.dataset.h = h;
+    box.innerHTML = h;
+  }
+  if (following) box.scrollTop = box.scrollHeight;
+  if (chatIsOpen()) markChatRead();
+  drawChatBadge();
+}
+
+function chatKey(ev){
+  if (ev.key === "Enter"){ ev.preventDefault(); sendChatFromInput(); }
+  else if (ev.key === "Escape") ev.target.blur();
+  // The board reads single keys for nothing, but a stray Escape reaching the
+  // document while you are typing would disarm a spot you had just lined up.
+  ev.stopPropagation();
+}
+
+function sendChatFromInput(){
+  const inp = document.getElementById("chatin");
+  if (!inp) return;
+  const text = inp.value;
+  inp.value = "";
+  inp.focus();
+  sendChat(text);
+}
+
+/* From this screen. A terminal says what was typed and stops there; the host
+   is the one that decides it was said. */
+function sendChat(text){
+  if (!S) return;
+  text = String(text || "").replace(/\s+/g, " ").trim().slice(0, CHAT_MAX);
+  if (!text) return;
+  if (netSend("chat", [text])) return;
+  pushChat(viewSeat(), text);
+}
+
+/* The authoritative append: the host's copy, or the only copy offline. */
+function pushChat(seat, text){
+  if (!S || !S.players[seat]) return;
+  text = String(text || "").replace(/\s+/g, " ").trim().slice(0, CHAT_MAX);
+  if (!text) return;
+  if (!S.chat) S.chat = [];
+  S.chat.push({ id: ++S.msgId, seat: seat, text: text, turn: S.turnCounter || 0 });
+  while (S.chat.length > CHAT_KEEP) S.chat.shift();
+  drawChat();
+  if (window.NET && NET.publishSoon) NET.publishSoon();
+  // Bots hear everything, and bots are not gracious listeners.
+  if (window.AI && AI.heard) AI.heard(seat, text);
+}
+
+/* ── Emotes ─────────────────────────────────────────────────────────── */
+
+function drawEmojiTray(){
+  const el = document.getElementById("emojiTray");
+  if (!el || el.childElementCount) return;
+  el.innerHTML = EMOJIS.map((e, i) =>
+    `<button type="button" onclick="sendEmote(EMOJIS[${i}])" title="Throw this">${e}</button>`).join("");
+}
+
+function toggleEmojiTray(){
+  drawEmojiTray();
+  const on = document.body.classList.toggle("hastray");
+  const btn = document.getElementById("emojiBtn");
+  if (btn) btn.classList.toggle("on", on);
+}
+function closeEmojiTray(){
+  document.body.classList.remove("hastray");
+  const btn = document.getElementById("emojiBtn");
+  if (btn) btn.classList.remove("on");
+}
+
+function sendEmote(key){
+  closeEmojiTray();
+  if (!S) return;
+  if (netSend("emote", [key])) return;
+  pushEmote(viewSeat(), key);
+}
+
+/* The authoritative throw. Anything not in the tray is dropped rather than
+   drawn: this is the one place text from another machine reaches the screen
+   without being escaped, and "one of these eighteen" is a far easier thing to
+   be sure of than "harmless". */
+function pushEmote(seat, key){
+  if (!S || !S.players[seat]) return;
+  if (EMOJIS.indexOf(key) < 0) return;
+  if (!S.emotes) S.emotes = [];
+  S.emotes.push({ id: ++S.msgId, seat: seat, key: key });
+  while (S.emotes.length > EMOTE_KEEP) S.emotes.shift();
+  syncEmotes();
+  drawPlayers();
+  if (window.NET && NET.publishSoon) NET.publishSoon();
+}
+
+/* Which emoji is sitting on each portrait and until when. Kept off the state
+   on purpose: it is a view concern, and the seat strip is rebuilt from
+   scratch on every repaint — so the bubble is re-rendered from here rather
+   than left in the DOM to be wiped by the next render. */
+const liveEmotes = {};        // seat -> { key, until }
+let lastEmoteId = 0;
+let emoteTimer = null;
+
+/* New throws since the last look become live bubbles. Ids rather than clocks,
+   because a terminal is not asked to trust anybody else's wall clock — and
+   because the whole state is resent after every action, so the same throw
+   arrives over and over and must only land once. */
+function syncEmotes(){
+  const list = (S && S.emotes) || [];
+  // A fresh game, or a state from one: the counter went backwards, so nothing
+  // here has been seen before. Start again rather than swallow the lot.
+  if (list.length && list[list.length - 1].id < lastEmoteId) lastEmoteId = 0;
+  let fresh = false;
+  for (const e of list){
+    if (e.id <= lastEmoteId) continue;
+    lastEmoteId = e.id;
+    liveEmotes[e.seat] = { key: e.key, until: Date.now() + EMOTE_MS };
+    fresh = true;
+  }
+  if (fresh) scheduleEmoteSweep();
+  return fresh;
+}
+
+/* One timer for all of them, set to whichever expires last. Expiry only has
+   to take the bubble out of the next repaint — the fade itself is the tail of
+   the CSS animation, which has already played by the time this fires. */
+function scheduleEmoteSweep(){
+  if (emoteTimer) return;
+  let last = 0;
+  for (const s in liveEmotes) last = Math.max(last, liveEmotes[s].until);
+  if (!last) return;
+  emoteTimer = setTimeout(() => {
+    emoteTimer = null;
+    const now = Date.now();
+    let changed = false;
+    for (const s in liveEmotes)
+      if (liveEmotes[s].until <= now){ delete liveEmotes[s]; changed = true; }
+    if (changed && S) drawPlayers();
+    scheduleEmoteSweep();
+  }, Math.max(120, last - Date.now() + 60));
+}
+
+/* A repaint in the middle of a bubble's life must not restart the pop, so the
+   animation is resumed with a negative delay rather than begun again. */
+function emoteHTML(pid){
+  const e = liveEmotes[pid];
+  if (!e) return "";
+  const left = e.until - Date.now();
+  if (left <= 0) return "";
+  const elapsed = Math.max(0, EMOTE_MS - left);
+  return `<span class="emote" style="animation-delay:-${elapsed}ms">${e.key}</span>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PICKING A PORTRAIT
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* The grid of faces, for the New Game dialog, the online lobby, and the
+   click on your own seat card. `sel` is what is chosen now; every button
+   calls window.__avPick, which each caller sets to whatever it wants doing
+   with the answer — the same arrangement the mode picker uses. */
+function avatarGridHTML(sel){
+  const pool = avatarPool();
+  if (!pool.length){
+    return `<div class="rules">No pictures in <b>${ART_DIR}</b> yet, so everybody plays as
+            their initial. Any card or tile art in there shows up here, and
+            <b>avatar-1.png</b> … <b>avatar-${AVATAR_FILES}.png</b> are looked for as portraits.</div>`;
+  }
+  let h = `<div class="avgrid">`;
+  h += `<button class="avopt ${sel ? "" : "on"}" onclick="window.__avPick('')"
+          title="No picture — your initial on your seat colour"><span class="none">None</span></button>`;
+  for (const id of pool){
+    h += `<button class="avopt ${id === sel ? "on" : ""}" onclick="window.__avPick('${id}')"
+            title="${esc(avatarLabel(id))}"><img src="${avatarSrc(id)}" alt="" draggable="false"></button>`;
+  }
+  return h + `</div>`;
+}
+
+/* The chosen face, big, to sit beside a name field. */
+function avatarNowHTML(sel){
+  const src = avatarSrc(sel);
+  return `<span class="avnow" id="avNow">${src ? `<img src="${src}" alt="">`
+                                               : `<span class="none">?</span>`}</span>`;
+}
+
+/* Shaped like an id and nothing else. Ids travel between browsers, and this
+   one ends up inside a src= attribute, so what arrives from another machine is
+   checked against the grammar rather than against this folder's contents —
+   somebody who has art you have not still gets to keep their picture, they
+   just show as their initial on your screen. */
+function validAvatarId(id){
+  return typeof id === "string" && id.length <= 40 && /^[achr]:[a-z0-9-]+$/.test(id);
+}
+
+/* Somebody changed their picture. Also called from net.js when a terminal says
+   it did, which is why it sanitises rather than trusts.
+
+   The roster is written too, not just the player: it is the roster the host
+   re-seats everybody from on "Restart with these players", so without this a
+   face chosen mid-game would be lost at the start of the next one. */
+function setSeatAvatar(seat, id){
+  const p = S && S.players[seat];
+  if (!p) return;
+  p.avatar = validAvatarId(id) ? id : "";
+  if (window.NET && NET.roster && NET.roster[seat]) NET.roster[seat].av = p.avatar;
+  render();
+}
+/* Changing your picture mid-game. The seat card's portrait opens this, which
+   is the only way to reach it once a game has started. */
+function avatarDialog(){
+  const refresh = () => {
+    openModal("Your picture",
+      `<p class="sub">Taken from whatever is in <b>${ART_DIR}</b>. It shows on your seat card,
+       and everybody online sees it too.</p>` + avatarGridHTML(MY_AVATAR),
+      [{ label:"Done", cls:"primary", fn: closeModal }]);
+  };
+  window.__avPick = (id) => {
+    setMyAvatar(id);
+    // A terminal says what it did and waits; everybody else is the authority
+    // on their own seat and writes it themselves.
+    if (S && !netSend("avatar", [id])) setSeatAvatar(viewSeat(), id);
+    refresh();
+  };
+  window.__avRefresh = refresh;
+  promptFor(viewSeat());
+  refresh();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
    SETUP PHASE
    ══════════════════════════════════════════════════════════════════════ */
 
@@ -3059,7 +3824,9 @@ function afterBuild(){
 }
 
 document.addEventListener("keydown", e => {
-  if (e.key !== "Escape" || !S) return;
+  if (e.key !== "Escape") return;
+  if (document.body.classList.contains("hastray")){ closeEmojiTray(); return; }
+  if (!S) return;
   if (dragCard || pressPend){ cancelCardDrag(); return; }   // drop the card
   if (S.armed){ disarm(); return; }
   if (S.select && !S.phase.startsWith("setup") && S.select.kind !== "robber"){
@@ -4720,8 +5487,10 @@ function playerTradeDialog(){
              <div class="pick tight">`;
     for (const r of RES){
       const cap = capOf(r);
-      h += `<button ${cap > 0 ? "" : "disabled"} onclick="window.${fn}('${r}')"
+      h += `<button ${cap > 0 ? "" : "disabled"} onclick="window.${fn}('${r}',1)"
               title="${RES_NAME[r]}${cap > 0 ? " — up to " + cap + ", then back to none" : " — none to give"}">
+              ${obj[r] ? `<span class="ct minus" title="Take one back"
+                            onclick="event.stopPropagation();window.${fn}('${r}',-1)">−</span>` : ""}
               <span class="swatch" style="background:${RES_COLOR[r]};display:inline-block;margin-right:3px"></span>
               ${RES_NAME[r]}<b class="ct ${obj[r] ? "" : "off"}">×${obj[r] || 1}</b></button>`;
     }
@@ -4730,7 +5499,8 @@ function playerTradeDialog(){
 
   /* ── stage 1: compose ── */
   function compose(){
-    let h = `<p class="sub">Click to add; click past the limit to clear it.</p>
+    let h = `<p class="sub">Click to add; the − in the corner takes one back, and
+             clicking past the limit clears it.</p>
              ${pickRow("You give", offer, "__tof", r => p.res[r])}
              <div style="height:6px"></div>
              ${pickRow("You want", want, "__twa", () => WANT_CAP)}`;
@@ -4824,8 +5594,16 @@ function playerTradeDialog(){
     ]);
   }
 
-  window.__tof = (r) => { offer[r] = offer[r] >= p.res[r] ? 0 : offer[r] + 1; compose(); };
-  window.__twa = (r) => { want[r]  = want[r]  >= WANT_CAP ? 0 : want[r]  + 1; compose(); };
+  window.__tof = (r, d) => {
+    offer[r] = d < 0 ? Math.max(0, offer[r] - 1)
+                     : (offer[r] >= p.res[r] ? 0 : offer[r] + 1);
+    compose();
+  };
+  window.__twa = (r, d) => {
+    want[r] = d < 0 ? Math.max(0, want[r] - 1)
+                    : (want[r] >= WANT_CAP ? 0 : want[r] + 1);
+    compose();
+  };
   /* One offer, one deal. Every acceptor used to keep a live Trade button after
      the first had gone through, so clicking a second one ran the transfer
      again — conjuring resources out of nothing and pushing the offerer
@@ -5048,7 +5826,7 @@ function closeModal(){
    ═══════════════════════════════════════════════════════════════════ */
 
 const SHOWCASE_MS = 2300;
-let lastShowcased = 0;
+let lastShowcased = -1;
 let showcaseTimer = null;
 
 /* What the board looked like last repaint, so a change can be pointed at.
@@ -5317,29 +6095,166 @@ function plopBuild(kind, id, pid){
   });
 }
 
+/* ══ FLIGHTS ══════════════════════════════════════════════════════
+   Cards that ought to be SEEN to move.
+
+   These used to be called straight out of the game logic, which meant only
+   the browser RUNNING that logic ever saw them. Online that is the host and
+   nobody else: the host watched resources fly out of the ground, a trade
+   cross between two seat cards and a robbery travel face down, and everyone
+   else watched the numbers quietly change. Exactly the fault the feed had,
+   and the same fix — the flight is written onto the state, travels with
+   everything else, and every browser plays it off the record. The piece
+   plops and the card reveals have always worked this way; now the rest does.
+
+   There is a second reason to do it like this. A flight now carries what
+   actually MOVED, copied at the instant it moved, rather than a reference to
+   whatever object the caller happened to be holding at the time. An animation
+   can no longer disagree with the board about how many cards changed hands,
+   because the animation IS the receipt.
+   ══════════════════════════════════════════════════════════════════ */
+
+const FX_MAX_CARDS = 16;      // cards drawn for one flight
+const FX_KEEP = 8;            // flights kept on the state and sent online
+
+/* Short keys throughout: this is resent in full after every action, and a
+   six-player payout is a dozen of them. */
+function pushFx(rec){
+  if (!S) return;
+  if (!S.fx) S.fx = [];
+  rec.id = ++S.msgId;
+  S.fx.push(rec);
+  while (S.fx.length > FX_KEEP) S.fx.shift();
+  if (window.NET && NET.publishSoon) NET.publishSoon();
+}
+
+/* A resource bundle, copied, with the zeroes dropped. Copied because the
+   caller's object is often still being written to; zeroes dropped because
+   four of the five usually are. */
+function fxBundle(o){
+  const out = {};
+  for (const r of RES) if (o && o[r] > 0) out[r] = o[r];
+  return out;
+}
+function fxTotal(o){ let n = 0; for (const r of RES) n += (o && o[r]) || 0; return n; }
+
+/* ── recording ── */
+
+/* Cards out of the hexes that grew them.
+
+   Capped against what the bank ACTUALLY handed over. The old version asked
+   only whether something had been paid for that resource and then flew the
+   whole claim, so a player owed three wood off two hexes and paid one by a
+   nearly empty bank watched three cards arrive and their counter go up by
+   one. */
+function flyProduction(sources, paid){
+  const left = (paid || []).map(o => Object.assign({}, o));
+  const src = [];
+  for (const g of sources){
+    const room = (left[g.pid] && left[g.pid][g.r]) || 0;
+    if (room <= 0) continue;
+    const n = Math.min(g.n, room);
+    left[g.pid][g.r] -= n;
+    src.push({ h: g.hid, p: g.pid, r: g.r, n: n });
+  }
+  if (src.length) pushFx({ t:"prod", src: src });
+}
+
+/* A kitten card off the deck and into a hand, back showing the whole way. */
+function flyKitten(pid){ pushFx({ t:"kit", p: pid }); }
+
+/* Cards leaving one hand for another, or for the bank. `toPid` null means the
+   bank, which sits just below the loser's own seat card — the same place their
+   bank trades happen.
+
+   Face up unless told otherwise. The only exchange in the game nobody is
+   entitled to watch is the robbery, so that is the only one that travels face
+   down; a Favor, an Exploding Kitten, an Attack and a seven all take cards
+   everyone already knows about. */
+function flyCards(fromPid, toPid, bundle, faceDown){
+  const b = fxBundle(bundle);
+  const n = fxTotal(b);
+  if (!n) return;                             // nothing moved, nothing to watch
+  const rec = { t:"cards", f: fromPid,
+                o: (toPid === null || toPid === undefined) ? null : toPid };
+  // Face down means face down ON THE WIRE too. Now that flights travel, a
+  // bundle naming the resource would put the robbery in every player's copy of
+  // the state, where anyone who opened devtools could read which card was
+  // taken. That is the one exchange in the game nobody else is entitled to
+  // see, so only the count goes out and the backs are drawn from that.
+  if (faceDown){ rec.d = 1; rec.n = n; }
+  else rec.b = b;
+  pushFx(rec);
+}
+
+/* What each side handed over, crossing between the two seat cards — or, for
+   the bank, between a seat card and the space just below it. */
+function flyTrade(aid, bid, gave, got){
+  const g = fxBundle(gave), h = fxBundle(got);
+  if (!fxTotal(g) && !fxTotal(h)) return;
+  pushFx({ t:"trade", a: aid, b: (bid === null || bid === undefined) ? null : bid,
+           g: g, h: h });
+}
+
+/* ── playing them back ── */
+
+/* Newest flights since the last look. Ids rather than clocks, because a
+   terminal is not asked to trust anybody else's wall clock — and because the
+   whole state is resent after every action, so the same flight arrives over
+   and over and must only be flown once. */
+let lastFx = -1;              // -1 = this screen has not looked at this table yet
+
+function clearFx(){
+  if (S) S.fx = [];
+  lastFx = -1;
+}
+
+function checkFlights(){
+  const list = (S && S.fx) || [];
+  // Either a table this screen has not seen before, or one whose counter went
+  // backwards — a new game, or a state applied from a host mid-game. Whatever
+  // is already on the record happened before anybody here was watching, so
+  // catch up to it silently rather than replay somebody else's last eight
+  // actions at them.
+  if (lastFx < 0 || (list.length && list[list.length - 1].id < lastFx)){
+    lastFx = list.length ? list[list.length - 1].id : 0;
+    return;
+  }
+  for (const f of list){
+    if (!f || f.id <= lastFx) continue;
+    lastFx = f.id;
+    try { playFlight(f); }
+    catch (err){ console.error("flight failed:", err); }
+  }
+}
+
+function playFlight(f){
+  if (f.t === "prod")  return playProduction(f.src || []);
+  if (f.t === "kit")   return playKitten(f.p);
+  if (f.t === "cards") return playCardsFx(f);
+  if (f.t === "trade") return playTradeFx(f);
+}
+
 /* Cards flying from the hexes that grew them to the seat that owns the
    building, with each hex flashing as they leave. Staggered so a big roll
    reads as a sequence rather than a swarm, and capped so a six-player payout
    does not bury the board. */
-const FX_MAX_CARDS = 16;
-function flyProduction(sources, paid){
+function playProduction(src){
   fxSoon(function(){
     const flashed = {};
     let sent = 0;
-    for (const g of sources){
+    for (const g of src){
       if (sent >= FX_MAX_CARDS) break;
-      if (!paid[g.pid] || !paid[g.pid][g.r]) continue;
-      const hp = hexPoint(g.hid), sp = seatResPoint(g.pid);
+      const hp = hexPoint(g.h), sp = seatResPoint(g.p);
       if (!hp || !sp) continue;
-      if (!flashed[g.hid]){ flashed[g.hid] = 1; flashHex(g.hid); }
+      if (!flashed[g.h]){ flashed[g.h] = 1; flashHex(g.h); }
       for (let k = 0; k < g.n && sent < FX_MAX_CARDS; k++, sent++)
         flyCard(hp, sp, resFaceHTML(g.r), "", 45 * sent + 100, sent);
     }
   });
 }
 
-/* A kitten card off the deck and into a hand, back showing the whole way. */
-function flyKitten(pid){
+function playKitten(pid){
   fxSoon(function(){
     flyCard(deckPoint(), seatPoint(pid), kittenBackHTML(), "kit", 60, 0);
   });
@@ -5356,38 +6271,32 @@ function benchPoint(pid){
   return { x: seat.x, y: card.getBoundingClientRect().bottom + 46 };
 }
 
-/* Cards leaving one hand for another, or for the bank. `toPid` null means the
-   bank, which sits just below the loser's own seat card — the same place their
-   bank trades happen.
-
-   Face up unless told otherwise. The only exchange in the game nobody is
-   entitled to watch is the robbery, so that is the only one that travels face
-   down; a Favor, an Exploding Kitten, an Attack and a seven all take cards
-   everyone already knows about. */
-function flyCards(fromPid, toPid, bundle, faceDown){
+function playCardsFx(f){
   fxSoon(function(){
-    const from = seatResPoint(fromPid);
-    const to = (toPid === null || toPid === undefined) ? benchPoint(fromPid)
-                                                      : seatResPoint(toPid);
+    const from = seatResPoint(f.f);
+    const to = (f.o === null || f.o === undefined) ? benchPoint(f.f) : seatResPoint(f.o);
     if (!from || !to) return;
     let i = 0;
+    if (f.d){
+      for (; i < (f.n || 0) && i < FX_MAX_CARDS; i++)
+        flyCard(from, to, resBackHTML(), "", 55 * i, i);
+      return;
+    }
     for (const r of RES)
-      for (let k = 0; k < (bundle[r] || 0) && i < FX_MAX_CARDS; k++, i++)
-        flyCard(from, to, faceDown ? resBackHTML() : resFaceHTML(r), "", 55 * i, i);
+      for (let k = 0; k < ((f.b && f.b[r]) || 0) && i < FX_MAX_CARDS; k++, i++)
+        flyCard(from, to, resFaceHTML(r), "", 55 * i, i);
   });
 }
 
-/* What each side handed over, crossing between the two seat cards — or, for
-   the bank, between a seat card and the space just below it. */
-function flyTrade(aid, bid, gave, got){
+function playTradeFx(f){
   fxSoon(function(){
-    const pa = seatResPoint(aid);
-    const pb = bid === null ? benchPoint(aid) : seatResPoint(bid);
+    const pa = seatResPoint(f.a);
+    const pb = (f.b === null || f.b === undefined) ? benchPoint(f.a) : seatResPoint(f.b);
     if (!pa || !pb) return;
     let i = 0, j = 0;
-    for (const r of RES) for (let k = 0; k < (gave[r] || 0) && i < FX_MAX_CARDS; k++, i++)
+    for (const r of RES) for (let k = 0; k < (f.g[r] || 0) && i < FX_MAX_CARDS; k++, i++)
       flyCard(pa, pb, resFaceHTML(r), "", 55 * i, i);
-    for (const r of RES) for (let k = 0; k < (got[r] || 0) && j < FX_MAX_CARDS; k++, j++)
+    for (const r of RES) for (let k = 0; k < (f.h[r] || 0) && j < FX_MAX_CARDS; k++, j++)
       flyCard(pb, pa, resFaceHTML(r), "", 55 * j + 110, j);
   });
 }
@@ -5521,6 +6430,12 @@ function runShowcase(){
    nobody ever saw. They queue now, in the order they happened. */
 function checkShowcase(){
   if (!S || !S.journal.length) return;
+  // Same rule the flights follow: a screen that has not looked at this table
+  // before catches up silently. Without it, joining a game in progress turned
+  // over every card still on the journal, one after another, at somebody who
+  // had just sat down.
+  const newest = S.journal[S.journal.length - 1].id;
+  if (lastShowcased < 0 || newest < lastShowcased){ lastShowcased = newest; return; }
   for (const e of S.journal){
     if (e.id <= lastShowcased) continue;
     lastShowcased = e.id;
@@ -5758,6 +6673,9 @@ function newGameDialog(){
     let h = `<p class="sub">The other seats are played by bots</p>`;
     h += modePickerHTML();
     h += `<div style="height:12px"></div>
+          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Your picture</div>` +
+         avatarGridHTML(MY_AVATAR);
+    h += `<div style="height:12px"></div>
           <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Table</div>
           <div class="pick">`;
     for (let n = 2; n <= 6; n++)
@@ -5773,11 +6691,16 @@ function newGameDialog(){
       [{ label:"Cancel", fn: () => { closeModal(); if (!S) renderIdle(); } }]);
   };
   window.__mode = (key) => { if (MODES[key]) GAME_MODE = key; refresh(); };
+  window.__avPick = (id) => { setMyAvatar(id); refresh(); };
+  window.__avRefresh = refresh;
   window.__ng = (n) => {
     closeModal();
     window.AGENTS = {};
     newGame(n, GAME_MODE);
     if (typeof window.AI !== "undefined") window.AI.enable([0]);
+    // After the bots are switched on, because that is the moment it becomes
+    // knowable which seat is the one at this keyboard.
+    applyMyAvatar();
     beginSetupStep();
   };
   refresh();
@@ -6103,6 +7026,17 @@ function showArt(){
               <span class="f">${ART_DIR}${a.file}</span></div>`;
     }
   }
+  // Portraits are listed as a count rather than twelve rows of nothing: they
+  // are the one optional set, and an empty folder here is not a problem to
+  // fix — the picker falls back to the card faces, which are already listed.
+  const avN = ART_MANIFEST.filter(a => a.kind === "avatar" && ART.avatar[a.key]).length;
+  h += `<h4 style="margin:12px 0 4px;font-size:13px">Portraits (optional)</h4>`;
+  h += `<div class="artrow"><span class="${avN ? "ok" : "no"}">${avN ? "✓" : "✗"}</span>
+          <span class="f">${ART_DIR}avatar-1.png … avatar-${AVATAR_FILES}.png</span>
+          <span style="color:var(--dim);font-size:11.5px">${avN} found</span></div>`;
+  h += `<p class="rules">Square, 256×256, drawn to the middle — they are shown in a circle.
+        These are extra: the picture picker offers every card face and tile above as well,
+        so there is something to choose from with none of these present.</p>`;
   h += `<div class="okbox" style="margin-top:14px">Pieces are used as a silhouette and flooded with the
         player's colour, so whatever colour you draw them in makes no difference — only the transparent
         background matters. Hex tiles should be squares that bleed to the edges; the hexagon is clipped
@@ -6194,6 +7128,10 @@ function showRules(){
 // built-in drawing, then repaints once we know what actually loaded.
 preloadArt(() => {
   if (artLoaded) logMsgSafe(`Custom art: ${artLoaded}/${artTotal} files loaded.`);
+  // A dialog opened in the first moment of the page can be showing an empty
+  // portrait picker at the instant the pictures arrive. Only ever redraws a
+  // dialog that is actually on screen.
+  if (window.__avRefresh && document.querySelector(".overlay")) window.__avRefresh();
   if (S) render();
 });
 /* Deferred to load: ai.js is a separate <script> that has not run yet at this
@@ -6209,13 +7147,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27d"></script>
+<script src="ai.js?v=2026-08-27f"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27d"></script>
-<script src="net.js?v=2026-08-27d"></script>
+<script src="firebase-config.js?v=2026-08-27f"></script>
+<script src="net.js?v=2026-08-27f"></script>
 </body>
 </html>

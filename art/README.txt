@@ -113,6 +113,29 @@ Small labels ("next turn", "1 VP", "react") are drawn in the top-right corner
 of a card when relevant, so avoid putting anything critical there.
 
 
+PORTRAITS — PNG, square, 256x256
+---------------------------------
+  avatar-1.png  …  avatar-12.png
+
+Optional, and the only optional set here. Players pick a picture from the
+New Game dialog, from Online before hosting or joining, or by clicking their
+own portrait on the seat card during a game.
+
+These come first in the picker, and after them it offers every kitten card
+face and terrain tile above — so there is a full set to choose from without
+drawing any of these. Missing ones are not counted in the "N of M found"
+figure in the Art dialog, which reports them separately.
+
+Shown in a CIRCLE, about 50px across, so keep the subject central and expect
+the corners to be cut off. Square, no transparency needed, and faces read
+better than scenes at that size.
+
+Only the picture ID travels between browsers — not the file — so everybody
+does not need the same art folder. Somebody playing with a picture you have
+not got shows up on your screen as their initial on their seat colour, which
+is also what everyone gets before they pick anything.
+
+
 NOTES
 -----
 - 404s in the browser console for missing art are expected and harmless.

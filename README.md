@@ -194,11 +194,35 @@ as a number ticking up in the corner, and a road appeared on the next repaint.
   they were. They are the two things that change the board without a piece
   being built, and they were easy to blink past.
 
-None of it is state: it is read off the live DOM a frame late, so it always
-measures a board that has been laid out, and it is skipped entirely on a hidden
-tab or for anyone whose system asks for reduced motion. Bursts are capped —
-sixteen cards per event, sixty live pieces of animation — so a six-player
-payout cannot bury the board or the frame rate.
+**All of it travels.** The flight itself is written onto the state and
+published like everything else, and every browser plays it off that record.
+This was the single biggest thing wrong with online play and it was invisible
+from the host's chair: the piece plops and the card reveals had always been
+driven off the state, so they reached everybody, but every flying card was
+called straight out of the game logic — and only one browser runs the game
+logic. The host watched resources fly out of the ground, trades cross between
+seat cards and robberies travel face down; everyone else watched the numbers
+quietly change and reasonably concluded the game had no animation in it.
+
+A flight carries what actually **moved**, copied at the instant it moved,
+rather than a reference to whatever the caller was holding. So an animation can
+no longer disagree with the board about how many cards changed hands — which
+it could: a player owed three wood off two hexes and paid one by a nearly empty
+bank watched three cards arrive and their counter go up by one.
+
+Face down means face down **on the wire** too. Now that flights travel, a
+robbery naming its resource would put it in every player's copy of the state,
+readable by anyone who opened devtools — so only the count goes out and the
+backs are drawn from that.
+
+The drawing itself is not state: it is read off the live DOM a frame late, so
+it always measures a board that has been laid out, and it is skipped entirely
+on a hidden tab or for anyone whose system asks for reduced motion. Bursts are
+capped — sixteen cards per event, sixty live pieces of animation, eight
+flights kept on the state — so a six-player payout cannot bury the board or
+the frame rate. A screen that has only just been handed a game in progress
+catches up silently rather than replaying the last eight things that happened
+at somebody who has just sat down.
 
 The one place any of this touches what you can see of the game is the piece
 held back while it lands, and that expires on its own: if the timer that ends
@@ -207,20 +231,90 @@ is not worth a board with a road missing from it.
 
 ### The seat cards
 
-Points sit beside the name in a ring of their own — they are the score, and
-lined up as a sixth identical box among roads and knights they read as trivia.
-The rest is two groups rather than five boxes in a row: what is in your hand
-(resources, kitten cards) and what is on the board (longest road, knights).
-Largest Army lights the same gold as Longest Road, because they are the same
-kind of thing — two points for holding something nobody else can.
+Laid out the way Catan Universe lays its player box out, because that is an
+arrangement most people at this table already know how to read:
+
+```
+  ③─┐
+  │ ● │   Josh
+  └───┘
+  [ 7 │ 2 ]   [ 4 │ 3 ]
+   res  kit      road knights
+```
+
+The portrait on the left, the score in a ring riding its top-left corner, what
+is in the hand hanging under the portrait, the name across the top of the right
+column and what is on the board hanging under that. Points get the ring of
+their own because they are the score — lined up as a fifth identical box among
+roads and knights they read as trivia. The two pills are deliberately the same
+size, so the card is a glance at two things rather than five. Largest Army
+lights the same gold as Longest Road, because they are the same kind of thing:
+two points for holding something nobody else can.
+
+The card is a **grid**, not two nested columns, and that is the whole reason
+the short-screen layout can re-parcel the same four boxes into two rows beside
+the portrait without the markup changing. The coloured dot that used to sit by
+the name is gone — the portrait is ringed in the seat's colour, so six people
+who all picked the same cat are still six different colours.
+
+### Pictures
+
+Everybody picks a face, from the **New Game** dialog, from **Online** before
+you host or join, or by clicking your own portrait at any point in a game. The
+choice is remembered between games.
+
+The pool is whatever is in `art/`: purpose-drawn `avatar-1.png` …
+`avatar-12.png` if you have made any, and after them every kitten card face and
+terrain tile the folder already holds — so there is something to choose from
+without drawing anything. With an empty art folder everyone plays as their
+initial on their seat colour, which is also what you get by picking **None**.
+
+What travels between browsers is an id like `c:defuse` or `h:wood`, not a file,
+and each browser resolves it against its own folder. Nobody has to have the
+same art as anybody else: somebody with art you have not just shows up as their
+initial on your screen. Bots are dealt faces of their own at the start of a
+game, all different, and never the one you chose.
+
+### Talking at the table
+
+Two more buttons beside the log.
+
+**Chat** opens a window in the same left-hand column. It does not float over
+the log — the log gives up the bottom of the column and keeps the top, so
+nothing you were reading is covered by what somebody typed. The button carries
+a count of what was said while it was shut, and your own messages never count
+towards it.
+
+**Emoji** opens a tray of eighteen. Throw one and it lands on your own portrait
+in the seat strip, sits there for three and a half seconds and fades. A repaint
+in the middle of that resumes the animation rather than replaying the pop.
+
+**The bots throw them too, and they are not gracious.** They read the journal
+— the public record of what was played, by whom, at whom — and react to it:
+whoever just took your whole hand laughs at you, whoever just lost theirs
+blames the dice, and a landed Nope is the smuggest moment available to anybody.
+They congratulate a human who wins, about half the time. They cannot see a hand
+to decide whether to laugh, so `AI.selfCheck`'s promise is untouched, and it is
+funnier this way round anyway — they are reacting to what the table saw. Rate
+limits keep it to roughly one throw every couple of turns rather than a wall of
+faces: two and a bit seconds of quiet across the whole table after any throw,
+nine seconds for the bot that made it.
+
+Both ride on the state rather than in the DOM, for the reason the feed does:
+online, the host's browser is the only one that sees anything happen. A
+terminal sends what was typed as an intent and waits to be told it landed,
+exactly like a card being played — which also means neither can be forged into
+anything but a message or one of the eighteen. Messages are escaped before they
+are drawn; an emoji has to be one the tray holds.
 
 ### A phone held sideways
 
 Landscape on a phone is about 375 pixels of height for everything, and the
 strip at the top and the hand at the bottom were sized for a laptop. Between
-them they left the board a letterbox. Under 560px tall the seat card folds onto
-one row, the action buttons stop wrapping, the hand shrinks, and the board
-takes what is left: on a 812x375 screen it goes from 43% of the height to 61%,
+them they left the board a letterbox. Under 560px tall the seat card folds its
+name and both pills into two rows beside a smaller portrait, the button strip
+above the log stays on one line rather than stacking, the action buttons stop
+wrapping, the hand shrinks, and the board takes what is left: on a 812x375 screen it goes from 43% of the height to 61%,
 and the hexes from 17px to 24px. Nothing is removed — the same numbers, the
 same cards, smaller.
 
@@ -243,6 +337,15 @@ back down. Two taps in the same spot now undo both the zoom and the pan. A
 single tap still builds where you tapped, and a tap that ends a drag or a pinch
 does not.
 
+The reset only fires on **bare board**. Building is itself a two-click gesture
+— the first click arms the spot, the second confirms it — so on a vertex, an
+edge or a hex, two taps in the same place are a placement and nothing else.
+Treating them as a reset ate the confirming click and put the zoom back
+instead, which is why, zoomed in, you could not build at all: every attempt
+reset the view, and only the next pair of clicks landed. Anything carrying a
+click handler is a hit target; the board behind them is not, and still
+resets.
+
 One trap worth knowing if you touch the stylesheet: several base rules
 (`#panels`, `.modal`, `.panel`) are defined *after* the media queries, so a
 query placed above them silently loses. The landscape block is deliberately the
@@ -263,6 +366,21 @@ lands before the browser has painted, so the number changes in the same breath
 as the thing that changed it. Walking four hundred bot actions and comparing
 every seat card against the state after each one now finds no disagreement at
 all, where the same walk used to find six.
+
+### Composing a trade
+
+Click a resource to put one in, click past the most you could put in and it
+wraps back to none, and the **− in the corner** takes one back out — which
+is the way you actually fix a slip, rather than clicking a five all the way
+round to nothing. The minus is only drawn when there is something to take back.
+It is a `<span>` inside the button rather than a second button, because a
+button cannot contain a button, and its click is stopped from reaching the
+button underneath — which would otherwise put the card straight back in.
+
+Both directions go through the same handler with a signed argument, so nothing
+new had to be added to the short list of calls a terminal is allowed to make of
+the host: online, a remote player's minus arrives as the same `modalCall` their
+plus always did.
 
 ### Dialogs that do not take the screen
 
@@ -347,6 +465,19 @@ Three cases are worth calling out:
 - **A trade** — between players or with the bank — puts the resources back
   where they came from. Trades are journalled like anything else, so the one
   move that can hand somebody the card they were missing is answerable too.
+- **A whole turn** — the Nope's other use, dropped on whoever is playing
+  rather than on a line — cancels what the turn *earned* AND hands back what
+  it *took*. Those are two different things and only the first of them used to
+  happen: Nope somebody's turn after they threw an Exploding Kitten and the
+  victim's hand was still sitting in the bank, because the cancel only ever
+  stripped the gains of the player being cancelled. The rewind point is the
+  state the turn began in, so an exploded hand, a Favor, a robbery and the
+  discards for a seven all come back, out of the bank the turn put them in.
+  Two things are deliberately left alone: anything **un-Nopeable** draws a line
+  under itself and the rewind lands just after it (the Imploding Kitten says in
+  as many words that not even a cancelled turn undoes it), and a card somebody
+  ELSE threw during the turn survives it — an Attack aimed at Green by Blue
+  while Red is playing is Blue's doing, and neither of them is rewound.
 - **A seven can also be Defused**, which is the cheaper answer: it buys one
   hand out of the cut and leaves the rest of the roll standing. The robber
   still moves and everybody else still pays. Anyone the seven is about to take
