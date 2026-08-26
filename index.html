@@ -26,6 +26,7 @@
      actually fitted, and without this the right-hand end of it was simply off
      the side of the screen with no way to reach it. */
   header{
+    position:relative;
     display:flex; align-items:center; flex-wrap:wrap; gap:14px; padding:8px 14px;
     background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto;
   }
@@ -126,8 +127,12 @@
   /* Points ride the top-left corner of the portrait. They are the score — the
      one number on this card that says who is winning — and lined up as a fifth
      identical box among roads and knights they read as trivia. */
+  /* Nine o'clock, not the corner. On the corner it sat above the portrait —
+     which now overhangs the top of the card — and the top of the seat strip
+     cut the number in half. On the side there is nothing above it to be
+     clipped by, and it still reads as riding the edge of the picture. */
   .vpring{
-    position:absolute; top:-6px; left:-8px; z-index:2;
+    position:absolute; top:50%; left:-11px; margin-top:-14px; z-index:2;
     width:28px; height:28px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
     font-size:15px; font-weight:700; font-variant-numeric:tabular-nums;
@@ -499,15 +504,26 @@
   .vcol.seven .vn{color:var(--danger)}
   .vcol .vc{font-size:11px; font-weight:600; margin-bottom:3px; font-variant-numeric:tabular-nums}
   /* Its own strip between board and bottom bar, so it can never cover a hex. */
-  /* Advice, in the header beside the title. It takes the width it needs and no
-     more, shrinks before the title does on a narrow window, and disappears
-     entirely rather than wrapping the header onto two lines. */
+  /* Advice, centred in the header.
+
+     Taken out of the flow to get there: laid out in line it lands in the middle
+     of whatever space is left between the title and the buttons, and those two
+     are nothing like the same width — so "centred" came out well over a
+     hundred pixels left of centre. Absolute and it is centred on the bar
+     itself, which is where the eye looks and where the old bar across the
+     bottom used to put it. It never takes a click: there is nothing to click,
+     and a button behind it would lose one. */
   #hintslot{
-    flex:0 1 auto; min-width:0; color:var(--accent); font-size:12.5px;
+    position:absolute; left:50%; transform:translateX(-50%);
+    max-width:46%; text-align:center; pointer-events:none;
+    color:var(--accent); font-size:12.5px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     opacity:0; transition:opacity .12s;
   }
   #hintslot.on{opacity:1}
+  /* Nothing to say: out of the way entirely, so it can never sit over a
+     button on a narrow header even by accident. */
+  #hintslot:empty{display:none}
   #tipBtn.off{opacity:.5}
 
   /* Kitten deck */
@@ -654,14 +670,19 @@
        whatever height they end up — see placeFeed. */
     header{gap:7px; padding:5px 8px}
     header h1{font-size:14px}
-    #hintslot{font-size:11.5px}
+    /* Narrow enough that the header wraps anyway, so the advice takes a line
+       of its own rather than being laid over the title. */
+    #hintslot{
+      position:static; transform:none; max-width:none;
+      flex:1 0 100%; order:9; font-size:11.5px;
+    }
     #leftbtns{flex-wrap:wrap; max-width:250px}
   }
   @media (max-width:820px){
     .pcard{min-width:148px; gap:4px 7px; --avW:60px; --avPull:10px; --emW:74px; --pillDrop:15px}
     .pcard .pname{font-size:12px; padding:2px 6px}
     .avwrap .avinit{font-size:22px}
-    .vpring{width:24px; height:24px; font-size:13px}
+    .vpring{width:24px; height:24px; font-size:13px; margin-top:-12px; left:-10px}
 
     .stat{min-width:29px; padding:2px 4px}
     .stat b{font-size:13.5px}
@@ -1038,7 +1059,7 @@
     .avwrap{align-self:center}
     .avwrap{border-width:2px}
     .avwrap .avinit{font-size:17px}
-    .vpring{width:19px; height:19px; font-size:11px; top:-6px; left:-7px}
+    .vpring{width:19px; height:19px; font-size:11px; margin-top:-9.5px; left:-8px}
     .pcard .pname{font-size:11px; align-self:center; padding:1px 5px; border-radius:4px}
     /* Back into the flow: there is no spare height to hang into, and the
        strip's padding has gone with it. */
@@ -1180,7 +1201,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-27m";
+const GAME_VERSION = "2026-08-27n";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3129,7 +3150,9 @@ function refreshFeedMarks(){
 /* Cleared with the board when a new game starts. */
 function clearFeed(){
   const box = document.getElementById("feed");
-  if (box) box.innerHTML = "";
+  // The cached copy goes with it, or a terminal starting a new game would
+  // compare the fresh log against the old one and decide nothing had changed.
+  if (box){ box.innerHTML = ""; box.dataset.h = ""; }
   if (S) S.feed = [];
 }
 /* Resources as coloured chips, so a trade shows what actually moved. */
@@ -4903,8 +4926,24 @@ function nopeEntry(id, noperId){
   // somebody else's turn), and anything from a turn that has already handed
   // over, have no turn of their own to end.
   const victim = S.players[e.actor];
-  const wasNoperTurn = e.actor === S.cur && S.phase !== "over" &&
-                       !S.phase.startsWith("setup");
+  const live = S.phase !== "over" && !S.phase.startsWith("setup");
+  const wasNoperTurn = e.actor === S.cur && live;
+
+  /* Their turn ended a moment ago and the hand-over window is still open.
+
+     Last call is exactly what that window is for: pressing End Turn does not
+     put the turn beyond answering, it only starts the clock on it — which is
+     the whole reason canNopeEntry reaches across the boundary in the first
+     place. But the reroll test asked whether the roller was the CURRENT player,
+     and after End Turn they are not. So Noping your own roll a second after
+     leaving the table quietly handed play to the next player instead of
+     throwing again, which is the opposite of what a Nope on a roll is for.
+
+     A roll answered in that window is still thrown again, and the turn goes
+     back to whoever threw it. Anything else answered in it is not: their turn
+     is already over, and being Noped cannot end a turn twice. */
+  const lateTurn = live && e.actor !== S.cur &&
+                   handoverActive() && e.turn === S.handoverTurn;
   // Where the turn was standing when this Nope landed. Whose turn it is lives
   // outside the snapshots — they carry the board, not the clock — so a
   // counter-Nope needs this to undo the ending as well as the effect. Recorded
@@ -4986,7 +5025,7 @@ function nopeEntry(id, noperId){
     const back = S.players[S.cur];
     announce(pdot(back) + " gets their turn back", "defend");
     logMsg(`<b>${back.name}</b> gets their turn back.`);
-  } else if (wasNoperTurn && e.kind === "roll"){
+  } else if ((wasNoperTurn || lateTurn) && e.kind === "roll"){
     // A Noped roll is thrown again, and the player carries on with whatever
     // the dice say the second time. Ending the turn here was wrong twice over:
     // the whole point of Noping a roll is a seven you cannot afford, and
@@ -4994,6 +5033,22 @@ function nopeEntry(id, noperId){
     // the hands are cut before the turn is over. Rerolling is the answer, and
     // it costs the roller their number rather than their turn.
     reroll = true;
+    if (lateTurn){
+      // The turn had already handed over, so take it back. The snapshots carry
+      // the board and not the clock, which is why who is up has to be put back
+      // by hand — everything else advancePlayer touched (skip tokens spent
+      // walking to the next seat, the turn record) is in the snapshot and has
+      // already been rewound.
+      S.cur = e.actor;
+      S.turnCounter = e.turn;
+      S.handoverUntil = 0;
+      S.handoverTurn = -1;
+    }
+  } else if (lateTurn){
+    // Answered after they had already left the table. The rewind has taken
+    // back whatever the card did, and that is the whole of the punishment
+    // available: there is no turn left to end, and ending the NEXT player's
+    // would be punishing the wrong person.
   } else if (wasNoperTurn && !e.redo && !e.turnSafe){
     // Being Noped costs you the rest of your turn, whatever you were doing.
     //
@@ -5771,8 +5826,13 @@ function playerTradeDialog(){
       if (ag && ag.considerTrade) replies[q.id] = ag.considerTrade(p, q, offer, want) ? "yes" : "no";
       else toAsk.push(q.id);
     }
+    // Kept in the written log, but NOT put on screen. An offer is not an
+    // action: nothing has moved, and it may well be declined by everybody. The
+    // log is for what happened, and a trade that is agreed writes its own line
+    // when it settles. Bot refusals have never been announced either, so this
+    // makes the two match — the log stopped being a running commentary on
+    // people thinking about trades.
     logMsg(`<b>${p.name}</b> offers ${fmt(offer)} for ${fmt(want)}.`);
-    announce(pdot(p) + " offers " + esc(fmt(offer)) + " for " + esc(fmt(want)), "info");
     askAll(toAsk);
   }
 
@@ -7409,13 +7469,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27m"></script>
+<script src="ai.js?v=2026-08-27n"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27m"></script>
-<script src="net.js?v=2026-08-27m"></script>
+<script src="firebase-config.js?v=2026-08-27n"></script>
+<script src="net.js?v=2026-08-27n"></script>
 </body>
 </html>

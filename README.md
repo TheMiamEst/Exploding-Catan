@@ -196,6 +196,17 @@ as a number ticking up in the corner, and a road appeared on the next repaint.
   they were. They are the two things that change the board without a piece
   being built, and they were easy to blink past.
 
+**The log is only redrawn when it changes.** A terminal rebuilds the log from
+the published state, and the host publishes after every repaint — which is
+caused by all sorts of things that are nobody else's business: opening a trade
+panel, clicking a resource inside it, even dragging the corner of the window.
+Each of those arrived everywhere else as a fresh state and threw away the whole
+log to build it again, replaying the entry animation on every line. So the log
+flickered on everybody else's screen whenever the host resized theirs, which is
+a thing they could see and could not possibly explain. Compare first, and do not
+rewrite what is already on screen — the same guard the chat window, the side
+panels and the dice all use.
+
 **All of it travels.** The flight itself is written onto the state and
 published like everything else, and every browser plays it off that record.
 This was the single biggest thing wrong with online play and it was invisible
@@ -347,6 +358,12 @@ the other away.
 A kitten card bought off the deck flies to the **kitten counter** rather than
 the middle of the seat card, which is where the counters used to be before the
 portrait took that space.
+
+**A trade offer is not written to the log.** Nothing has moved when one goes
+out, and it may be declined by everybody — the log is for what happened, and a
+trade that is agreed writes its own line when it settles. Bot refusals were
+never announced either, so the two now match, and the log has stopped being a
+running commentary on people thinking about trades.
 
 **The bots throw them too, and they are not gracious.** They read the journal
 — the public record of what was played, by whom, at whom — and react to it:
@@ -579,7 +596,18 @@ another is never mistaken for one that has gone.
 A Nope dropped on a line of the log undoes that line, and everything after it.
 Three cases are worth calling out:
 
-- **A roll** is *thrown again*, and the turn carries on. It does not end the
+- **A roll** is *thrown again*, and the turn carries on — **including after
+  you have pressed End Turn**, as long as the hand-over window is still open.
+  That window is the whole point: last call does not put the turn beyond
+  answering, it starts the clock on it. But the reroll asked whether the roller
+  was the *current* player, and after End Turn they are not, so Noping your own
+  roll a second after leaving the table quietly handed play to the next player
+  instead of throwing again. The turn goes back to whoever threw it now. The
+  snapshots carry the board and not the clock, so who is up is the one thing
+  that has to be put back by hand; everything else — skip tokens spent walking
+  to the next seat, the turn record — was in the snapshot already. Anything
+  else answered in that window is not treated the same way: their turn is
+  genuinely over, and being Noped cannot end a turn twice. It does not end the
   roller's turn — ending a turn is no answer to a seven, since the robber has
   already moved and the hands have already been cut by the time the turn is
   over. This is what makes a Nope worth holding against a seven you cannot

@@ -329,16 +329,27 @@ function applyGame(b){
 }
 
 /* The feed is DOM the host appends to as it goes; a terminal rebuilds it from
-   the state each time, holding the scroll where the reader left it. */
+   the state each time, holding the scroll where the reader left it.
+
+   Rebuilt only when it has actually CHANGED. The host publishes after every
+   repaint, and a repaint is caused by all sorts of things that are nobody
+   else's business — opening a trade panel, clicking a resource in it, even
+   resizing the window. Each of those arrived at every terminal as a fresh
+   state, and this threw away the whole log and built it again, replaying the
+   entry animation on every line. So the log flickered on everybody else's
+   screen whenever the host so much as dragged the corner of their window,
+   which is a thing they could see and could not explain. */
 function drawFeedFromState(){
   const box = document.getElementById("feed");
   if (!box) return;
-  const following = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
   let h = "";
   for (const f of (S.feed || [])){
     h += '<div class="ev ' + (f.kind || "info") + '"' + (f.jid ? ' data-jid="' + f.jid + '"' : "") +
          '><span class="evturn">' + (f.turn ? "Turn " + f.turn : "Setup") + "</span>" + f.html + "</div>";
   }
+  if (box.dataset.h === h) return;
+  const following = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.dataset.h = h;
   box.innerHTML = h;
   if (following) box.scrollTop = box.scrollHeight;
 }
