@@ -1200,7 +1200,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-27p";
+const GAME_VERSION = "2026-08-27q";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1383,59 +1383,50 @@ function cardArt(c){
 }
 
 /* ── Portraits ────────────────────────────────────────────────────────
-   A player's picture is a short id rather than a filename, so it can travel
-   between browsers running different art folders and be resolved against
-   whatever each one actually has: "a:3" is profile/3.png, "c:defuse" is the
-   Defuse card's face, "h:wood" a wood tile. An id that resolves to nothing
-   falls back to the initial on the seat colour, which is what everybody has
-   before they pick anything and what an empty art folder leaves them with. */
-const AV_KIND = { a:"avatar", c:"card", h:"hex", r:"res" };
+   A player's picture is a short id rather than a filename — "a:3" is
+   profile/3.png — so it can travel between browsers with different folders and
+   be resolved against whatever each one actually has. An id that resolves to
+   nothing falls back to the initial on the seat colour, which is what
+   everybody has before they pick anything.
 
+   art/profile/ is the ONLY place a portrait comes from. The picker used to
+   fall back to the card faces and terrain tiles in art/ while that folder was
+   empty, which was a reasonable stopgap and wrong the moment it had real
+   pictures in it — not least because an id saved from those days went on
+   resolving, so somebody who had once picked the Defuse card kept it for good
+   however many portraits arrived afterwards. Nothing outside art/profile/ is a
+   face, and an id naming anything else resolves to nothing at all. */
 function avatarSrc(id){
-  if (!id || typeof id !== "string" || id[1] !== ":") return null;
-  const kind = AV_KIND[id[0]];
-  return kind ? art(kind, id.slice(2)) : null;
+  return validAvatarId(id) ? art("avatar", id.slice(2)) : null;
 }
 
-/* What the picker offers.
+/* What the picker offers: art/profile/, and nothing else.
 
-   art/profile/ is the answer whenever it holds anything at all. The card faces
-   and tiles are a FALLBACK and nothing more: they are there so a fresh copy of
-   the game still has something to choose from, and they step aside the moment
-   a single real portrait exists — which is the whole point of giving
-   portraits a folder of their own. Card backs are left out either way; a
-   picture of the back of a card is not a face. */
+   Gaps are ordinary — a missing number just means nobody drew that one — and
+   an empty folder means everybody plays as their initial, which is a perfectly
+   good answer and no longer a reason to go raiding the card faces. */
 function avatarPool(){
-  const portraits = [];
-  for (let i = 1; i <= AVATAR_FILES; i++)
-    if (ART.avatar[String(i)]) portraits.push("a:" + i);
-  if (portraits.length) return portraits;
-
   const out = [];
-  for (const k in ART.card) if (ART.card[k] && k !== "back") out.push("c:" + k);
-  for (const k in ART.hex)  if (ART.hex[k])  out.push("h:" + k);
-  for (const k in ART.res)  if (ART.res[k] && k !== "back") out.push("r:" + k);
+  for (let i = 1; i <= AVATAR_FILES; i++)
+    if (ART.avatar[String(i)]) out.push("a:" + i);
   return out;
 }
 
 /* For the picker's tooltip: what the player is looking at. */
 function avatarLabel(id){
-  if (!id) return "No picture";
-  const key = id.slice(2);
-  if (id[0] === "a") return "Portrait " + key;
-  if (id[0] === "h") return (key === "desert" ? "Desert" : RES_NAME[key] || key) + " tile";
-  if (id[0] === "r") return (RES_NAME[key] || key) + " card";
-  if (key.indexOf("knight-") === 0){
-    const f = KNIGHT_FLAVOR.find(x => x.split(" ")[0].toLowerCase() === key.slice(7));
-    return f || "Knight";
-  }
-  return (KITTEN[key] && KITTEN[key].name) || key;
+  return id ? "Portrait " + id.slice(2) : "No picture";
 }
 
 /* The portrait this browser plays as, remembered so it is picked once and not
    once a game. Empty means the initial, which is a perfectly good answer. */
 let MY_AVATAR = (function(){
-  try { return localStorage.getItem("ec_avatar") || ""; } catch(e){ return ""; }
+  try {
+    const saved = localStorage.getItem("ec_avatar") || "";
+    // An id from the days when the picker also offered card faces and tiles.
+    // It resolves to nothing now, so drop it rather than carry a choice that
+    // shows as an initial and cannot be explained by anything on screen.
+    return validAvatarId(saved) ? saved : "";
+  } catch(e){ return ""; }
 })();
 function setMyAvatar(id){
   MY_AVATAR = id || "";
@@ -3716,10 +3707,10 @@ function emoteHTML(pid){
 function avatarGridHTML(sel){
   const pool = avatarPool();
   if (!pool.length){
-    return `<div class="rules">Nothing to choose from yet, so everybody plays as their
-            initial. Drop portraits into <b>${ART_DIR}${PROFILE_DIR}</b> as
-            <b>1.png</b> … <b>${AVATAR_FILES}.png</b>; failing that, any card or tile
-            art in <b>${ART_DIR}</b> is offered instead.</div>`;
+    return `<div class="rules">No portraits found, so everybody plays as their initial —
+            which is a perfectly good answer. Drop pictures into
+            <b>${ART_DIR}${PROFILE_DIR}</b> as <b>1.png</b> …
+            <b>${AVATAR_FILES}.png</b> and reload.</div>`;
   }
   let h = `<div class="avgrid">`;
   h += `<button class="avopt ${sel ? "" : "on"}" onclick="window.__avPick('')"
@@ -3738,13 +3729,17 @@ function avatarNowHTML(sel){
                                                : `<span class="none">?</span>`}</span>`;
 }
 
-/* Shaped like an id and nothing else. Ids travel between browsers, and this
-   one ends up inside a src= attribute, so what arrives from another machine is
-   checked against the grammar rather than against this folder's contents —
-   somebody who has art you have not still gets to keep their picture, they
-   just show as their initial on your screen. */
+/* Shaped like a portrait id and nothing else. Ids travel between browsers, and
+   this one ends up inside a src= attribute, so what arrives from another
+   machine is checked against the grammar rather than against this folder's
+   contents — somebody with a portrait you have not got keeps their choice,
+   they just show as their initial on your screen.
+
+   Only "a:<number>" passes. Anything naming the art folder is refused, so an
+   old choice cannot creep back in through localStorage or from a player still
+   running last week's build. */
 function validAvatarId(id){
-  return typeof id === "string" && id.length <= 40 && /^[achr]:[a-z0-9-]+$/.test(id);
+  return typeof id === "string" && /^a:[0-9]{1,3}$/.test(id);
 }
 
 /* Somebody changed their picture. Also called from net.js when a terminal says
@@ -7365,9 +7360,8 @@ function showArt(){
           <span class="f">${ART_DIR}${PROFILE_DIR}1.png … ${AVATAR_FILES}.png</span>
           <span style="color:var(--dim);font-size:11.5px">${avN} found</span></div>`;
   h += `<p class="rules">Square, 256×256, drawn to the middle — they are shown in a circle.
-        A folder of their own, so that actual pictures of people stay separate from tiles and
-        card faces. While it is empty the picker falls back to the card faces and tiles above;
-        drop in one real portrait and they step aside.</p>`;
+        A folder of their own, and the only place a portrait comes from: nothing above is ever
+        offered as a face. An empty folder means everybody plays as their initial.</p>`;
   h += `<div class="okbox" style="margin-top:14px">Pieces are used as a silhouette and flooded with the
         player's colour, so whatever colour you draw them in makes no difference — only the transparent
         background matters. Hex tiles should be squares that bleed to the edges; the hexagon is clipped
@@ -7477,13 +7471,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27p"></script>
+<script src="ai.js?v=2026-08-27q"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27p"></script>
-<script src="net.js?v=2026-08-27p"></script>
+<script src="firebase-config.js?v=2026-08-27q"></script>
+<script src="net.js?v=2026-08-27q"></script>
 </body>
 </html>

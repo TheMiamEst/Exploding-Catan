@@ -115,16 +115,18 @@ of a card when relevant, so avoid putting anything critical there.
 
 PROFILE PICTURES — in profile/, PNG, square, 256x256
 ----------------------------------------------------
-  profile/1.png  …  profile/24.png
+  profile/1.png  …  profile/40.png
 
 These live in a FOLDER OF THEIR OWN — art/profile/ — so that actual pictures
-of people stay separate from hex tiles and card faces. See the README in
-there. Optional, and the only optional set here; they are not counted in the
-"N of M found" figure in the Art dialog, which reports them separately.
+of people stay separate from hex tiles and card faces, and it is the ONLY
+place the game looks for a portrait. Nothing above is ever offered as a face.
+See the README in there. Optional, and the only optional set here; they are
+not counted in the "N of M found" figure, which reports them separately.
 
-While that folder is empty the picker falls back to offering every kitten card
-face and terrain tile above, so there is a full set to choose from without
-drawing anything. Drop in one real portrait and they step aside.
+An empty folder means everybody plays as their initial on their seat colour,
+which is a perfectly good answer. It used to fall back to offering the card
+faces and tiles above, and that stopped once there were real pictures to
+offer.
 
 Shown in a CIRCLE, about 64px across, so keep the subject central and expect
 the corners to be cut off.

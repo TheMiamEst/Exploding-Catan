@@ -18,10 +18,10 @@ drew that one. 404s in the browser console for the numbers you have not used
 are expected and harmless.
 
 A folder of its own so that actual pictures of people stay separate from hex
-tiles and card faces. While this folder is empty the picker falls back to
-offering every card face and tile in ../ instead, so a fresh copy of the game
-still has something to choose from. Drop in one real portrait and they step
-aside — the picker then offers these and nothing else.
+tiles and card faces, and the ONLY place the game looks for a portrait. It
+used to fall back to offering the card faces and tiles in ../ while this
+folder was empty; it does not any more. An empty folder means everybody plays
+as their initial on their seat colour, which is a perfectly good answer.
 
 Only the picture's NUMBER travels between browsers, never the file. Everybody
 does not need the same profile folder: somebody playing with a picture you have

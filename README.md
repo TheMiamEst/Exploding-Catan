@@ -124,6 +124,12 @@ machine-facing:
 keeps the old code for ten minutes and blames the game. A date is a good stamp
 precisely because it is not a decision.
 
+One thing the stamp cannot fix: **`index.html` itself has no cache-buster**,
+and it is where nearly all the game lives. Pages serves it with the same ten
+minute max-age, so a reload straight after a push can hand you the old file and
+none of your changes. If something you just shipped is not there, that is the
+first thing to rule out — a hard reload (Ctrl+Shift+R) settles it.
+
 To ship a change after that:
 
 ```bash
@@ -323,14 +329,18 @@ actual pictures of people stay separate from hex tiles and card faces. Numbered
 rather than named because the game probes for them: adding one is dropping a
 file in, with no list to edit.
 
-While that folder is empty the picker falls back to every kitten card face and
-terrain tile in `art/`, so a fresh copy still has something to choose from.
-Drop in one real portrait and they step aside. With no art at all everyone
-plays as their initial on their seat colour, which is also what you get by
-picking **None**.
+That folder is the **only** place a portrait comes from. The picker used to
+fall back to the card faces and terrain tiles in `art/` while it was empty,
+which was a reasonable stopgap and wrong the moment there were real pictures in
+it — not least because an id saved from those days went on resolving, so
+somebody who had once picked the Defuse card kept it for good however many
+portraits arrived afterwards. An empty folder now means everybody plays as
+their initial on their seat colour, which is also what you get by picking
+**None**, and an old choice saved in the browser is dropped on load rather than
+quietly showing as an initial nobody can explain.
 
-What travels between browsers is an id like `a:3` or `c:defuse`, not a file,
-and each browser resolves it against its own folder. Nobody has to have the
+What travels between browsers is an id like `a:3`, not a file, and each browser
+resolves it against its own folder. Nobody has to have the
 same art as anybody else: somebody with art you have not just shows up as their
 initial on your screen.
 
