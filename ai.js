@@ -46,6 +46,11 @@ const W = {
   cardPushVP:     5,      // from here on, kitten cards are worth chasing hard
   cardPushMult:   2.8,    // how much more a card is worth in that band
   roadReachMax:   3,      // never build toward a spot further away than this
+  roadOpens:      2.2,    // per point of settle-value a road opens up. Small
+                          // because reachValue sums the WHOLE board rather
+                          // than counting steps to one target: a good road
+                          // opens twenty or thirty points of it, and at any
+                          // larger weight this term buries Longest Road.
   handHardCap:    9,      // above this, spend no matter what else is pending
   sevenAnswerCut: 5       // cards a seven must be about to take before a Nope
                           // or a Defuse is worth spending on it
@@ -155,6 +160,50 @@ function expansionMap(pid){
     }
   }
   return dist;
+}
+
+/* What the board is still worth to us: EVERY spot we could still settle,
+   discounted by how many roads away it is.
+
+   The road picker used to steer by bestExpansion alone — one target vertex,
+   and a road scored by whether it shortened the walk to that one spot. Which
+   works right up until the target is already reachable, and then every
+   candidate scores zero for progress and the bot falls back to picking
+   whichever road is longest. That is the "roads into dead ends while the
+   settlement spots were somewhere else" of it: with the single target in
+   hand, the rest of the board was invisible.
+
+   Summed over everything reachable, a road that opens nothing raises this by
+   nothing — so a dead end scores zero instead of scoring its own length. */
+function reachValue(pid){
+  const dist = expansionMap(pid);
+  let total = 0;
+  for (const v of vertices){
+    const d = dist[v.id];
+    if (d === undefined || d > W.roadReachMax) continue;
+    if (!canPlaceSettlement(v.id, pid, true)) continue;    // legal ignoring roads
+    total += vertexValueFor(v.id, pid) * Math.pow(W.expansionDecay, d);
+  }
+  return total;
+}
+
+/* Does this road lead anywhere at all? Judged at its far end: somewhere to
+   build, or somewhere to carry on building towards. A road that answers no to
+   both runs into a wall — the board's edge, or the back of somebody else's
+   settlement, which nothing may route through. Call with the edge already
+   simulated as ours. */
+function roadGoesSomewhere(eid, pid){
+  const e = edges[eid];
+  for (const vid of e.v){
+    const v = vertices[vid];
+    if (v.owner !== null && v.owner !== pid) continue;     // blocked at this end
+    if (v.owner === null && canPlaceSettlement(vid, pid, true)) return true;
+    for (const nid of v.edges){
+      if (nid === eid) continue;
+      if (edges[nid].owner === null) return true;          // still somewhere to go
+    }
+  }
+  return false;
 }
 
 /* Best place we could eventually settle, and how many roads away it is. */
@@ -279,28 +328,44 @@ function pickRoad(pid){
   const cands = edges.filter(e => roadSpotShown(e.id));
   if (!cands.length) return null;
 
-  const exp       = bestExpansion(pid);
-  const before    = expansionMap(pid);
-  const dBefore   = exp ? (before[exp.vid] === undefined ? 99 : before[exp.vid]) : 99;
-  const lenBefore = longestRoadFor(pid);
-  const rival     = S.longestRoad.owner === null ? 4 : S.longestRoad.len;
-  const contesting = S.longestRoad.owner !== pid && lenBefore >= rival - 2;
+  const reachBefore = reachValue(pid);
+  const lenBefore   = longestRoadFor(pid);
+
+  /* Longest Road is worth DEFENDING as well as taking. The old test asked
+     only whether we were close enough to take it from somebody else, so a bot
+     holding a five-road run watched a rival build a six and did nothing about
+     it — there was no branch in which holding it mattered. Measured against
+     the longest run anybody else actually has rather than against the record
+     on the card, because the record does not move until somebody passes it. */
+  const holder = S.longestRoad.owner;
+  let rivalLen = 4;
+  for (const q of S.players){
+    if (q.id === pid) continue;
+    rivalLen = Math.max(rivalLen, longestRoadFor(q.id));
+  }
+  const contesting = holder === pid ? rivalLen >= lenBefore - 1
+                                    : lenBefore >= rivalLen - 2;
 
   let best = null;
   for (const e of cands){
     e.owner = pid;                              // simulate
-    const after    = expansionMap(pid);
-    const dAfter   = exp ? (after[exp.vid] === undefined ? 99 : after[exp.vid]) : 99;
-    const lenAfter = longestRoadFor(pid);
+    const reachAfter = reachValue(pid);
+    const lenAfter   = longestRoadFor(pid);
+    const goes       = roadGoesSomewhere(e.id, pid);
     e.owner = null;
 
-    const progress = dBefore - dAfter;          // >0: this edge is on the path
+    const opened   = reachAfter - reachBefore;  // >0: this edge opens ground up
     const lengthen = lenAfter - lenBefore;      // >0: extends our longest run
-    if (progress <= 0 && lengthen <= 0) continue;   // pure branch — never build
+    if (opened <= 0 && lengthen <= 0) continue; // pure branch — never build
 
-    let score = progress * 25 + lengthen * (contesting ? 45 : 15);
-    if (dAfter === 0) score += 30;              // the site is now reachable
-    if (contesting && lenAfter > rival) score += 60;   // takes Longest Road outright
+    let score = opened * W.roadOpens + lengthen * (contesting ? 45 : 15);
+    // Nowhere to build at the end of it and nowhere to carry on to. Still
+    // worth something while the run itself is worth something — a road into
+    // a wall can hold Longest Road — so this is a heavy discount and not a
+    // refusal.
+    if (!goes) score = score * 0.25 - 10;
+    if (contesting && lenAfter > rivalLen) score += 60;   // takes it outright
+    if (score <= 0) continue;
     if (!best || score > best.score) best = { id: e.id, score };
   }
   return best ? best.id : null;
@@ -1364,7 +1429,8 @@ window.AI = {
 
   /* Internals, exposed for diagnosis and weight tuning. */
   _dbg: { goal, planOptions, pickCardPayment, tryBankTrade, tryPlayerTrade,
-          pickRoad, vpNearest, bestExpansion, expansionMap, dumpSurplus, shortfall,
+          pickRoad, vpNearest, bestExpansion, expansionMap, reachValue,
+          roadGoesSomewhere, longestRoadFor, dumpSurplus, shortfall,
           vertexValue, vertexValueFor, threat, production },
 
   /* Fairness assertion: the bot must not consult hidden information. */

@@ -294,22 +294,36 @@ picking **None**.
 What travels between browsers is an id like `a:3` or `c:defuse`, not a file,
 and each browser resolves it against its own folder. Nobody has to have the
 same art as anybody else: somebody with art you have not just shows up as their
-initial on your screen. Bots are dealt faces of their own at the start of a
-game, all different, and never the one you chose.
+initial on your screen.
+
+**Bots do not take pictures.** They keep their colour and their initial, which
+is a better answer than a random cat: it is instantly legible, it is the same
+colour as their pieces on the board, and it leaves a portrait meaning
+"somebody chose this" rather than "the game picked one".
 
 ### Talking at the table
 
 Two more buttons beside the log.
 
 **Chat** opens a window in the same left-hand column. It does not float over
-the log — the log gives up the bottom of the column and keeps the top, so
-nothing you were reading is covered by what somebody typed. The button carries
-a count of what was said while it was shut, and your own messages never count
-towards it.
+the log — the log starts below it, so nothing you were reading is covered by
+what somebody typed. The log's own top is measured from the button strip rather
+than hardcoded, because the strip wraps to two rows on a narrow screen and to
+one on a wide one, and it has gained buttons over time; an offset per
+breakpoint worked right up until the row count changed under it. The button
+carries a count of what was said while it was shut, and your own messages never
+count towards it.
 
-**Emoji** opens a tray of eighteen. Throw one and it lands on your own portrait
-in the seat strip, sits there for three and a half seconds and fades. A repaint
-in the middle of that resumes the animation rather than replaying the pop.
+**Emoji** opens a tray of eighteen. Throw one and it lands over the middle of
+your own portrait — big, no bubble behind it, two drop shadows so it reads over
+pale art and dark alike — sits there for three and a half seconds and fades. A
+repaint in the middle of that resumes the animation rather than replaying the
+pop. It is centred with negative margins rather than a translate, because the
+pop is a transform animation and the two would fight.
+
+Both hang off the bottom of the button strip, in the same place: they are two
+answers to the same question, so only one is ever out and opening either puts
+the other away.
 
 **The bots throw them too, and they are not gracious.** They read the journal
 — the public record of what was played, by whom, at whom — and react to it:
@@ -454,7 +468,11 @@ you need it is not a card. Draw one, get exploded, use it.
 Your own points on the seat strip include the Feral Kittens in your hand;
 every other seat shows the public figure the table is actually playing
 against. Once somebody wins, every hand is face up and all the totals are
-real.
+real — and the hands themselves are listed in the **final standings**, under
+the table, rather than crammed into the seat cards. The seat card used to grow
+a list of everybody's cards the moment the game ended, which the portrait left
+no room for; the standings window has always carried the same information and
+has the space for it.
 
 Forced dialogs (discarding, answering a card aimed at you) are still modals,
 because they have to be dealt with before play continues. Those carry their
@@ -470,6 +488,14 @@ folded — rolling, building, buying, trading and ending the turn are all
 refused, and the action bar says so instead of showing buttons. Dropping a
 Nope or a Defuse on a log entry, and Noping somebody's turn, stay open: they
 are what folding is for.
+
+### Which way round the table
+
+An arrow beside the buttons says whether play is going left or right through
+the seats above. Nothing else on screen said so, and a **Reverse** turns it
+over mid-game — you found out by watching whose turn came next, which is a
+poor way to learn it an hour into a game where somebody has quietly reversed
+twice. Hidden in a two-player game, where there is no direction to speak of.
 
 ### When a seven is rolled
 
@@ -584,6 +610,35 @@ the hex is not a choice, and the window went up in front of an answer that had
 already been decided.
 
 ---
+
+### How the bots pick a road
+
+Roads used to be steered by one target vertex: the best spot the bot could
+eventually settle, and a road scored by whether it shortened the walk there.
+Which works right up until that target is already reachable — and then every
+candidate scores zero for progress, and the bot falls back on whichever road is
+longest. That is where roads into dead ends came from, and why settlement
+opportunities elsewhere on the board went unbuilt: with the one target in hand,
+the rest of the board was invisible.
+
+They now score against `reachValue` — *everything* still settleable and
+reachable, each spot discounted by how many roads away it is. A road that opens
+nothing raises it by nothing, so a dead end scores zero rather than scoring its
+own length. Blocking has always been respected here and still is: the walk
+cannot route through another player's road, nor through their buildings.
+
+Longest Road is now worth **defending** as well as taking. The old test asked
+only whether the bot was close enough to take it from somebody else, so a bot
+holding a five-road run watched a rival build a six and did nothing about it —
+there was no branch in which holding it mattered. It is measured against the
+longest run anybody else actually has, rather than against the record on the
+card, because the record does not move until somebody passes it.
+
+The one weight worth knowing about is `W.roadOpens`, which is deliberately
+small (2.2). `reachValue` sums the whole board rather than counting steps to
+one target, so a good road opens twenty or thirty points of it; at any larger
+weight that term buries Longest Road entirely, and the bot expands while its
+lead evaporates.
 
 ## Tuning
 

@@ -75,8 +75,7 @@
     grid-template-columns:auto minmax(0,1fr);
     grid-template-areas:
       "av   name"
-      "av   board"
-      "rev  rev";
+      "av   board";
   }
   .pcard.active{
     border-color:var(--accent); border-left-color:var(--pc);
@@ -89,7 +88,8 @@
      dot that used to sit here can go: six people who have all picked the same
      cat are still six different colours. */
   .avwrap{
-    grid-area:av; position:relative; width:64px; height:64px; border-radius:50%;
+    grid-area:av; position:relative;
+    width:var(--avW, 64px); height:var(--avW, 64px); border-radius:50%;
     border:2px solid var(--pc, var(--line)); background:#0b0d10;
     box-shadow:0 2px 8px #0008;
   }
@@ -123,16 +123,23 @@
   /* Your own, with the Feral Kittens counted in — see vpStat. */
   .vpring.hidden{ box-shadow:0 1px 5px #0007, 0 0 0 2px #151a22, 0 0 0 4px #e2b33c66 }
 
-  /* An emoji somebody just threw, sitting on the far corner from the score.
-     One animation carries the whole life of it — in, hold, out — so nothing
-     has to time the fade; the element is simply removed once it has run. */
+  /* An emoji somebody just threw, over the middle of their face.
+
+     Centred with negative margins rather than a translate, because the pop is
+     a transform animation and the two would fight: whatever the keyframes set
+     would throw away the centring. No disc behind it either — at this size a
+     bubble would cover the portrait entirely, and the point is to see who is
+     being rude. Two drop shadows instead, so it reads over pale art as well
+     as dark. One animation carries the whole life of it — in, hold, out — so
+     nothing has to time the fade; the element is simply removed once it has
+     run. */
   .emote{
-    position:absolute; top:-14px; right:-14px; z-index:3;
-    width:40px; height:40px; border-radius:50%;
+    position:absolute; top:50%; left:50%; z-index:3;
+    width:var(--emW, 68px); height:var(--emW, 68px);
+    margin:calc(var(--emW, 68px) / -2) 0 0 calc(var(--emW, 68px) / -2);
     display:flex; align-items:center; justify-content:center;
-    font-size:22px; line-height:1; pointer-events:none;
-    background:#0b0d10f2; border:2px solid var(--pc, var(--line));
-    box-shadow:0 4px 14px #000b;
+    font-size:calc(var(--emW, 68px) * 0.68); line-height:1; pointer-events:none;
+    filter:drop-shadow(0 2px 3px #000) drop-shadow(0 0 9px #000c);
     /* 3400ms is EMOTE_MS in the script, and the two have to agree: the script
        resumes a bubble caught mid-life with a negative animation-delay, which
        lands in the wrong place if this duration is not the one it measured
@@ -170,10 +177,15 @@
     background:#0006; border:1px solid var(--line); border-radius:7px; overflow:hidden;
   }
   .statgroup.board{grid-area:board}
-  /* Half off the bottom edge, centred under the portrait. Solid rather than
-     translucent, because it is sitting across the card's own border. */
+  /* Half off the bottom edge, and centred UNDER the portrait rather than
+     lined up with its left edge — which is what it was doing, and left it a
+     few pixels off centre because the pill is wider than the circle. Measured
+     from the padding edge: the card's own left padding, then half a portrait.
+     Solid rather than translucent, because it sits across the card's border. */
   .statgroup.hand{
-    position:absolute; left:8px; bottom:-13px; z-index:2;
+    position:absolute; z-index:2;
+    left:calc(8px + var(--avW, 64px) / 2); transform:translateX(-50%);
+    bottom:-13px;
     background:#12161d; border-color:var(--pcEdge, var(--line));
     box-shadow:0 3px 9px #0009;
   }
@@ -193,12 +205,6 @@
      holding something nobody else can — so they light the same gold. */
   .stat.holds b{color:var(--accent)}
   .stat.holds svg{stroke:var(--accent)}
-  .reveal{grid-area:rev; display:flex; flex-wrap:wrap; gap:3px; margin-top:2px}
-  .revcard{
-    font-size:9.5px; border:1px solid var(--line); border-radius:4px;
-    padding:1px 4px; background:#0004; color:var(--ink); white-space:nowrap;
-  }
-
   /* The coloured seat dot, used in the log, in trade offers and in the "who is
      thinking" line. It carries its own colour inline. */
   .dot{
@@ -249,7 +255,7 @@
      straight through, and there is no container or scrollbar — entries simply
      stack up from the bottom and the oldest are clipped off the top. */
   #feed{
-    position:absolute; left:10px; top:52px; bottom:8px;
+    position:absolute; left:10px; top:var(--feedTop, 52px); bottom:8px;
     width:clamp(170px, 19%, 280px); z-index:3;
     display:flex; flex-direction:column; gap:5px;
     overflow-y:auto; overflow-x:hidden;
@@ -266,6 +272,18 @@
   #feed::-webkit-scrollbar{width:0; height:0}
   #feed.hidden{display:none}
   #leftbtns button.on{background:#2f5d3a; border-color:#4d8a5f}
+  /* Which way round the table play is going. Worth saying out loud because a
+     Reverse turns it over mid-game and nothing else on screen does say so —
+     you found out by watching whose turn came next. Not a button: there is
+     nothing to press, it is a label that happens to live in a row of them. */
+  .turntag{
+    display:flex; align-items:center; gap:5px; white-space:nowrap;
+    padding:3px 9px; border-radius:6px; font-size:12px; cursor:default;
+    background:var(--panel2); border:1px solid var(--line); color:var(--dim);
+  }
+  .turntag b{color:var(--ink); font-size:15px; line-height:1}
+  .turntag[hidden]{display:none}
+
   /* Somebody said something while the window was shut. */
   #chatBtn{position:relative}
   #chatBtn .unread{
@@ -276,20 +294,27 @@
   }
 
   /* ── Chat ────────────────────────────────────────────────────────────
-     Shares the left column with the log rather than floating over it: with
-     the window open the log gives up the bottom of the column and keeps the
-     top, so nothing you were reading is covered by what somebody typed.
-     One height, named once, because both rules have to agree on it. */
-  #stage{--chatH:min(300px, 42%)}
+     Hung off the bottom of the button strip, in the same place the emoji tray
+     drops into: they are two answers to the same question, so only one of them
+     is ever out and opening either puts the other away. It shares the left
+     column with the log rather than floating over it — with the window open
+     the log starts below it, so nothing you were reading is covered by what
+     somebody typed. Two heights, named once each, because several rules have
+     to agree on them.
+
+     The height is in vh and not a percentage: hanging the box off the button
+     strip made the strip its containing block, and a percentage of a row of
+     buttons is about eleven pixels. */
+  #stage{--chatH:min(300px, 40vh); --feedTop:52px}
   #chatbox{
-    position:absolute; left:10px; bottom:8px; z-index:6;
-    width:clamp(200px, 21%, 300px); height:var(--chatH);
+    position:absolute; top:calc(100% + 6px); left:0; z-index:8;
+    width:clamp(200px, 21vw, 300px); height:var(--chatH);
     display:none; flex-direction:column; overflow:hidden;
     background:#151a22f2; border:1px solid var(--line); border-radius:8px;
     box-shadow:0 10px 30px #000a; backdrop-filter:blur(3px);
   }
   body.haschat #chatbox{display:flex}
-  body.haschat #feed{bottom:calc(var(--chatH) + 16px)}
+  body.haschat #feed{top:calc(var(--feedTop) + var(--chatH) + 8px)}
   #chatlog{
     flex:1 1 auto; min-height:0; overflow-y:auto; scrollbar-width:none;
     padding:7px 8px; display:flex; flex-direction:column; gap:5px;
@@ -320,7 +345,7 @@
      Hung off the button strip itself rather than positioned against the
      board, so it follows the buttons when a narrow screen stacks them. */
   #emojiTray{
-    position:absolute; top:calc(100% + 6px); left:0; z-index:7;
+    position:absolute; top:calc(100% + 6px); left:0; z-index:8;
     display:none; grid-template-columns:repeat(6, 1fr); gap:4px;
     width:max-content; max-width:min(272px, 74vw); padding:7px;
     background:#151a22f2; border:1px solid var(--line); border-radius:8px;
@@ -608,20 +633,17 @@
     #zoomWrap{top:80px}
     #feed{width:150px}
     .ev{font-size:11px; padding:4px 6px}
-    /* Four buttons, not two. Stacked into a column they ran down past the top
-       of the log and sat on it; wrapped into two rows of two they are the same
-       height the pair used to be, so the log keeps its start. */
-    #leftbtns{flex-wrap:wrap; max-width:190px}
-    #feed{top:78px}
+    /* Stacked into a column these ran down past the top of the log and sat on
+       it. Wrapped they stay two rows deep, and the log is placed underneath
+       whatever height they end up — see placeFeed. */
+    #leftbtns{flex-wrap:wrap; max-width:250px}
   }
   @media (max-width:820px){
-    .pcard{min-width:148px; gap:4px 7px}
+    .pcard{min-width:148px; gap:4px 7px; --avW:54px; --emW:58px}
     .pcard .pname{font-size:12px; padding:2px 6px}
-    .avwrap{width:54px; height:54px}
     .avwrap .avinit{font-size:22px}
     .vpring{width:24px; height:24px; font-size:13px}
-    .emote{width:34px; height:34px; font-size:18px; top:-12px; right:-12px}
-    .statgroup.hand{bottom:-12px; left:6px}
+    .statgroup.hand{bottom:-12px}
     .stat{min-width:29px; padding:2px 4px}
     .stat b{font-size:13.5px}
     .stat svg{width:13px; height:13px}
@@ -986,18 +1008,18 @@
         "av name name"
         "av hand board";
     }
-    .avwrap{width:40px; height:40px; border-width:2px}
+    .pcard{--avW:40px; --emW:44px}
+    .avwrap{border-width:2px}
     .avwrap .avinit{font-size:17px}
     .vpring{width:19px; height:19px; font-size:11px; top:-6px; left:-7px}
-    .emote{width:26px; height:26px; font-size:14px; top:-9px; right:-9px}
     .pcard .pname{font-size:11px; align-self:center; padding:1px 5px; border-radius:4px}
     /* Back into the flow: there is no spare height to hang into, and the
        strip's padding has gone with it. */
-    .statgroup.hand{position:static; grid-area:hand; box-shadow:none; background:#0006}
+    .statgroup.hand{position:static; transform:none; grid-area:hand;
+                    box-shadow:none; background:#0006}
     .stat{padding:0 3px; min-width:23px; gap:3px}
     .stat b{font-size:12px; line-height:1.15}
     .stat svg{width:11px; height:11px}
-    .reveal{display:none}             /* the standings table has the same thing */
 
     #stage{padding:3px}
     #boardArea{inset:3px}
@@ -1017,14 +1039,16 @@
     .die{width:40px; height:40px; border-radius:8px; padding:5px}
     .die i{width:7px; height:7px}
     .dicesum{font-size:16px; padding:3px 8px}
-    #feed{top:34px; width:132px}
+    #feed{width:132px}
     .ev{font-size:10px; padding:3px 5px}
     /* Wide and short: there is room across the top for all four on one line,
        and no height to spare for a second row. */
     #leftbtns{top:6px; left:6px; flex-wrap:nowrap; max-width:none}
     /* Chat takes a bigger share of a short column, or it is two lines deep. */
-    #stage{--chatH:min(190px, 54%)}
-    #chatbox{width:clamp(160px, 24%, 240px); left:6px; bottom:4px}
+    #stage{--chatH:min(190px, 42vh)}
+    #chatbox{width:clamp(160px, 26vw, 240px)}
+    .turntag{padding:2px 7px; font-size:11px}
+    .turntag b{font-size:13px}
     .msg{font-size:11px}
     #chatin{font-size:11px; padding:4px 6px}
     #emojiTray{grid-template-columns:repeat(5, 1fr); padding:5px}
@@ -1091,17 +1115,20 @@
     <button class="sm" onclick="showDice()">Dice history</button>
     <button class="sm" id="chatBtn" onclick="toggleChat()">Chat</button>
     <button class="sm" id="emojiBtn" onclick="toggleEmojiTray()">Emoji</button>
+    <span class="turntag" id="turnDir" hidden></span>
+    <!-- Both hang off the bottom of the strip, in the same place, and only one
+         of them is ever out: opening either puts the other away. -->
     <div id="emojiTray"></div>
-  </div>
-  <div id="feed"></div>
-  <div id="chatbox">
-    <div id="chatlog"></div>
-    <div id="chatrow">
-      <input id="chatin" maxlength="140" placeholder="Say something…" autocomplete="off"
-             onkeydown="chatKey(event)">
-      <button onclick="sendChatFromInput()">Send</button>
+    <div id="chatbox">
+      <div id="chatlog"></div>
+      <div id="chatrow">
+        <input id="chatin" maxlength="140" placeholder="Say something…" autocomplete="off"
+               onkeydown="chatKey(event)">
+        <button onclick="sendChatFromInput()">Send</button>
+      </div>
     </div>
   </div>
+  <div id="feed"></div>
 </div>
 
 <div id="hintbar"></div>
@@ -1121,7 +1148,7 @@
    ten minutes and the game misbehaves in ways that look like game bugs.
    The host stamps this into the state; a terminal on a different build says
    so out loud instead of quietly failing. */
-const GAME_VERSION = "2026-08-27i";
+const GAME_VERSION = "2026-08-27l";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1361,20 +1388,12 @@ function setMyAvatar(id){
   try { localStorage.setItem("ec_avatar", MY_AVATAR); } catch(e){}
 }
 
-/* Deal the bots faces of their own, all different, and none of them the one
-   the person at the keyboard chose. Called at the start of a game, before
-   anyone knows which seats are bots — the human's seat is written over
-   afterwards by applyMyAvatar. */
-function dealAvatars(players){
-  const pool = avatarPool().filter(id => id !== MY_AVATAR);
-  for (let i = pool.length - 1; i > 0; i--){
-    const j = Math.floor(Math.random() * (i + 1));
-    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
-  }
-  players.forEach((p, i) => { p.avatar = pool.length ? pool[i % pool.length] : ""; });
-}
+/* Nobody is dealt a picture. Bots keep their colour and their initial, which
+   is a better answer than a random cat: it is instantly legible, it is the
+   same colour as their pieces on the board, and it leaves a portrait meaning
+   "somebody chose this" rather than "the game picked one".
 
-/* Whoever is sitting at this screen gets the picture they chose. Run after the
+   Whoever is sitting at this screen gets the picture they chose. Run after the
    bots are switched on, because that is the moment it becomes knowable which
    seat that is. Online the roster answers it instead — see net.js. */
 function applyMyAvatar(){
@@ -1671,7 +1690,6 @@ function newGame(numPlayers, mode){
       roads: 0, settlements: 0, cities: 0
     });
   }
-  dealAvatars(players);
 
   const desert = hexes.find(h => h.terrain === "desert");   // either one, on the large board
   const first = Math.floor(Math.random() * numPlayers);   // nobody always leads
@@ -2101,6 +2119,7 @@ function renderIdle(){
     '<span class="emptyhand">No game running.</span></div><div class="bside right"></div>';
   hint(null);
   drawModeTag();
+  drawTurnOrder();
   drawChat();
   closeEmojiTray();
   showIdle(true);
@@ -2163,7 +2182,7 @@ function render(){
   // to be in this repaint rather than to cause another one.
   syncEmotes();
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
-  drawModeTag(); drawChat();
+  drawModeTag(); drawChat(); drawTurnOrder();
   refreshFeedMarks();
   checkStalePanels();
   checkShowcase();
@@ -2172,9 +2191,10 @@ function render(){
   // showing where the card may go. Put them straight back.
   if (dragCard) markDropTargets();
   placeDeck();
+  placeFeed();
   // Replacing the board's markup can leave measurements momentarily stale, so
-  // always settle the deck again on the next frame.
-  requestAnimationFrame(placeDeck);
+  // always settle these again on the next frame.
+  requestAnimationFrame(function(){ placeDeck(); placeFeed(); });
   // Online: anything that redrew the host's screen is news. Debounced, so the
   // burst of renders one action causes goes out as a single state.
   if (window.NET && NET.publishSoon) NET.publishSoon();
@@ -2649,6 +2669,38 @@ function vpStat(p){
   return `<span class="vpring ${hidden ? "hidden" : ""}" title="${esc(tip)}">${shown}</span>`;
 }
 
+/* The log starts under the button strip, whatever height the strip has ended
+   up: it wraps to two rows on a narrow screen and to one on a wide one, and it
+   gained a button and a tag along the way. Hardcoding an offset per breakpoint
+   worked until the row count changed under it, and then the log was drawn
+   through the buttons. Measured after layout, like everything else here. */
+function placeFeed(){
+  const btns = document.getElementById("leftbtns");
+  const stage = document.getElementById("stage");
+  if (!btns || !stage || !btns.offsetHeight) return;
+  stage.style.setProperty("--feedTop", (btns.offsetTop + btns.offsetHeight + 10) + "px");
+}
+
+/* Which way play is going round the table. Nothing else on screen says so,
+   and a Reverse turns it over mid-game — you used to find out by watching
+   whose turn came next, an hour into a game where somebody had quietly
+   reversed it twice. The seats run left to right in the strip in the order
+   play visits them, so the arrow is the strip's own direction. */
+function drawTurnOrder(){
+  const el = document.getElementById("turnDir");
+  if (!el) return;
+  if (!S || S.phase === "over" || S.players.length < 3){
+    // Two players have no direction to speak of: play alternates either way.
+    el.hidden = true;
+    return;
+  }
+  const rightwards = (S.dir || 1) > 0;
+  el.hidden = false;
+  el.innerHTML = rightwards ? "turn order <b>→</b>" : "<b>←</b> turn order";
+  el.title = "Play is going " + (rightwards ? "left to right" : "right to left") +
+             " through the seats above. A Reverse turns this round.";
+}
+
 /* Fast track and fast track + are worth being able to see at a glance, an
    hour in, without opening a dialog. A normal game says nothing. */
 function drawModeTag(){
@@ -2708,17 +2760,6 @@ function drawPlayers(){
                      S.largestArmy.owner === p.id ? " — holds Largest Army, +2" : ""}">
                 <b>${p.knights}</b>${ICON.knight}</div>
             </div>`;
-    if (S.revealed){
-      const counts = {};
-      for (const c of p.cards){
-        const nm = KITTEN[c.key] ? KITTEN[c.key].name : "Face down";
-        counts[nm] = (counts[nm] || 0) + 1;
-      }
-      const names = Object.keys(counts).map(nm =>
-        `<span class="revcard">${counts[nm] > 1 ? counts[nm] + "\u00d7 " : ""}${nm}</span>`);
-      h += `<div class="reveal">${names.length ? names.join("") :
-            "<span style='color:var(--dim)'>no cards</span>"}</div>`;
-    }
     h += `</div>`;
   }
   document.getElementById("players").innerHTML = h;
@@ -3343,6 +3384,7 @@ function clearChat(){
 function toggleChat(){
   const on = document.body.classList.toggle("haschat");
   if (on){
+    closeEmojiTray();                  // they share a peg; only one hangs on it
     drawChat();
     const log = document.getElementById("chatlog");
     if (log) log.scrollTop = log.scrollHeight;
@@ -3350,6 +3392,7 @@ function toggleChat(){
     if (inp) inp.focus();
   }
   drawChatBadge();
+  placeFeed();
 }
 
 /* Newest message this screen has actually been shown. Your own never count:
@@ -3462,8 +3505,16 @@ function drawEmojiTray(){
 function toggleEmojiTray(){
   drawEmojiTray();
   const on = document.body.classList.toggle("hastray");
+  if (on) closeChat();                 // they share a peg; only one hangs on it
   const btn = document.getElementById("emojiBtn");
   if (btn) btn.classList.toggle("on", on);
+}
+
+function closeChat(){
+  if (!document.body.classList.contains("haschat")) return;
+  document.body.classList.remove("haschat");
+  drawChatBadge();
+  placeFeed();
 }
 function closeEmojiTray(){
   document.body.classList.remove("hastray");
@@ -7260,13 +7311,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27i"></script>
+<script src="ai.js?v=2026-08-27l"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27i"></script>
-<script src="net.js?v=2026-08-27i"></script>
+<script src="firebase-config.js?v=2026-08-27l"></script>
+<script src="net.js?v=2026-08-27l"></script>
 </body>
 </html>

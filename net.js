@@ -651,7 +651,7 @@ function startTable(){
   }
   S.players.forEach((p, i) => {
     const r = NET.roster[i];
-    if (!r || r.bot) return;                  // bots keep the face newGame dealt them
+    if (!r || r.bot) return;                  // bots keep their colour and initial
     p.name = r.name;
     p.avatar = r.av || "";
   });
