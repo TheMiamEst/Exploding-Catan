@@ -4279,7 +4279,6 @@ function sevenWatchdog(){
   if (typeof humanPromptOpen === "function" && humanPromptOpen()){ sevenWatchIdle = 0; return; }
   if (++sevenWatchIdle < 2) return;
   sevenWatchIdle = 0;
-  announce("⏳ Nobody was holding the seven — asking again", "info");
   stepSeven();
   render();
 }
