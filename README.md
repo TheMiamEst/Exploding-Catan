@@ -659,6 +659,18 @@ Three cases are worth calling out:
 - **A trade** — between players or with the bank — puts the resources back
   where they came from. Trades are journalled like anything else, so the one
   move that can hand somebody the card they were missing is answerable too.
+- **A Nope**, which is the case that reads worst if nothing says so. Undoing a
+  Nope puts back whatever that Nope cancelled — the snapshot a Nope is
+  journalled against is the board as it stood with the original action
+  resolved, so the rewind does it for free. What was missing was anybody
+  saying it had happened. Played out, the log read: *Green Nopes Orange's
+  Favor* · *Orange is Noped, their turn ends* · *Orange Nopes Green's Nope* ·
+  *Orange gets their turn back*. Four lines, not one of them mentioning the
+  Favor, which by then had quietly taken effect for the second time — the
+  cards had moved and the table had no way of knowing. There is a line for it
+  now: **↺ Orange plays Favor on White — stands after all**. A Defused card
+  already said this, because replaying it announces itself; this is the same
+  courtesy for a Nope.
 - **A whole turn** — the Nope's other use, dropped on whoever is playing
   rather than on a line — cancels what the turn *earned* AND hands back what
   it *took*. Those are two different things and only the first of them used to

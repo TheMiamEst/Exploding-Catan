@@ -1225,7 +1225,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-27s";
+const GAME_VERSION = "2026-08-27v";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -4729,6 +4729,10 @@ function logAction(html, kind, opts){
     spent: opts.spent || null,
     redo: opts.redo || null,
     show: opts.show || null,
+    // What this entry took OFF the table, if it is an answer to something.
+    // Undoing it puts that back, and this is how the line saying so knows what
+    // to name. Only a Nope sets it.
+    undid: opts.undid || null,
     // Undoing this must not also end its actor's turn: it was defensive, and
     // played out of turn. Set by the Defuse spent on a seven.
     turnSafe: !!opts.turnSafe,
@@ -4948,8 +4952,16 @@ function nopeEntry(id, noperId){
   // Nor does nesting one Nope's text inside the next: a counter-Nope came out
   // as "Blue Nopes Red Nopes Blue's turn", which nobody can read at a glance —
   // least of all the player who has just had their own Nope taken off them.
-  const answering = e.kind === "defend"
-        ? pdot(S.players[e.actor]) + "'s <b>Nope</b>"
+  //
+  // A Defuse is journalled as "defend" too, and this used to call every one of
+  // them a Nope: answering somebody's Defuse read "Orange Nopes Blue's Nope",
+  // naming a card Blue had not played. What was spent on the entry says which
+  // it actually was.
+  const answeredCard = e.kind === "defend"
+        ? (e.spent && e.spent.key === "defuse" ? "Defuse" : "Nope")
+        : null;
+  const answering = answeredCard
+        ? pdot(S.players[e.actor]) + "'s <b>" + answeredCard + "</b>"
         : esc(label);
   let reroll = false;
   // Whose turn is being cut short. Off-turn plays (an Attack thrown during
@@ -5029,7 +5041,10 @@ function nopeEntry(id, noperId){
   const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " +
             (selfRoll ? "their own roll" : answering), "defend",
             { actor: noperId, snap: undone, nopeable: true, turnBack: turnBack,
-              spent: { pid: noperId, key: "nope" }, show: "nope" });
+              spent: { pid: noperId, key: "nope" }, show: "nope",
+              // What this Nope took off the table. Carried so that a Nope of
+              // THIS Nope can say what came back — see below.
+              undid: { plain: e.plain, actor: e.actor, kind: e.kind } });
   logMsg(selfRoll ? `<b>${noper.name}</b> Nopes their own roll.`
                   : `<b>${noper.name}</b> Nopes: ${esc(label)}`);
 
@@ -5039,6 +5054,25 @@ function nopeEntry(id, noperId){
   if (e.redo){
     playResolved({ type:"card", card: e.redo.card, actor: e.redo.actor,
                    target: e.redo.target, payload: e.redo.payload, quiet: true });
+  }
+
+  /* Noping a NOPE puts back whatever that Nope cancelled, and the rewind above
+     has already done it — the snapshot a Nope is journalled against is the
+     board as it stood with the original action resolved. What was missing was
+     anybody saying so.
+
+     Played out, the log read: "Green Nopes Orange's Favor", "Orange is Noped —
+     their turn ends", "Orange Nopes Green's Nope", "Orange gets their turn
+     back". Four lines, and not one of them mentions the Favor, which by then
+     has quietly taken effect for the second time. The cards had moved; the
+     table had no way of knowing. A Defused card says this already, because
+     replaying it announces itself — this is the same courtesy for a Nope. */
+  if (e.undid && e.undid.plain){
+    const back = String(e.undid.plain).replace(/\s+/g, " ").trim();
+    if (back){
+      announce("\u21ba " + esc(back) + " \u2014 <b>stands after all</b>", "defend");
+      logMsg(`<span style="color:#8ad8f5">Back on: ${esc(back)}.</span>`);
+    }
   }
 
   // Did undoing this entry move the turn back to somebody else? Only then is
@@ -7533,13 +7567,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27s"></script>
+<script src="ai.js?v=2026-08-27v"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27s"></script>
-<script src="net.js?v=2026-08-27s"></script>
+<script src="firebase-config.js?v=2026-08-27v"></script>
+<script src="net.js?v=2026-08-27v"></script>
 </body>
 </html>
