@@ -1321,6 +1321,8 @@ let GAME_MODE = "normal";
 let GAME_BOARD = "small";
 let GAME_WIN_POINTS = 10;
 let GAME_TURN_SECONDS = 0;
+let GAME_PLAYERS = 4;
+let GAME_ALL_BOTS = false;
 function modeOf(){ return (S && MODES[S.mode]) ? S.mode : "normal"; }
 function fastStart(){ return modeOf() !== "normal"; }
 
@@ -7240,9 +7242,13 @@ function newGameDialog(){
           <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Table</div>
           <div class="pick">`;
     for (let n = 2; n <= 6; n++)
-      h += `<button class="${n === 4 ? "primary" : ""}" onclick="window.__ng(${n})"
+      h += `<button class="${GAME_PLAYERS === n ? "primary" : ""}" onclick="window.__players(${n})"
               >You + ${n - 1} bot${n === 2 ? "" : "s"}</button>`;
     h += `</div>
+          <label style="display:flex;align-items:center;gap:7px;margin-top:8px;color:var(--ink)">
+            <input type="checkbox" ${GAME_ALL_BOTS ? "checked" : ""} onchange="window.__allBots(this.checked)">
+            All bots
+          </label>
           <div style="height:12px"></div>
           <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Board</div>
           <div class="pick">`;
@@ -7271,9 +7277,12 @@ function newGameDialog(){
           (NET.isHost() ? ` — and since you are the host, that ends it for everybody.` : `.`) +
           `</div>` + h;
     openModal("New Game", h,
-      [{ label:"Cancel", fn: () => { closeModal(); if (!S) renderIdle(); } }]);
+      [{ label:"Cancel", fn: () => { closeModal(); if (!S) renderIdle(); } },
+       { label:"Start Game", cls:"primary", fn: () => window.__ng() }]);
   };
   window.__mode = (key) => { if (MODES[key]) GAME_MODE = key; refresh(); };
+  window.__players = (n) => { GAME_PLAYERS = Math.min(6, Math.max(2, Number(n) || 4)); refresh(); };
+  window.__allBots = (on) => { GAME_ALL_BOTS = !!on; };
   window.__board = (key) => { if (key === "small" || key === "large") GAME_BOARD = key; refresh(); };
   window.__win = (points) => {
     GAME_WIN_POINTS = Math.min(20, Math.max(3, Number(points) || 10));
@@ -7288,7 +7297,7 @@ function newGameDialog(){
   };
   window.__avPick = (id) => { setMyAvatar(id); refresh(); };
   window.__avRefresh = refresh;
-  window.__ng = (n) => {
+  window.__ng = () => {
     closeModal();
     // Still sitting in a room. A local game cannot start on top of an online
     // one: the host would go on publishing to people who are no longer in the
@@ -7296,8 +7305,9 @@ function newGameDialog(){
     // drawn straight over the table they had just dealt themselves.
     if (window.NET && NET.leave) NET.leave();
     window.AGENTS = {};
-    newGame(n, GAME_MODE, GAME_BOARD, GAME_WIN_POINTS, GAME_TURN_SECONDS);
-    if (typeof window.AI !== "undefined") window.AI.enable([0]);
+    newGame(GAME_PLAYERS, GAME_MODE, GAME_BOARD, GAME_WIN_POINTS, GAME_TURN_SECONDS);
+    if (typeof window.AI !== "undefined")
+      window.AI.enable(GAME_ALL_BOTS ? [] : [0]);
     // After the bots are switched on, because that is the moment it becomes
     // knowable which seat is the one at this keyboard.
     applyMyAvatar();
