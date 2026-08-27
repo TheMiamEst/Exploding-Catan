@@ -307,7 +307,7 @@ function applyGame(b){
   S.mode = b.mode || "normal";
   S.board = b.board || (b.n >= 5 ? "large" : "small");
   S.winPoints = Math.min(20, Math.max(3, Number(b.winPoints) || 10));
-  S.turnSeconds = [20,30,40,50,60,70,80,90,100].includes(Number(b.turnSeconds))
+  S.turnSeconds = Number.isInteger(Number(b.turnSeconds)) && Number(b.turnSeconds) >= 20 && Number(b.turnSeconds) <= 100
     ? Number(b.turnSeconds) : 0;
   S.turnTimerRemaining = Math.max(0, Number(b.turnTimerRemaining) || 0);
   S.turnTimerPaused = !!b.turnTimerPaused;

@@ -642,6 +642,9 @@
   .bcentre{display:flex; align-items:center; gap:10px; flex:0 0 auto}
   .actions-bar{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end}
   .actions-bar button{padding:9px 15px}
+  .turntimer{display:inline-flex; align-items:center; min-height:36px; padding:0 15px;
+             border:1px solid var(--line); border-radius:6px; background:#0004;
+             color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap}
 
   /* ── Log / dice modals ───────────────────────────────────────────── */
   .logbox{max-height:52vh; overflow-y:auto; font-size:12.5px; color:var(--dim);
@@ -1798,7 +1801,7 @@ function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
     mode: MODES[mode] ? mode : "normal",   // normal | fast | fastplus
     board: BOARDSET === BOARD.large ? "large" : "small",
     winPoints: Math.min(20, Math.max(3, Number(winPoints) || 10)),
-    turnSeconds: [20,30,40,50,60,70,80,90,100].includes(Number(turnSeconds))
+    turnSeconds: Number.isInteger(Number(turnSeconds)) && Number(turnSeconds) >= 20 && Number(turnSeconds) <= 100
       ? Number(turnSeconds) : 0,
     handoverUntil: 0,         // wall clock: the turn that just ended is still answerable
     handoverTurn: -1,         // which turn that was
@@ -3011,7 +3014,7 @@ function drawBottom(){
   const netOn = !!(window.NET && NET.isOnline && NET.isOnline());
   const myTurn = netOn ? S.cur === p.id
                        : (!anyBots() || (S.cur === p.id && !uiBlocked()));
-  let h = `<div class="bside"></div><div class="bcentre"><div class="group">`;
+  let h = `<div class="bside"><div class="actions-bar">${turnTimerDisplay()}</div></div><div class="bcentre"><div class="group">`;
   for (const r of RES){
     const face = art("res", r);
     h += `<div class="slot ${p.res[r] ? "" : "zero"}" title="${RES_NAME[r]}">
@@ -3077,7 +3080,7 @@ function drawBottom(){
   h += `</div></div>`;
 
   // ── actions ──
-  h += `<div class="bside right"><div class="actions-bar">${turnTimerDisplay()}`;
+  h += `<div class="bside right"><div class="actions-bar">`;
   // Being stuck is much easier to unpick when the screen says who on.
   const pend = pendingAnswerers().filter(s => s !== p.id);
   if (pend.length && S.phase !== "over"){
@@ -4103,6 +4106,7 @@ function rollDice(){
   if (owesAnswer()){ hint("Finish the open window first."); return; }
   if (handoverActive()) return;      // the last turn is still open to an answer
   if (netSend("roll")) return;
+  startTurnTimer();
   doRoll();
 }
 
@@ -5663,10 +5667,10 @@ function turnTimerTick(){
   }
 }
 function turnTimerDisplay(){
-  if (!timerEnabled()) return "";
+  if (!timerEnabled() || (!S.turnTimerUntil && !S.turnTimerPaused)) return "";
   const left = S.turnTimerPaused ? S.turnTimerRemaining
                                  : Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
-  return ` <span class="turntimer">${Math.ceil(left)}s</span>`;
+  return `<span class="turntimer">${Math.ceil(left)}s</span>`;
 }
 
 /* Ending a turn no longer polls the table for Nopes. A Nope must be played
@@ -5683,6 +5687,8 @@ function requestEndTurn(){
 
 function doEndTurn(){
   if (timerEnabled()){
+    if (turnTimerHandle) clearTimeout(turnTimerHandle);
+    turnTimerHandle = null;
     S.turnTimerUntil = 0;
     S.turnTimerRemaining = 0;
     S.turnTimerPaused = false;
@@ -5697,7 +5703,6 @@ function doEndTurn(){
     S.seven = null;
     S.turnCounter++;
     S.turnRec = freshTurnRecord();
-    startTurnTimer();
     logMsg(`<b>${cur().name}</b> takes another turn.`);
     closeAllPanels();
     render();
@@ -5729,7 +5734,6 @@ function advancePlayer(){
   S.robberDue = [];
   S.turnCounter++;
   S.turnRec = freshTurnRecord();
-  startTurnTimer();
   clearImplodeClock();
   // Trades, purchases and bank exchanges all belong to the turn that opened
   // them. Leaving one standing would let it be settled against a board that
@@ -7239,18 +7243,13 @@ function newGameDialog(){
            `${key === "small" ? "Normal board" : "Expansion board"}</button>`;
         h += `</div>
           <div style="height:12px"></div>
-          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Points to win</div>
-          <div class="pick tight">`;
-        for (let points = 3; points <= 20; points++)
-      h += `<button class="${GAME_WIN_POINTS === points ? "primary" : ""}" onclick="window.__win(${points})">${points}</button>`;
-        h += `</div>
+          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Points to win <b id="ngWinValue">${GAME_WIN_POINTS}</b></div>
+          <input type="range" min="3" max="20" value="${GAME_WIN_POINTS}" oninput="window.__win(this.value)" style="width:100%">`;
+        h += `
           <div style="height:12px"></div>
-          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Turn timer</div>
-          <div class="pick tight">`;
-        for (const seconds of [0,20,30,40,50,60,70,80,90,100])
-      h += `<button class="${GAME_TURN_SECONDS === seconds ? "primary" : ""}" onclick="window.__timer(${seconds})">` +
-           `${seconds ? seconds + " seconds" : "Off"}</button>`;
-        h += `</div>
+          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Turn timer <b id="ngTimerValue">${GAME_TURN_SECONDS ? GAME_TURN_SECONDS + " seconds" : "Off"}</b></div>
+          <input type="range" min="0" max="100" step="1" value="${GAME_TURN_SECONDS}" oninput="window.__timer(this.value)" style="width:100%">`;
+        h += `
           <div class="rules" style="margin-top:6px">The board, win target, and timer are independent of player count.</div>`;
     if (!haveAI)
       h = `<div class="warnbox">ai.js did not load, so there is nobody to play against.
@@ -7268,8 +7267,17 @@ function newGameDialog(){
   };
   window.__mode = (key) => { if (MODES[key]) GAME_MODE = key; refresh(); };
   window.__board = (key) => { if (key === "small" || key === "large") GAME_BOARD = key; refresh(); };
-  window.__win = (points) => { GAME_WIN_POINTS = Math.min(20, Math.max(3, Number(points) || 10)); refresh(); };
-  window.__timer = (seconds) => { GAME_TURN_SECONDS = [0,20,30,40,50,60,70,80,90,100].includes(Number(seconds)) ? Number(seconds) : 0; refresh(); };
+  window.__win = (points) => {
+    GAME_WIN_POINTS = Math.min(20, Math.max(3, Number(points) || 10));
+    const out = document.getElementById("ngWinValue");
+    if (out) out.textContent = GAME_WIN_POINTS;
+  };
+  window.__timer = (seconds) => {
+    const value = Number(seconds);
+    GAME_TURN_SECONDS = value === 0 ? 0 : Math.min(100, Math.max(20, Math.round(value)));
+    const out = document.getElementById("ngTimerValue");
+    if (out) out.textContent = GAME_TURN_SECONDS ? GAME_TURN_SECONDS + " seconds" : "Off";
+  };
   window.__avPick = (id) => { setMyAvatar(id); refresh(); };
   window.__avRefresh = refresh;
   window.__ng = (n) => {
