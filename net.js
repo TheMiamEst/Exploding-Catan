@@ -196,6 +196,12 @@ function serializeGame(){
     longestRoad: S.longestRoad, largestArmy: S.largestArmy, roadLens: S.roadLens,
     implodeTurn: S.implodeTurn, implodeBy: S.implodeBy,
     mode: S.mode || "normal",
+    board: S.board || (BOARDSET === BOARD.large ? "large" : "small"),
+    winPoints: S.winPoints || 10,
+    turnSeconds: S.turnSeconds || 0,
+    turnTimerRemaining: S.turnTimerPaused ? S.turnTimerRemaining
+      : Math.max(0, ((S.turnTimerUntil || 0) - Date.now()) / 1000),
+    turnTimerPaused: !!S.turnTimerPaused,
     // Who a seven is still waiting on. Sent because canDefuseEntry asks it:
     // without it, a terminal cannot tell that the roll on its screen is still
     // answerable and draws no Defuse marker on the line.
@@ -267,7 +273,8 @@ function applyGame(b){
   if (typeof showVersionWarning === "function") showVersionWarning(b.ver);
   // A terminal never runs bots, whatever it was doing before it joined.
   if (isGuest() && window.AGENTS && Object.keys(window.AGENTS).length) dropLocalGame();
-  if (!S || S.players.length !== b.n) newGame(b.n);
+  if (!S || S.players.length !== b.n || S.board !== (b.board || (b.n >= 5 ? "large" : "small")))
+    newGame(b.n, b.mode || "normal", b.board, b.winPoints, b.turnSeconds);
 
   const nh = hexes.length, nv = vertices.length, ne = edges.length;
   const terrain = arr(b.terrain, nh), numbers = arr(b.numbers, nh);
@@ -298,6 +305,13 @@ function applyGame(b){
   S.roadLens = arr(b.roadLens, b.n).map(x => x || 0);
   S.implodeTurn = b.implodeTurn; S.implodeBy = b.implodeBy;
   S.mode = b.mode || "normal";
+  S.board = b.board || (b.n >= 5 ? "large" : "small");
+  S.winPoints = Math.min(20, Math.max(3, Number(b.winPoints) || 10));
+  S.turnSeconds = [20,30,40,50,60,70,80,90,100].includes(Number(b.turnSeconds))
+    ? Number(b.turnSeconds) : 0;
+  S.turnTimerRemaining = Math.max(0, Number(b.turnTimerRemaining) || 0);
+  S.turnTimerPaused = !!b.turnTimerPaused;
+  S.turnTimerUntil = S.turnTimerPaused ? 0 : Date.now() + S.turnTimerRemaining * 1000;
   S.seven = b.seven
     ? { actor: b.seven.actor, jid: b.seven.jid,
         queue: arr(b.seven.queue, b.n).filter(x => x !== null && x !== undefined) }
@@ -313,6 +327,7 @@ function applyGame(b){
   S.implodeUntil = b.implodeLeft > 0 ? Date.now() + b.implodeLeft : 0;
   S.handoverUntil = b.handoverLeft > 0 ? Date.now() + b.handoverLeft : 0;
   S.handoverTurn = (b.handoverTurn === undefined) ? -1 : b.handoverTurn;
+  if (typeof scheduleTurnTimer === "function") scheduleTurnTimer();
 
   S.journal = arr(b.journal, (b.journal && b.journal.length) || 0).filter(Boolean)
                 .map(e => Object.assign({ payload:null, card:null }, e));
@@ -656,7 +671,11 @@ function startTable(){
   // The opening the host chose in the lobby, the same one the local New Game
   // dialog sets. It travels with the state, so every terminal knows which
   // game it is watching.
-  newGame(NET.roster.length, (typeof GAME_MODE !== "undefined") ? GAME_MODE : "normal");
+    newGame(NET.roster.length,
+      (typeof GAME_MODE !== "undefined") ? GAME_MODE : "normal",
+      (typeof GAME_BOARD !== "undefined") ? GAME_BOARD : undefined,
+      (typeof GAME_WIN_POINTS !== "undefined") ? GAME_WIN_POINTS : 10,
+      (typeof GAME_TURN_SECONDS !== "undefined") ? GAME_TURN_SECONDS : 0);
   const bots = NET.roster.map((r, i) => r.bot ? i : -1).filter(i => i >= 0);
   if (bots.length && typeof window.AI !== "undefined"){
     const humans = NET.roster.map((r, i) => r.bot ? -1 : i).filter(i => i >= 0);

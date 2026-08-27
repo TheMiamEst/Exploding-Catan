@@ -1266,7 +1266,7 @@ const KITTEN = {
   skip:    {name:"Skip", count:5, kind:"target",
     text:"Skip a chosen player's next turn."},
   nope:    {name:"Nope", count:5, kind:"response",
-    text:"Two uses only: cancel an attack aimed at you, or cancel a player's whole turn. A cancelled turn destroys everything they gained that turn. If someone reaches 10 points, the next player in turn order holding a Nope must spend it."},
+    text:"Two uses only: cancel an attack aimed at you, or cancel a player's whole turn. A cancelled turn destroys everything they gained that turn. If someone reaches the target points, the next player in turn order holding a Nope must spend it."},
   explode: {name:"Exploding Kitten", count:5, kind:"target",
     text:"Return a chosen player's entire resource hand to the bank."},
   defuse:  {name:"Defuse", count:5, kind:"response",
@@ -1303,6 +1303,9 @@ const MODES = {
 };
 /* The last mode chosen, reused by the online lobby so the host picks once. */
 let GAME_MODE = "normal";
+let GAME_BOARD = "small";
+let GAME_WIN_POINTS = 10;
+let GAME_TURN_SECONDS = 0;
 function modeOf(){ return (S && MODES[S.mode]) ? S.mode : "normal"; }
 function fastStart(){ return modeOf() !== "normal"; }
 
@@ -1516,7 +1519,10 @@ let TERRAIN = BOARDSET.terrain;
 let BANK_PER_RES_CUR = BOARDSET.bank;
 
 /* 5 or 6 players uses the extension board. */
-function boardFor(numPlayers){ return numPlayers >= 5 ? BOARD.large : BOARD.small; }
+function boardFor(numPlayers, boardKey){
+  if (boardKey === "small" || boardKey === "large") return BOARD[boardKey];
+  return numPlayers >= 5 ? BOARD.large : BOARD.small;
+}
 
 /* Axial coordinates for whichever board is in play. */
 function hexLayout(set){
@@ -1738,8 +1744,8 @@ function botTick(){}
 
 let S = null;
 
-function newGame(numPlayers, mode){
-  BOARDSET = boardFor(numPlayers);
+function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
+  BOARDSET = boardFor(numPlayers, boardKey);
   HEX_SIZE = BOARDSET.size;
   NUMBERS  = BOARDSET.numbers;
   TERRAIN  = BOARDSET.terrain;
@@ -1790,6 +1796,10 @@ function newGame(numPlayers, mode){
     longestRoad: { owner:null, len:0 },
     largestArmy: { owner:null, n:0 },
     mode: MODES[mode] ? mode : "normal",   // normal | fast | fastplus
+    board: BOARDSET === BOARD.large ? "large" : "small",
+    winPoints: Math.min(20, Math.max(3, Number(winPoints) || 10)),
+    turnSeconds: [20,30,40,50,60,70,80,90,100].includes(Number(turnSeconds))
+      ? Number(turnSeconds) : 0,
     handoverUntil: 0,         // wall clock: the turn that just ended is still answerable
     handoverTurn: -1,         // which turn that was
     seven: null,              // {actor, queue:[pid]} — a 7 still being paid for
@@ -1799,6 +1809,10 @@ function newGame(numPlayers, mode){
     diceLog: [],              // every roll this game, for the history panel
     pending: null,            // response-window stack
     turnRec: null,            // what the active player gained this turn
+    turnTimerUntil: 0,
+    turnTimerRemaining: 0,
+    turnTimerPaused: false,
+    turnTimerPauseReason: null,
     zoom: 1, panX: 0, panY: 0,   // board view
     journal: [],              // every action, with the state that preceded it
     revealed: false,          // hands are face up once somebody has won
@@ -3063,7 +3077,7 @@ function drawBottom(){
   h += `</div></div>`;
 
   // ── actions ──
-  h += `<div class="bside right"><div class="actions-bar">`;
+  h += `<div class="bside right"><div class="actions-bar">${turnTimerDisplay()}`;
   // Being stuck is much easier to unpick when the screen says who on.
   const pend = pendingAnswerers().filter(s => s !== p.id);
   if (pend.length && S.phase !== "over"){
@@ -4169,6 +4183,7 @@ function produce(sum){
    cards. Snapshotted with everything else, so a rewind puts the queue back
    precisely as it stood, and stepSeven picks it up from there. */
 function startSevenSequence(actor, jid){
+  pauseTurnTimer("seven");
   S.seven = { actor: actor, jid: jid,
               queue: S.players.filter(p => totalRes(p) > 7).map(p => p.id) };
   // Repaint before anybody is asked to pay, and after the queue exists so the
@@ -4347,6 +4362,7 @@ function finishRobber(sel){
     checkVictory();
   }
   if (nextRobberMove()) return;      // another one was waiting behind it
+  if (!S.seven) resumeTurnTimer();
   render();
 }
 
@@ -4535,6 +4551,7 @@ function beginAlterPick(actorId, onPick){
 }
 
 function favorGuessDialog(c, idx, tid, ownerId){
+  pauseTurnTimer("choice");
   const asker = ownerId === undefined ? S.cur : ownerId;
   const want = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
   const refresh = () => {
@@ -4552,9 +4569,10 @@ function favorGuessDialog(c, idx, tid, ownerId){
     }
     h += `<div class="stack">Naming ${total} of 3</div>`;
     openModal("Favor — name 3 cards", h, [
-      { label:"Cancel", fn: closeModal },
+      { label:"Cancel", fn: () => { closeModal(); resumeTurnTimer(); } },
       { label:"Demand", cls:"primary", disabled: total !== 3, fn: () => {
           closeModal();
+          resumeTurnTimer();
           proposeAction({ type:"card", card:c, idx, actor:asker, target:tid,
                           payload:{ want:{ ...want } }, quiet: !!c.synthetic });
         } }
@@ -5491,7 +5509,7 @@ function cancelTurn(actorId, wasWin){
   } else {
     // They crossed 10 on somebody else's turn, so there is no turn of theirs
     // to rewind — the Nope simply takes the points back.
-    logMsg(`<b>${S.players[actorId].name}</b> reached 10 on another player's turn.`);
+    logMsg(`<b>${S.players[actorId].name}</b> reached the target on another player's turn.`);
   }
   stripWinningPoints(S.players[actorId], wasWin);
 
@@ -5518,7 +5536,7 @@ function stripWinningPoints(p, wasWin){
   // Noped turn, win or not, so without this guard Noping somebody who was
   // merely having a good turn burned their whole hand of hidden points — and
   // said so in the log, announcing cards nobody had any business seeing.
-  if (!wasWin && totalVP(p) < 10) return;
+  if (!wasWin && totalVP(p) < S.winPoints) return;
 
   let ferals = 0;
   // A cancelled win costs EVERY Feral Kitten in the hand, not just enough of
@@ -5534,7 +5552,7 @@ function stripWinningPoints(p, wasWin){
     p.cards.splice(i, 1);                     // out of the game, not discarded
     ferals++;
   }
-  if (totalVP(p) >= 10){
+  if (totalVP(p) >= S.winPoints){
     // Their 10 points are buildings and Longest Road from earlier turns —
     // there is nothing a Nope is allowed to destroy. Let it stand rather
     // than leave them parked on 10 forever.
@@ -5551,7 +5569,7 @@ function stripWinningPoints(p, wasWin){
 }
 
 /* ── Forced Nope on a win ────────────────────────────────────────────────
-   If someone hits 10 VP, the next player in turn order who holds a Nope must
+  If someone hits the target VP, the next player in turn order who holds a Nope must
    spend it. Without that, everyone sits on their Nopes waiting for somebody
    else to spend theirs first.                                             */
 function forcedNoperFor(winnerId){
@@ -5569,17 +5587,17 @@ function forcedWinNope(winner, pid){
   const p = S.players[pid];
   const i = p.cards.findIndex(c => c.key === "nope");
   S.discard.push(p.cards.splice(i, 1)[0]);
-  logMsg(`<b>${winner.name}</b> reaches 10 VP — <b>${p.name}</b> is forced to Nope it.`);
-  announce("🏆 " + pdot(winner) + " reached 10 VP — " + pdot(p) +
+  logMsg(`<b>${winner.name}</b> reaches ${S.winPoints} VP — <b>${p.name}</b> is forced to Nope it.`);
+  announce("🏆 " + pdot(winner) + " reached " + S.winPoints + " VP — " + pdot(p) +
            " is <b>forced to Nope</b> it", "big", 6000);
   // Only the player being forced gets a prompt. Everyone else just sees it
   // happen — being asked to confirm somebody else's obligation is noise.
   if (isBot(pid)){ cancelTurn(winner.id, true); return; }
   openModal("Forced Nope", `
-    <div class="warnbox"><b>${winner.name}</b> just reached 10 victory points.
+    <div class="warnbox"><b>${winner.name}</b> just reached ${S.winPoints} victory points.
     <b>${p.name}</b> is the next player in turn order holding a Nope, so they must
     spend it — no choice. ${winner.name}'s turn is cancelled and everything they
-    gained this turn is destroyed, including whatever took them to 10.</div>`,
+    gained this turn is destroyed, including whatever took them to the target.</div>`,
     [{ label:`Cancel ${winner.name}'s turn`, cls:"warn",
        fn: () => { closeModal(); cancelTurn(winner.id, true); } }]);
 }
@@ -5587,6 +5605,69 @@ function forcedWinNope(winner, pid){
 /* ══════════════════════════════════════════════════════════════════════
    TURN FLOW
    ══════════════════════════════════════════════════════════════════════ */
+
+let turnTimerHandle = null;
+function timerEnabled(){ return !!(S && S.turnSeconds); }
+function startTurnTimer(){
+  if (!timerEnabled()) return;
+  S.turnTimerRemaining = S.turnSeconds;
+  S.turnTimerPaused = false;
+  S.turnTimerPauseReason = null;
+  S.turnTimerUntil = Date.now() + S.turnSeconds * 1000;
+  scheduleTurnTimer();
+}
+function pauseTurnTimer(reason){
+  if (!timerEnabled() || S.turnTimerPaused) return;
+  S.turnTimerRemaining = Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
+  S.turnTimerPaused = true;
+  S.turnTimerPauseReason = reason || "choice";
+  S.turnTimerUntil = 0;
+  render();
+}
+function resumeTurnTimer(){
+  if (!timerEnabled() || !S.turnTimerPaused) return;
+  S.turnTimerPaused = false;
+  S.turnTimerPauseReason = null;
+  S.turnTimerUntil = Date.now() + S.turnTimerRemaining * 1000;
+  scheduleTurnTimer();
+}
+function scheduleTurnTimer(){
+  if (turnTimerHandle) clearTimeout(turnTimerHandle);
+  if (!timerEnabled() || S.turnTimerPaused || S.phase === "over") return;
+  turnTimerHandle = setTimeout(turnTimerTick, 250);
+}
+function turnTimerTick(){
+  turnTimerHandle = null;
+  if (window.NET && NET.isGuest && NET.isGuest()){
+    render();
+    scheduleTurnTimer();
+    return;
+  }
+  if (!timerEnabled() || S.phase === "over") return;
+  if (S.seven || S.turnTimerPaused){ scheduleTurnTimer(); return; }
+  if (S.turnTimerUntil > Date.now()){
+    render();
+    scheduleTurnTimer();
+    return;
+  }
+  S.turnTimerRemaining = 0;
+  S.turnTimerUntil = 0;
+  if (!S.pending && !S.select && (S.phase === "main" || S.phase === "roll")){
+    logMsg("⏱ " + pdot(cur()) + "'s turn timer expires.");
+    announce("⏱ " + pdot(cur()) + "'s turn ends", "attack");
+    doEndTurn();
+  } else {
+    S.turnTimerPaused = true;
+    S.turnTimerPauseReason = "choice";
+    render();
+  }
+}
+function turnTimerDisplay(){
+  if (!timerEnabled()) return "";
+  const left = S.turnTimerPaused ? S.turnTimerRemaining
+                                 : Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
+  return ` <span class="turntimer">${Math.ceil(left)}s</span>`;
+}
 
 /* Ending a turn no longer polls the table for Nopes. A Nope must be played
    during the turn it is meant to cancel — once the turn is over it is too
@@ -5601,6 +5682,12 @@ function requestEndTurn(){
 }
 
 function doEndTurn(){
+  if (timerEnabled()){
+    S.turnTimerUntil = 0;
+    S.turnTimerRemaining = 0;
+    S.turnTimerPaused = false;
+    S.turnTimerPauseReason = null;
+  }
   const ended = S.turnCounter;
   if (S.extraTurn){
     S.extraTurn = false;
@@ -5610,6 +5697,7 @@ function doEndTurn(){
     S.seven = null;
     S.turnCounter++;
     S.turnRec = freshTurnRecord();
+    startTurnTimer();
     logMsg(`<b>${cur().name}</b> takes another turn.`);
     closeAllPanels();
     render();
@@ -5641,6 +5729,7 @@ function advancePlayer(){
   S.robberDue = [];
   S.turnCounter++;
   S.turnRec = freshTurnRecord();
+  startTurnTimer();
   clearImplodeClock();
   // Trades, purchases and bank exchanges all belong to the turn that opened
   // them. Leaving one standing would let it be settled against a board that
@@ -5667,10 +5756,10 @@ function advancePlayer(){
    win that had been earned on somebody else's turn. Every player is checked. */
 function checkVictory(){
   if (S.winner !== null || S.phase === "over") return;
-  let claimant = totalVP(cur()) >= 10 ? cur() : null;
+  let claimant = totalVP(cur()) >= S.winPoints ? cur() : null;
   if (!claimant){
     for (const q of S.players)
-      if (totalVP(q) >= 10 && (!claimant || totalVP(q) > totalVP(claimant))) claimant = q;
+      if (totalVP(q) >= S.winPoints && (!claimant || totalVP(q) > totalVP(claimant))) claimant = q;
   }
   if (!claimant) return;
   // An Imploding Kitten makes its turn un-Nopeable, and that includes the win
@@ -6029,6 +6118,16 @@ function playerTradeDialog(){
   };
 
   compose();
+  if (isBot(p.id) && S.turnSeconds){
+    const gameAtCall = S;
+    setTimeout(() => {
+      if (S !== gameAtCall || settled || !panelBox.trade) return;
+      dropOffers();
+      closePanel("trade");
+      logMsg(`<b>${p.name}</b>'s trade window closes.`);
+      doEndTurn();
+    }, 3000);
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -6036,6 +6135,8 @@ function playerTradeDialog(){
    ══════════════════════════════════════════════════════════════════════ */
 
 function discardDialog(p, n, done, opts){
+  const timerPause = !(opts && opts.answers !== undefined);
+  if (timerPause) pauseTurnTimer("choice");
   const ag = agentOf(p.id);
   if (ag && ag.chooseDiscard){
     const pick = ag.chooseDiscard(p, n);
@@ -6047,7 +6148,11 @@ function discardDialog(p, n, done, opts){
     // has started by the time it fires, it belongs to a game that no longer
     // exists — S is a fresh object then, and continuing would reach into it.
     const gameAtCall = S;
-    setTimeout(function(){ if (S === gameAtCall) done(); }, AI_PACE);
+    setTimeout(function(){
+      if (S !== gameAtCall) return;
+      if (timerPause) resumeTurnTimer();
+      done();
+    }, AI_PACE);
     return;
   }
   const pick = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
@@ -6076,6 +6181,7 @@ function discardDialog(p, n, done, opts){
        log first. Nothing moves until you come back and confirm.</p>`, [
       { label:"Confirm", cls:"primary", disabled: total !== n, fn: () => {
           closeModal();
+          if (timerPause) resumeTurnTimer();
           flyCards(p.id, null, pick);      // to the bank, face up
           for (const r of RES) take(p, r, pick[r]);
           logMsg(`<b>${p.name}</b> discards ${n}.`);
@@ -6208,6 +6314,7 @@ function closeModal(){
   modalKey = null;
   modalMini = false;
   dismissLocalModal();
+  if (S && S.turnTimerPauseReason === "choice") resumeTurnTimer();
   if (window.NET && NET.clearRemote) NET.clearRemote();
 }
 
@@ -7124,8 +7231,27 @@ function newGameDialog(){
       h += `<button class="${n === 4 ? "primary" : ""}" onclick="window.__ng(${n})"
               >You + ${n - 1} bot${n === 2 ? "" : "s"}</button>`;
     h += `</div>
-          <div class="rules" style="margin-top:6px">5 and 6 players use the larger
-          extension board.</div>`;
+          <div style="height:12px"></div>
+          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Board</div>
+          <div class="pick">`;
+        for (const key of ["small", "large"])
+      h += `<button class="${GAME_BOARD === key ? "primary" : ""}" onclick="window.__board('${key}')">` +
+           `${key === "small" ? "Normal board" : "Expansion board"}</button>`;
+        h += `</div>
+          <div style="height:12px"></div>
+          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Points to win</div>
+          <div class="pick tight">`;
+        for (let points = 3; points <= 20; points++)
+      h += `<button class="${GAME_WIN_POINTS === points ? "primary" : ""}" onclick="window.__win(${points})">${points}</button>`;
+        h += `</div>
+          <div style="height:12px"></div>
+          <div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Turn timer</div>
+          <div class="pick tight">`;
+        for (const seconds of [0,20,30,40,50,60,70,80,90,100])
+      h += `<button class="${GAME_TURN_SECONDS === seconds ? "primary" : ""}" onclick="window.__timer(${seconds})">` +
+           `${seconds ? seconds + " seconds" : "Off"}</button>`;
+        h += `</div>
+          <div class="rules" style="margin-top:6px">The board, win target, and timer are independent of player count.</div>`;
     if (!haveAI)
       h = `<div class="warnbox">ai.js did not load, so there is nobody to play against.
            Check that it is next to index.html.</div>` + h;
@@ -7141,6 +7267,9 @@ function newGameDialog(){
       [{ label:"Cancel", fn: () => { closeModal(); if (!S) renderIdle(); } }]);
   };
   window.__mode = (key) => { if (MODES[key]) GAME_MODE = key; refresh(); };
+  window.__board = (key) => { if (key === "small" || key === "large") GAME_BOARD = key; refresh(); };
+  window.__win = (points) => { GAME_WIN_POINTS = Math.min(20, Math.max(3, Number(points) || 10)); refresh(); };
+  window.__timer = (seconds) => { GAME_TURN_SECONDS = [0,20,30,40,50,60,70,80,90,100].includes(Number(seconds)) ? Number(seconds) : 0; refresh(); };
   window.__avPick = (id) => { setMyAvatar(id); refresh(); };
   window.__avRefresh = refresh;
   window.__ng = (n) => {
@@ -7151,7 +7280,7 @@ function newGameDialog(){
     // drawn straight over the table they had just dealt themselves.
     if (window.NET && NET.leave) NET.leave();
     window.AGENTS = {};
-    newGame(n, GAME_MODE);
+    newGame(n, GAME_MODE, GAME_BOARD, GAME_WIN_POINTS, GAME_TURN_SECONDS);
     if (typeof window.AI !== "undefined") window.AI.enable([0]);
     // After the bots are switched on, because that is the moment it becomes
     // knowable which seat is the one at this keyboard.
@@ -7438,7 +7567,7 @@ function nopeWholeTurn(ownerId, pid){
             "defend", { actor: ownerId, snap: snapAll(), nopeable: true, turnBack: turnBack,
                         spent: { pid: ownerId, key: "nope" }, show: "nope" });
   clearImplodeClock();
-  cancelTurn(pid, totalVP(victim) >= 10);     // cancelTurn ends the turn itself
+  cancelTurn(pid, totalVP(victim) >= S.winPoints); // cancelTurn ends the turn itself
   noteEntry.turn = S.turnCounter;             // it belongs to the turn it made
 }
 
@@ -7569,7 +7698,7 @@ function showRules(){
     <p><b>Defuse</b> answers an attack aimed at you by turning it around. Alter the Future and
     Favor hand you the card's power rather than simply reflecting it — you name the two tokens,
     or your own three resources.</p>
-    <p><b>Forced Nope.</b> The moment someone reaches 10 points, the next player in turn order who
+    <p><b>Forced Nope.</b> The moment someone reaches the configured target, the next player in turn order who
     holds a Nope <i>must</i> spend it — no choice. Otherwise everyone would sit on their Nopes
     waiting for somebody else to spend theirs first.</p>
     <p>The <b>Imploding Kitten</b> is immune to all of it. It cannot be Noped or Defused.</p>
