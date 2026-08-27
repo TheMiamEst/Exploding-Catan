@@ -701,6 +701,26 @@ function hostLobby(){
       seatRowsHTML() +
       '<div style="height:10px"></div>' +
       (typeof modePickerHTML === "function" ? modePickerHTML() : "") +
+      '<div style="height:12px"></div>' +
+      '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Board</div>' +
+      '<div class="pick">' +
+      ["small", "large"].map(key => '<button class="' +
+        ((typeof GAME_BOARD !== "undefined" && GAME_BOARD === key) ? "primary" : "") +
+        '" onclick="window.__board(\'' + key + '\')">' +
+        (key === "small" ? "Normal board" : "Expansion board") + '</button>').join("") +
+      '</div>' +
+      '<div style="height:12px"></div>' +
+      '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Points to win <b id="ngWinValue">' +
+        (typeof GAME_WIN_POINTS !== "undefined" ? GAME_WIN_POINTS : 10) + '</b></div>' +
+      '<input type="range" min="3" max="20" value="' +
+        (typeof GAME_WIN_POINTS !== "undefined" ? GAME_WIN_POINTS : 10) +
+        '" oninput="window.__win(this.value)" style="width:100%">' +
+      '<div style="height:12px"></div>' +
+      '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Turn timer <b id="ngTimerValue">' +
+        ((typeof GAME_TURN_SECONDS !== "undefined" && GAME_TURN_SECONDS) ? GAME_TURN_SECONDS + " seconds" : "Off") + '</b></div>' +
+      '<input type="range" min="0" max="9" step="1" value="' +
+        (typeof timerSliderValue === "function" ? timerSliderValue(GAME_TURN_SECONDS || 0) : 0) +
+        '" oninput="window.__timer(this.value)" style="width:100%">' +
       '<div class="okbox" style="margin-top:10px">Empty seats are played by bots. Start when everyone is in ' +
       '— the seating is fixed once the game begins.</div>' +
       '<div class="rules" style="margin-top:8px">You are the host: your browser is running the game, so ' +
@@ -716,6 +736,21 @@ function hostLobby(){
   window.__mode = function(key){
     if (typeof MODES !== "undefined" && MODES[key]) GAME_MODE = key;
     refresh();
+  };
+  window.__board = function(key){
+    if (key === "small" || key === "large") GAME_BOARD = key;
+    refresh();
+  };
+  window.__win = function(points){
+    GAME_WIN_POINTS = Math.min(20, Math.max(3, Number(points) || 10));
+    const out = document.getElementById("ngWinValue");
+    if (out) out.textContent = GAME_WIN_POINTS;
+  };
+  window.__timer = function(position){
+    const value = Math.min(9, Math.max(0, Math.round(Number(position))));
+    GAME_TURN_SECONDS = value ? 20 + (value - 1) * 10 : 0;
+    const out = document.getElementById("ngTimerValue");
+    if (out) out.textContent = GAME_TURN_SECONDS ? GAME_TURN_SECONDS + " seconds" : "Off";
   };
   refresh();
 }
