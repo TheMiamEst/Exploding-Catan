@@ -260,6 +260,16 @@ function viewFor(blob, seat){
     q.cards = p.cards.map(() => ({ key: "hidden", hidden: true }));
     return q;
   });
+  v.fx = (blob.fx || []).map(f => {
+    if (!f.privatePid) return f;
+    if (f.privatePid === seat){
+      const out = Object.assign({}, f);
+      out.b = f.privateBundle || {};
+      delete out.privateBundle;
+      return out;
+    }
+    return { id:f.id, t:f.t, f:f.f, o:f.o, d:1, n:f.n };
+  });
   v.seat = seat;
   v.roster = NET.roster;
   v.v = ++NET.pubVersion;
@@ -382,7 +392,7 @@ function publish(){
   // record — so they go out once rather than six near-identical times. They
   // are also most of the bytes, which is the practical reason.
   const pub = { journal: blob.journal, feed: blob.feed,
-                chat: blob.chat, emotes: blob.emotes, fx: blob.fx, msgId: blob.msgId };
+                chat: blob.chat, emotes: blob.emotes, msgId: blob.msgId };
   delete blob.journal;
   delete blob.feed;
   delete blob.chat;
@@ -839,7 +849,7 @@ function startGuest(code, name, av){
       applyGame(Object.assign({}, NET.lastView,
                 { journal: NET.lastPub.journal, feed: NET.lastPub.feed,
                   chat: NET.lastPub.chat, emotes: NET.lastPub.emotes,
-                  fx: NET.lastPub.fx, msgId: NET.lastPub.msgId }));
+                  msgId: NET.lastPub.msgId }));
       render();
     };
     NET.room.child("pub").on("value", s => { NET.lastPub = s.val() || {}; tryApply(); });

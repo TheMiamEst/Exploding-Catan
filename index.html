@@ -3407,6 +3407,8 @@ function clearImplodeClock(){
 }
 
 function startImplodeClock(){
+  // The Imploding Kitten replaces the ordinary turn timer completely.
+  pauseTurnTimer("implode");
   clearImplodeClock();
   S.implodeUntil = Date.now() + 20000;
   implodeClockTick();
@@ -4277,7 +4279,6 @@ function sevenWatchdog(){
   if (typeof humanPromptOpen === "function" && humanPromptOpen()){ sevenWatchIdle = 0; return; }
   if (++sevenWatchIdle < 2) return;
   sevenWatchIdle = 0;
-  logMsg("<span style='color:#d98b4b'>The seven was left unanswered — asking again.</span>");
   announce("⏳ Nobody was holding the seven — asking again", "info");
   stepSeven();
   render();
@@ -5636,6 +5637,7 @@ function startTurnTimer(){
 }
 function pauseTurnTimer(reason){
   if (!timerEnabled() || S.turnTimerPaused) return;
+  if (turnTimerHandle){ clearTimeout(turnTimerHandle); turnTimerHandle = null; }
   S.turnTimerRemaining = Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
   S.turnTimerPaused = true;
   S.turnTimerPauseReason = reason || "choice";
@@ -5681,7 +5683,7 @@ function turnTimerTick(){
   }
 }
 function turnTimerDisplay(){
-  if (!timerEnabled() || (!S.turnTimerUntil && !S.turnTimerPaused)) return "";
+  if (!timerEnabled() || implodeActive() || (!S.turnTimerUntil && !S.turnTimerPaused)) return "";
   const left = S.turnTimerPaused ? S.turnTimerRemaining
                                  : Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
   const pct = Math.min(100, Math.max(0, left / S.turnSeconds * 100));
@@ -6704,7 +6706,11 @@ function flyCards(fromPid, toPid, bundle, faceDown){
   // the state, where anyone who opened devtools could read which card was
   // taken. That is the one exchange in the game nobody else is entitled to
   // see, so only the count goes out and the backs are drawn from that.
-  if (faceDown){ rec.d = 1; rec.n = n; }
+  if (faceDown){
+    rec.d = 1; rec.n = n;
+    rec.privatePid = toPid;
+    rec.privateBundle = b;
+  }
   else rec.b = b;
   pushFx(rec);
 }
@@ -6799,13 +6805,14 @@ function playCardsFx(f){
     const to = (f.o === null || f.o === undefined) ? benchPoint(f.f) : seatResPoint(f.o);
     if (!from || !to) return;
     let i = 0;
-    if (f.d){
+    const bundle = f.b || (f.privatePid === viewSeat() ? f.privateBundle : null);
+    if (!bundle){
       for (; i < (f.n || 0) && i < FX_MAX_CARDS; i++)
         flyCard(from, to, resBackHTML(), "", 55 * i, i);
       return;
     }
     for (const r of RES)
-      for (let k = 0; k < ((f.b && f.b[r]) || 0) && i < FX_MAX_CARDS; k++, i++)
+      for (let k = 0; k < (bundle[r] || 0) && i < FX_MAX_CARDS; k++, i++)
         flyCard(from, to, resFaceHTML(r), "", 55 * i, i);
   });
 }
