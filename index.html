@@ -4262,7 +4262,7 @@ setInterval(sevenWatchdog, SEVEN_WATCH_MS);
    one that counts toward Largest Army, `credit` for one whose knight belongs
    to somebody other than the player placing it. */
 function beginRobberMove(actor, opts){
-  const move = Object.assign({ kind:"robber", actor: actor, knight:false }, opts || {});
+  const move = Object.assign({ kind:"robber", actor: actor, knight:false, noDefuse:false }, opts || {});
   if (S.select){ S.robberDue.push(move); return; }
   S.select = move;
   setTimeout(botTick, 0);
@@ -4368,7 +4368,8 @@ function journalRobber(sel){
   const ent = logAction(pdot(thief) + " moves the robber onto the " + esc(where) + took,
             "attack", { actor: sel.actor,
                         target: (sel.victim === undefined) ? null : sel.victim,
-                        snap: snapAll(), payload: { robber: true, hex: S.robber } });
+                        snap: snapAll(), payload: { robber: true, hex: S.robber },
+                        noDefuse: !!sel.noDefuse });
   ent.stolen = sel.stole || null;
   ent.fromHex = sel.fromHex;
 }
@@ -4623,7 +4624,7 @@ function resolveCard(action){
     }
 
     case "knight":
-      beginRobberMove(actor.id, { knight:true });
+      beginRobberMove(actor.id, { knight:true, noDefuse: !!action.noDefuse });
       break;
 
     case "alter": {
@@ -4750,6 +4751,9 @@ function logAction(html, kind, opts){
     turnBack: opts.turnBack || null,
     spent: opts.spent || null,
     redo: opts.redo || null,
+    cardOwner: opts.cardOwner === undefined ? null : opts.cardOwner,
+    participants: opts.participants ? opts.participants.slice() : null,
+    noDefuse: !!opts.noDefuse,
     show: opts.show || null,
     // What this entry took OFF the table, if it is an answer to something.
     // Undoing it puts that back, and this is how the line saying so knows what
@@ -4887,10 +4891,11 @@ function canDefuseEntry(e, pid){
   // answer it — not only whoever the card came off — and only once between
   // them, which `answered` enforces.
   if (isRobberEntry(e))
-    return !e.answered && e.actor !== pid && settledOnRobbedHex(e, pid);
+    return !e.noDefuse && !e.answered && e.actor !== pid && settledOnRobbedHex(e, pid);
   if (!e.card) return false;           // a reaction, not a card aimed at anyone
   if (e.actor === pid) return false;
   if (e.card.key === "alter"){
+    if (e.participants && e.participants.includes(pid)) return false;
     return (e.payload && e.payload.hexes || []).some(hid =>
       hexes[hid].verts.some(v => vertices[v].owner === pid));
   }
@@ -5309,7 +5314,9 @@ function defuseRobber(e, defuserId){
   // "No you": they place it, and rob whoever is there. knight:false because
   // the knight that caused this, if there was one, has already been credited
   // by the finishRobber that ran for the move being answered.
-  beginRobberMove(defuserId, { knight: false });
+  // The reflected robber placement is part of the Defuse, not a fresh attack.
+  // It must not open another Defuse window against the same interaction.
+  beginRobberMove(defuserId, { knight: false, noDefuse: true });
   render();
   return true;
 }
@@ -5359,7 +5366,8 @@ function defuseEntry(id, defuserId){
   // Defusing an Alter or a Favor handed the attacker their card back, and
   // Defusing anything else left a copy of it sitting in the discard pile as
   // well as in their hand.
-  const origOwner = S.players[victimId];
+  const origOwner = S.players[e.cardOwner === null || e.cardOwner === undefined
+                              ? victimId : e.cardOwner];
   const oi = origOwner.cards.indexOf(card);
   if (oi >= 0) S.discard.push(origOwner.cards.splice(oi, 1)[0]);
 
@@ -5369,7 +5377,10 @@ function defuseEntry(id, defuserId){
   // reflecting it — the defuser names their own numbers or their own demand.
   if (key === "alter"){
     logAction(pdot(d) + " <b>Defuses</b> Alter the Future — they swap instead", "defend",
-              Object.assign({ actor: defuserId, show: "defuse" }, answerable));
+              Object.assign({ actor: defuserId, show: "defuse", card: card,
+                              payload: payload, cardOwner: e.cardOwner === null || e.cardOwner === undefined
+                                ? victimId : e.cardOwner,
+                              participants: (e.participants || [victimId]).concat(defuserId) }, answerable));
     beginAlterPick(defuserId, (a, b) => playResolved(
       { type:"card", card:{ key:"alter", synthetic:true }, actor:defuserId,
         target:null, payload:{ hexes:[a, b] }, quiet:true }));
@@ -5397,7 +5408,8 @@ function defuseEntry(id, defuserId){
             pdot(S.players[victimId]) + " instead", "defend",
             Object.assign({ actor: defuserId, show: "defuse" }, answerable));
   playResolved({ type:"card", card:{ key: key, flavor: card.flavor, synthetic:true },
-                 actor:defuserId, target:victimId, payload:payload, quiet:true });
+                 actor:defuserId, target:victimId, payload:payload, quiet:true,
+                 noDefuse: key === "knight" });
   render();
   return true;
 }
