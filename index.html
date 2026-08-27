@@ -1973,6 +1973,9 @@ function wipeNopedTurn(){
     });
     // A knight moved it, and the knight is being undone.
     S.robber = start.robber;
+    // A cancelled Reverse must not leave its direction or bonus turn behind.
+    S.dir = start.dir;
+    S.extraTurn = start.extra;
   }
 
   for (const eid of rec.edges){ edges[eid].owner = null; p.roads--; }
