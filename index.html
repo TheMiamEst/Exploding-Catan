@@ -1225,7 +1225,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-27v";
+const GAME_VERSION = "2026-08-27w";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2383,10 +2383,19 @@ function drawBoard(){
       // The number and pips stay procedural so they remain legible.
       if (blank) h += `<image href="${blank}" x="${hx.x - 21}" y="${hx.y - 21}" width="42" height="42"
                               pointer-events="none"/>`;
-      else h += `<circle cx="${hx.x}" cy="${hx.y}" r="19" fill="#ded5c1" stroke="#0b0d10" stroke-width="1.5"/>`;
+      else h += `<circle cx="${hx.x}" cy="${hx.y}" r="19" fill="#ded5c1" stroke="#0b0d10"
+                         stroke-width="1.5" pointer-events="none"/>`;
       // Muted rather than paper-white: at full brightness the tokens were the
       // loudest thing on the board, over the pieces they are meant to inform.
-      h += `<g opacity=".86">
+      //
+      // And deaf to the pointer, all of it — the disc, the number, the pips.
+      // The token is drawn AFTER the hex it sits on, so anything here that
+      // takes a click takes it away from the hex: aiming at the number was the
+      // one place Alter the Future and the robber did not respond, which is
+      // exactly where anybody would aim first. The blank disc image already
+      // said pointer-events="none"; the number and its pips never did, so the
+      // dead spot moved around depending on whether you had token art.
+      h += `<g opacity=".86" pointer-events="none">
               <text x="${hx.x}" y="${hx.y + 6}" text-anchor="middle" font-size="18" font-weight="700"
                 fill="${red ? "#9e2c1c" : "#33312c"}">${hx.number}</text>`;
       const pips = 6 - Math.abs(7 - hx.number);
@@ -2395,17 +2404,27 @@ function drawBoard(){
                 fill="${red ? "#9e2c1c" : "#33312c"}" opacity=".8"/>`;
       h += `</g>`;
     } else {
-      h += `<text x="${hx.x}" y="${hx.y + 5}" text-anchor="middle" font-size="12" fill="#8a7a52">DESERT</text>`;
+      h += `<text x="${hx.x}" y="${hx.y + 5}" text-anchor="middle" font-size="12" fill="#8a7a52"
+                   pointer-events="none">DESERT</text>`;
     }
     if (S.robber === hx.id){
+      /* Standing ON the number, not off the hex's shoulder where it used to
+         sit. A hex is dead while the robber is there, and the clearest way to
+         say a number will not pay is to put something over the number. Off to
+         one side you had to look twice to work out which hex it belonged to,
+         which on a crowded board is a look you take every roll.
+
+         A ring of the token still shows around it, so you can see there is a
+         number under there without being able to read it — which is the point.
+         Deaf to the pointer like everything else on this layer. */
       const rb = art("piece", "robber");
       if (rb){
-        h += `<image href="${rb}" x="${hx.x + 22 - 17}" y="${hx.y - 20 - 17}" width="34" height="34"
+        h += `<image href="${rb}" x="${hx.x - 16}" y="${hx.y - 16}" width="32" height="32"
                      filter="url(#tintRobber)" pointer-events="none"/>`;
       } else {
-        h += `<g transform="translate(${hx.x + 22},${hx.y - 20})">
-                <ellipse cx="0" cy="9" rx="10" ry="8" fill="#15181d" stroke="#000" stroke-width="1"/>
-                <circle cx="0" cy="-3" r="6.5" fill="#15181d" stroke="#000" stroke-width="1"/>
+        h += `<g transform="translate(${hx.x},${hx.y})" pointer-events="none">
+                <ellipse cx="0" cy="7" rx="10" ry="8" fill="#15181d" stroke="#000" stroke-width="1"/>
+                <circle cx="0" cy="-5" r="6.5" fill="#15181d" stroke="#000" stroke-width="1"/>
               </g>`;
       }
     }
@@ -7567,13 +7586,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27v"></script>
+<script src="ai.js?v=2026-08-27w"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27v"></script>
-<script src="net.js?v=2026-08-27v"></script>
+<script src="firebase-config.js?v=2026-08-27w"></script>
+<script src="net.js?v=2026-08-27w"></script>
 </body>
 </html>

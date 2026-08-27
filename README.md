@@ -418,6 +418,23 @@ The side panels get the height they can and each one scrolls inside itself with
 its buttons pinned to the bottom, so the Trade button is never below the fold
 with nothing obvious to scroll. Forced dialogs do the same.
 
+**The number token takes the click.** Aiming at the number is what anybody does
+first — for Alter the Future it IS the thing you are choosing — and it was the
+one place on a hex that did not respond. The token is drawn after the hex it
+sits on, so anything on it that accepts a click takes that click away from the
+hex underneath; the blank disc already said `pointer-events="none"` but the
+number and its pips never did, so the dead spot moved around depending on
+whether you had token art. The whole token layer is deaf to the pointer now,
+and clicks fall through to the hex.
+
+**The robber stands on the number**, rather than off the hex's shoulder where it
+used to sit. A hex is dead while the robber is there, and the clearest way to
+say a number will not pay is to put something over the number — off to one
+side you had to look twice to work out which hex it belonged to, which on a
+crowded board is a look you take every roll. A ring of the token still shows
+around it, so you can see there is a number under there without being able to
+read it.
+
 The board takes touch directly: **one finger drags it**, **two fingers pinch to
 zoom**, and **a double tap puts it back** to where it started. The pinch is
 anchored, so whatever is under your fingers stays under them rather than
