@@ -6136,16 +6136,6 @@ function playerTradeDialog(){
   };
 
   compose();
-  if (isBot(p.id) && S.turnSeconds){
-    const gameAtCall = S;
-    setTimeout(() => {
-      if (S !== gameAtCall || settled || !panelBox.trade) return;
-      dropOffers();
-      closePanel("trade");
-      logMsg(`<b>${p.name}</b>'s trade window closes.`);
-      doEndTurn();
-    }, 3000);
-  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════

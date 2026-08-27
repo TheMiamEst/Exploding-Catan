@@ -641,6 +641,21 @@ function proposeToHuman(bot, human, offer, want){
     '<div class="tline"><span>You give</span>' + resList(want) + '</div></div>',
     [ { label:"Decline", fn: decline },
       { label:"Accept", cls:"primary", fn: accept } ]);
+
+  // A timed game cannot let an unanswered bot offer consume the whole turn.
+  // The panel belongs to the human, but the bot owns the turn and must resume
+  // as soon as the offer expires.
+  if (S.turnSeconds){
+    const gameAtCall = S;
+    setTimeout(function(){
+      if (S !== gameAtCall || done || !panelBox[key]) return;
+      done = true;
+      closePanel(key);
+      logMsg("<b>" + bot.name + "</b>'s trade offer expires.");
+      render();
+      if (typeof botTick === "function") botTick();
+    }, 3000);
+  }
 }
 
 /* Offer a 1-for-1 to another player — bot or human. Never trade with whoever
