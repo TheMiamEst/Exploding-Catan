@@ -525,7 +525,7 @@
   /* Nothing to say: out of the way entirely, so it can never sit over a
      button on a narrow header even by accident. */
   #hintslot:empty{display:none}
-  #tipBtn.off{opacity:.5}
+  #tipBtn.off, #fxBtn.off{opacity:.5}
 
   /* Kitten deck */
   .deck{
@@ -892,6 +892,37 @@
   .showcap.seven{border-color:var(--danger); color:#ffd9d9}
   @keyframes capin{from{transform:translateY(10px); opacity:0}to{transform:none; opacity:1}}
 
+  /* The card reveal at the two quieter settings.
+
+     Everything below swaps an animation for a plainer one or removes it. Not
+     one rule hides anything: the card is still turned over, the caption still
+     says who did what, and the Imploding Kitten still gets its moment. What
+     goes is the spinning, the overshoot and the flying in - the parts that are
+     performance rather than information. A player who has asked for less
+     movement has not asked to be told less. */
+  @keyframes calmin{from{opacity:0}to{opacity:1}}
+  body.calmfx .showcard,
+  body.calmfx .showcard.implode,
+  body.calmfx .showseven{ animation:calmin .28s ease-out both }
+  body.calmfx .showcap{ animation:calmin .28s .08s ease-out both }
+  body.calmfx #showcase.out{ animation:calmin .3s ease-in reverse both }
+
+  body.nofx .showcard,
+  body.nofx .showcard.implode,
+  body.nofx .showseven,
+  body.nofx .showcap,
+  body.nofx #showcase.out{ animation:none }
+  /* A piece arriving, calmly: it appears where it was built instead of
+     dropping in and bouncing, and the ring still goes off around it so you can
+     still tell at a glance WHERE somebody just built. (There is nothing to say
+     here about motion off - plopBuild never makes one of these at that
+     setting, and the board draws the piece itself a beat later.) */
+  @keyframes plopcalm{
+    from{opacity:0; transform:translate(-50%,-50%) scale(1)}
+    to  {opacity:1; transform:translate(-50%,-50%) scale(1)}
+  }
+  body.calmfx .plopbody{ animation:plopcalm .3s ease-out forwards }
+
   /* Dialogs that dock beside the board rather than covering it. A trade or a
      card purchase is not urgent enough to take the screen away, and taking it
      away meant you could not answer a Nope while one was open — the log, the
@@ -1179,6 +1210,11 @@
   <span id="hintslot"></span>
   <button class="sm" id="tipBtn" onclick="toggleTips()" title="Show or hide the
     one-line advice in this bar">Tips</button>
+  <!-- Says which of the three it is on rather than just being a switch: the
+       people who need this are the ones who did not know there was anything to
+       change, and a button reading "Motion: off" answers the question before
+       it has to be asked. Filled in by drawMotionBtn at load. -->
+  <button class="sm" id="fxBtn" onclick="cycleMotion()">Motion</button>
   <span id="modeTag" hidden></span>
   <button class="sm" onclick="onlineDialog()">Online</button>
   <button class="sm" onclick="showRules()">Rules</button>
@@ -1240,7 +1276,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-27w";
+const GAME_VERSION = "2026-08-29a";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -6356,9 +6392,98 @@ let boardWatch = null;
    fails quietly: no board on screen, no animation, no error.
    ═════════════════════════════════════════════════════════════════ */
 
-/* Asked for less motion, give less. */
-const fxOn = !(window.matchMedia &&
-               window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+/* -- HOW MUCH MOVEMENT --------------------------------------------
+   Whether cards fly, and how far, is a setting on this machine that the
+   player can reach and change.
+
+   It used to be one const, read once at load:
+
+     const fxOn = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+   which is the polite thing to do and was, in practice, the bug that cost two
+   people at a six-player table any idea what was going on. "Animation effects"
+   off in Windows' accessibility settings - a switch plenty of people flip to
+   make an older laptop feel quicker, and one that Battery Saver flips for them
+   without asking - makes that query match. Every resource flight, every card
+   drawn, every robbery, every trade and every hex flash then went: not slowed,
+   not simplified, GONE, with nothing on screen to say why and no way back,
+   because a const cannot be reassigned even from the console. Their games
+   worked and their boards updated; they just never saw anything move, and
+   nobody at the table could work out what was different about their computers.
+
+   The mistake was filing this motion under decoration. It is not. It is how
+   the game says who took what from whom, which hex paid out, and where a card
+   went - most of it appears nowhere else. Answering "please, less movement"
+   with "then you get none of that" is the wrong trade.
+
+   So there are three settings, and a request for reduced motion now picks the
+   middle one instead of the last one:
+
+     full  cards cross the screen
+     calm  cards are shown where they came from and then where they went, and
+           never travel - a cross-fade, nothing to track. Same information.
+     off   nothing moves.
+
+   Nobody is stuck with any of them: the Motion button in the header cycles,
+   and the choice is remembered per machine. */
+const MOTION_MODES = ["full", "calm", "off"];
+
+function wantsLessMotion(){
+  try {
+    return !!(window.matchMedia &&
+              window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  } catch(e){ return false; }
+}
+
+let MOTION = (function(){
+  let saved = null;
+  try { saved = localStorage.getItem("ec_motion"); } catch(e){}
+  if (MOTION_MODES.indexOf(saved) >= 0) return saved;
+  // The OS gets to pick the DEFAULT, and the middle one is as far as it goes.
+  return wantsLessMotion() ? "calm" : "full";
+})();
+
+/* Still a plain name, because four hot paths test it - but a `let`, because
+   the whole point is that it can now change while the game is running. */
+let fxOn = MOTION !== "off";
+
+function applyMotion(){
+  fxOn = MOTION !== "off";
+  if (document.body){
+    document.body.classList.toggle("calmfx", MOTION === "calm");
+    document.body.classList.toggle("nofx",   MOTION === "off");
+  }
+  drawMotionBtn();
+}
+
+function cycleMotion(){
+  MOTION = MOTION_MODES[(MOTION_MODES.indexOf(MOTION) + 1) % MOTION_MODES.length];
+  try { localStorage.setItem("ec_motion", MOTION); } catch(e){}
+  applyMotion();
+  hint(MOTION === "full" ? "Cards fly across the screen."
+     : MOTION === "calm" ? "Cards are shown at both ends without travelling."
+     : "Nothing moves. Cards and reveals still appear.");
+}
+
+/* Named on the button rather than hidden behind an icon, because the first
+   thing anybody needs to know is which of the three they are on - including
+   somebody being talked through it down a voice call. */
+const MOTION_LABEL = { full:"Motion: full", calm:"Motion: calm", off:"Motion: off" };
+const MOTION_TITLE = {
+  full:"Cards fly from where they left to where they land. Click for calm.",
+  calm:"Cards are shown where they came from and where they went, without " +
+       "travelling. Click to stop motion entirely.",
+  off: "Nothing moves - reveals and cards still appear. Click for full motion."
+};
+function drawMotionBtn(){
+  const b = document.getElementById("fxBtn");
+  if (!b) return;
+  b.textContent = MOTION_LABEL[MOTION] || "Motion";
+  b.title = MOTION_TITLE[MOTION] || "";
+  b.classList.toggle("off", MOTION === "off");
+}
+
+applyMotion();
 
 /* Every one of these is measured a frame late, so the board it is measuring
    has been laid out. A hidden tab never runs that frame, so rather than let a
@@ -6455,6 +6580,51 @@ function resBackHTML(){
 const FX_IN = 180, FX_HOLD = 1000, FX_FLY = 620, FX_OUT = 260;
 const FX_CARD_MS = FX_IN + FX_HOLD + FX_FLY + FX_HOLD + FX_OUT;
 
+/* The journey: shown where it started, across, shown where it landed. */
+function flyFrames(at, from, to){
+  const t = FX_CARD_MS;
+  const o1 = FX_IN / t;                       // shown at the source
+  const o2 = (FX_IN + FX_HOLD) / t;           // starts across
+  const o3 = (FX_IN + FX_HOLD + FX_FLY) / t;  // arrives
+  const o4 = (t - FX_OUT) / t;                // held there, then goes
+  return [
+    { transform: at(from, .45), opacity: 0, offset: 0,  easing: "cubic-bezier(.2,.9,.3,1.3)" },
+    { transform: at(from, 1),   opacity: 1, offset: o1, easing: "linear" },
+    { transform: at(from, 1),   opacity: 1, offset: o2, easing: "cubic-bezier(.5,0,.3,1)" },
+    { transform: at(to, 1),     opacity: 1, offset: o3, easing: "linear" },
+    { transform: at(to, 1),     opacity: 1, offset: o4, easing: "ease-in" },
+    { transform: at(to, .72),   opacity: 0, offset: 1 }
+  ];
+}
+
+/* The same two moments with the journey taken out of the middle.
+
+   The card fades up where it came from, fades down again, is moved across
+   while its opacity is nought at both ends of that step - so the one part of
+   this that is movement is the one part nobody can see - and fades up where it
+   went. You still learn both ends of the exchange; there is simply nothing
+   travelling to follow. Shorter than the full version, because a card that
+   holds still has finished saying what it had to say sooner. */
+const CFX_IN = 150, CFX_HOLD = 620, CFX_OUT = 190, CFX_SWAP = 50;
+const CFX_CARD_MS = (CFX_IN + CFX_HOLD + CFX_OUT) * 2 + CFX_SWAP;
+
+function calmFrames(at, from, to){
+  const t = CFX_CARD_MS, p = ms => ms / t;
+  const a1 = CFX_IN, a2 = a1 + CFX_HOLD, a3 = a2 + CFX_OUT;   // at the source
+  const b0 = a3 + CFX_SWAP;                                   // moved, unseen
+  const b1 = b0 + CFX_IN, b2 = b1 + CFX_HOLD;                 // at the target
+  return [
+    { transform: at(from, 1), opacity: 0, offset: 0,     easing: "ease-out" },
+    { transform: at(from, 1), opacity: 1, offset: p(a1), easing: "linear" },
+    { transform: at(from, 1), opacity: 1, offset: p(a2), easing: "ease-in" },
+    { transform: at(from, 1), opacity: 0, offset: p(a3), easing: "linear" },
+    { transform: at(to, 1),   opacity: 0, offset: p(b0), easing: "ease-out" },
+    { transform: at(to, 1),   opacity: 1, offset: p(b1), easing: "linear" },
+    { transform: at(to, 1),   opacity: 1, offset: p(b2), easing: "ease-in" },
+    { transform: at(to, 1),   opacity: 0, offset: 1 }
+  ];
+}
+
 function flyCard(from, to, inner, cls, delay, idx){
   if (!fxOn || !from || !to) return;
   const el = document.createElement("div");
@@ -6465,19 +6635,10 @@ function flyCard(from, to, inner, cls, delay, idx){
   const fan = { x: (i % 4) * 9 - 13, y: Math.floor(i / 4) * 7 - 6 };
   const at = (p, sc) => "translate(" + (p.x + fan.x) + "px," + (p.y + fan.y) +
                         "px) translate(-50%,-50%) scale(" + sc + ")";
-  const t = FX_CARD_MS;
-  const o1 = FX_IN / t;                       // shown at the source
-  const o2 = (FX_IN + FX_HOLD) / t;           // starts across
-  const o3 = (FX_IN + FX_HOLD + FX_FLY) / t;  // arrives
-  const o4 = (t - FX_OUT) / t;                // held there, then goes
-  const a = el.animate([
-    { transform: at(from, .45), opacity: 0, offset: 0,  easing: "cubic-bezier(.2,.9,.3,1.3)" },
-    { transform: at(from, 1),   opacity: 1, offset: o1, easing: "linear" },
-    { transform: at(from, 1),   opacity: 1, offset: o2, easing: "cubic-bezier(.5,0,.3,1)" },
-    { transform: at(to, 1),     opacity: 1, offset: o3, easing: "linear" },
-    { transform: at(to, 1),     opacity: 1, offset: o4, easing: "ease-in" },
-    { transform: at(to, .72),   opacity: 0, offset: 1 }
-  ], { duration: t, delay: delay || 0, fill: "both" });
+  const calm = MOTION === "calm";
+  const t = calm ? CFX_CARD_MS : FX_CARD_MS;
+  const a = el.animate(calm ? calmFrames(at, from, to) : flyFrames(at, from, to),
+                       { duration: t, delay: delay || 0, fill: "both" });
   const done = () => el.remove();
   a.onfinish = done; a.oncancel = done;
   // A tab sent to the background never runs the animation, so nothing would
@@ -7762,13 +7923,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-27w"></script>
+<script src="ai.js?v=2026-08-29a"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-27w"></script>
-<script src="net.js?v=2026-08-27w"></script>
+<script src="firebase-config.js?v=2026-08-29a"></script>
+<script src="net.js?v=2026-08-29a"></script>
 </body>
 </html>

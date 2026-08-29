@@ -261,7 +261,7 @@ backs are drawn from that.
 
 The drawing itself is not state: it is read off the live DOM a frame late, so
 it always measures a board that has been laid out, and it is skipped entirely
-on a hidden tab or for anyone whose system asks for reduced motion. Bursts are
+on a hidden tab. Bursts are
 capped — sixteen cards per event, sixty live pieces of animation, eight
 flights kept on the state — so a six-player payout cannot bury the board or
 the frame rate. A screen that has only just been handed a game in progress
@@ -272,6 +272,63 @@ The one place any of this touches what you can see of the game is the piece
 held back while it lands, and that expires on its own: if the timer that ends
 the animation never runs, the next repaint draws the piece anyway. A flourish
 is not worth a board with a road missing from it.
+
+### How much movement, and who decides
+
+**Motion** in the header cycles three settings, remembered per machine.
+
+| | what moves | what you still learn |
+|---|---|---|
+| **full** | cards cross the screen | everything |
+| **calm** | nothing travels | everything |
+| **off** | nothing at all | the reveals, the log, the board |
+
+**calm** is the interesting one. A card fades up where it came from, holds,
+fades down, is repositioned *while its opacity is nought at both ends of that
+step* — so the one part of it that is movement is the one part nobody can see —
+and fades up where it went. You are told both ends of every exchange with
+nothing to track across the screen. The card reveals lose their spin and their
+overshoot for a plain fade, and a piece appears where it was built instead of
+dropping in and bouncing, but the ring still goes off around it so you can
+still see at a glance *where* somebody just built.
+
+This used to be one const, read once at load:
+
+```js
+const fxOn = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+```
+
+which is the polite thing to do and was, in practice, the bug that cost two
+people at a six-player table any idea what was going on. *Animation effects*
+off in Windows' accessibility settings — a switch plenty of people flip to make
+an older laptop feel quicker, and one that Battery Saver flips for them without
+asking — makes that query match. Every resource flight, every card drawn, every
+robbery, every trade and every hex flash then went: not slowed, not simplified,
+**gone**, with nothing on screen to say why and no way back, because a const
+cannot be reassigned even from the console. Their games worked and their boards
+updated; they just never saw anything move, and nobody at the table could work
+out what was different about their computers. It looked for all the world like
+the online animation bug all over again, and it was not — it was two machines
+quietly opting themselves out.
+
+The mistake was filing this motion under decoration. It is not: it is how the
+game says who took what from whom, which hex paid out, and where a card went,
+and most of that appears nowhere else. Answering *"please, less movement"* with
+*"then you get none of that"* is the wrong trade. So a system asking for
+reduced motion now picks **calm** — the middle setting, and as far as the OS
+gets to go on its own. Nobody is stuck: the button cycles, and it is a `let`
+rather than a `const` precisely so it can change while a game is running.
+
+The button says which of the three it is on rather than just being a switch,
+which is the other half of the fix. The people who need it are the ones who did
+not know there was anything to change, and a button reading **Motion: calm** on
+one player's screen and **Motion: full** on everybody else's answers the
+question before it has to be asked.
+
+If somebody still sees nothing move, the remaining honest reason is a hidden
+tab: a browser that considers the window not visible never paints a frame, so
+the animations are dropped rather than queued up to replay against a board that
+has moved on since.
 
 ### The seat cards
 
