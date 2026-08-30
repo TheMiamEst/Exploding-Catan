@@ -1460,7 +1460,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29r";
+const GAME_VERSION = "2026-08-29s";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2507,6 +2507,7 @@ function renderIdle(){
 
 /* Put the table away and go back to the opening screen. */
 function backToIdle(){
+  clearGameLive();              // put away on purpose: nothing was lost
   if (window.AI && window.AI.stop) window.AI.stop();
   window.AGENTS = {};
   clearImplodeClock();
@@ -2579,6 +2580,7 @@ function render(){
   // Online: anything that redrew the host's screen is news. Debounced, so the
   // burst of renders one action causes goes out as a single state.
   if (window.NET && NET.publishSoon) NET.publishSoon();
+  markGameLive();
 }
 
 const PORT_OUT = 1.075;     // how far outside the ring a port marker sits
@@ -6891,6 +6893,7 @@ function checkVictory(){
 }
 
 function declareWinner(pid){
+  clearGameLive();              // finished, not lost
   const p = S.players[pid];
   S.winner = pid;
   S.phase = "over";
@@ -9324,18 +9327,93 @@ window.addEventListener("load", function(){
   initBoardControls();
   drawTipBtn();
   renderIdle();                 // no forced dialog: the header stays reachable
+  // If a game was running when this tab last drew, say so rather than leave
+  // the player looking at an opening screen they did not ask for.
+  lostGameNotice();
 });
 window.addEventListener("resize", function(){ if (S) render(); });
 
+/* ══ LOSING A GAME TO A PAGE LOAD ══════════════════════════════════
+   A local game lives in one variable in one tab and is written to nowhere. `S`
+   is assigned in exactly three places: its declaration, newGame, and
+   backToIdle — and backToIdle is only reachable from the online dialog's
+   Leave and Cancel buttons. So an OFFLINE game has no path back to the opening
+   screen at all. Seeing that screen means the page loaded again.
+
+   Which is easier than it sounds. Ctrl-R, a swipe-back gesture, a middle-click
+   on the wrong thing, a browser discarding a backgrounded tab to save memory
+   and reloading it when you come back — any of them ends the game silently,
+   with nothing said and nothing kept. From the chair it looks exactly like
+   "the game randomly ended".
+
+   Two things here. The first asks before letting go of a game in progress,
+   which is the only defence against the ones the player is doing themselves.
+   The second cannot prevent a reload, but it can stop it being a mystery:
+   a breadcrumb saying a game was running, so the next screen can say what
+   happened instead of pretending nothing did. */
+const LIVE_KEY = "ec_live";
+const LIVE_GRACE_MS = 3 * 60 * 1000;   // a marker older than this is stale
+let liveMarkAt = 0;
+
+function markGameLive(){
+  if (!S || S.phase === "over") return;
+  const now = Date.now();
+  if (now - liveMarkAt < 3000) return;              // once every few seconds
+  liveMarkAt = now;
+  try {
+    localStorage.setItem(LIVE_KEY, JSON.stringify({
+      at: now, turn: S.turnCounter || 0, n: S.players.length
+    }));
+  } catch(e){}
+}
+function clearGameLive(){
+  liveMarkAt = 0;
+  try { localStorage.removeItem(LIVE_KEY); } catch(e){}
+}
+
+/* Was a game running when this tab last drew a frame? Only asked once, at
+   load, and the marker is cleared as it is read so it can never fire twice. */
+function lostGameNotice(){
+  let mark = null;
+  try {
+    const raw = localStorage.getItem(LIVE_KEY);
+    if (raw) mark = JSON.parse(raw);
+  } catch(e){ mark = null; }
+  clearGameLive();
+  if (!mark || !mark.at || Date.now() - mark.at > LIVE_GRACE_MS) return;
+  const el = document.createElement("div");
+  el.id = "verWarn";
+  const where = (typeof mark.turn === "number" && mark.turn > 0)
+              ? "on turn " + mark.turn : "still in setup";
+  el.innerHTML = "The page reloaded, and the game that was running " +
+    "(" + where + ") went with it. A local game is only ever " +
+    "held in this tab — nothing is saved, so a refresh, a back gesture or the " +
+    "browser putting the tab to sleep ends it. " +
+    '<b style="cursor:pointer;text-decoration:underline">Dismiss</b>';
+  el.querySelector("b").onclick = () => el.remove();
+  const area = document.getElementById("boardArea");
+  if (area) area.appendChild(el);
+}
+
+/* Ask before a game in progress is thrown away. The browser decides how much
+   of this it shows — most only offer their own wording now — but it is the
+   difference between a stray Ctrl-R ending the game and it asking first. */
+window.addEventListener("beforeunload", function(ev){
+  if (!S || S.phase === "over") return;
+  ev.preventDefault();
+  ev.returnValue = "";
+  return "";
+});
+
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29r"></script>
+<script src="ai.js?v=2026-08-29s"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29r"></script>
-<script src="net.js?v=2026-08-29r"></script>
+<script src="firebase-config.js?v=2026-08-29s"></script>
+<script src="net.js?v=2026-08-29s"></script>
 </body>
 </html>

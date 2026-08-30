@@ -143,6 +143,33 @@ reload.
 
 ---
 
+### "The game randomly ended"
+
+A local game lives in one variable in one tab and is written to nowhere. `S` is
+assigned in exactly three places: its declaration, `newGame`, and `backToIdle`
+— and `backToIdle` is only reachable from the online dialog's Leave and Cancel
+buttons. **So an offline game has no code path back to the opening screen at
+all.** Seeing that screen means the page loaded again.
+
+Which is easier than it sounds: Ctrl-R, a swipe-back gesture, a middle-click on
+the wrong thing, or the browser discarding a backgrounded tab to save memory
+and reloading it when you come back. Any of them ended the game silently, with
+nothing said and nothing kept, and from the chair it looks exactly like the
+game randomly ending.
+
+Two things now. A `beforeunload` guard asks before a game in progress is thrown
+away, which is the only defence against the ones the player causes themselves.
+And a breadcrumb in `localStorage`, refreshed every few seconds while a game
+runs and cleared when one is finished or put away on purpose, so that the next
+load can say **what happened** instead of pretending nothing did. It cannot
+prevent a reload; it stops one being a mystery.
+
+Neither of these saves the game. Doing that means serialising `S`, and the
+journal's snapshots hold *references* to the same card objects the hands hold —
+"refs, so identity survives" — which a round trip through JSON would quietly
+break, and every rewind after it with them. Worth doing, not worth doing
+carelessly.
+
 ## How online play actually works
 
 ### A host's wifi stutter used to end everybody's game
