@@ -581,6 +581,33 @@ without going through its own callback — Escape, a rewind, a Nope landing
 somewhere else — would otherwise leave a card out of its owner's hand for good,
 so `render` clears it whenever no pick is open.
 
+### A board card is shown before it changes the board
+
+Alter the Future cannot be journalled until its two hexes are named — whether
+anybody may Defuse it depends on which hexes are being swapped — so the reveal
+that comes off the journal arrives at the very instant the numbers move.
+Measured with a bot playing one, both happened in the same 100ms sample: the
+swap IS what triggers the entry that draws the card. The one thing anybody
+needed to watch, two numbers trading places, happened underneath the card
+explaining it.
+
+A bot's board card now sets the same `S.playing` marker a human's play sets on
+its way to the pile. The card turns over at once, the bot driver waits on the
+reveal before touching the board, and the swap then happens in the clear.
+
+The reveal that *would* have come off the journal is skipped, because the card
+has already had its moment and putting it back up would cover the very thing it
+was announcing. Only for board cards: a targeted card changes nothing on the
+board, so its second reveal covers nothing and is worth keeping — it is the one
+that names the victim. Measured after the change: reveal at 105–2005ms, swap at
+3105ms with nothing over the board, and the log still carries which two numbers
+changed places.
+
+The Knight was already right, as it turns out — it journals itself before
+`beginRobberMove`, so the reveal was queued first and the driver's existing
+wait held the robber back. Measured at 109–2711ms for the reveal and 3112ms for
+the robber, with no overlap.
+
 ### The table goes quiet while you aim
 
 Playing a card that needs a victim already stopped the clock. Now it dims the

@@ -1431,7 +1431,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29k";
+const GAME_VERSION = "2026-08-29l";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -5170,9 +5170,24 @@ function playCard(idx, ownerId){
   if (def.kind === "target"){
     hint("Drop " + def.name + " on the discard pile, or straight onto the player you want to hit.");
   } else if (def.kind === "board"){
-    // The two tokens must be named before anyone can react — whether a player
-    // may Defuse depends on which hexes are being swapped.
+    /* Say what is being played BEFORE playing it.
+
+       The two tokens have to be named before the card can be journalled —
+       whether anybody may Defuse it depends on which hexes are being swapped —
+       so the reveal that comes off the journal arrives at the same instant the
+       numbers move. Measured, that was the same millisecond: the swap IS what
+       triggers the entry that draws the card. So a bot's Alter the Future
+       changed the board and announced itself simultaneously, and the one thing
+       anybody actually needed to watch — two numbers trading places — happened
+       underneath the card explaining it.
+
+       S.playing is the same marker a human's play sets on its way to the pile.
+       It turns the card over at once, and the bot driver waits on the reveal
+       before touching the board, so the order is: card, then swap, then the
+       line saying which two numbers moved. */
+    S.playing = { pid: p.id, id: c.id, key: c.key };
     beginAlterPick(p.id, (a, b) => {
+      S.playing = null;
       proposeAction({ type:"card", card:c, idx, actor:p.id, target:null, payload:{ hexes:[a, b] } });
     });
   } else {
@@ -8252,6 +8267,10 @@ function tintNames(plain){
    may Defuse it, so the entry does not exist until the pick is finished. This
    is the moment in between, which used to be silent. */
 let lastPlayingShown = null;
+/* The card id most recently turned over by checkPlaying, held past the moment
+   S.playing clears so that showEntry can decline to turn the same card over a
+   second time. See there for why only board cards care. */
+let justRevealed = null;
 function checkPlaying(){
   if (!S) return;
   const cur = S.playing;
@@ -8259,6 +8278,7 @@ function checkPlaying(){
   const tag = cur.pid + ":" + cur.id;
   if (tag === lastPlayingShown) return;
   lastPlayingShown = tag;
+  justRevealed = cur.id;
   const def = KITTEN[cur.key];
   const who = S.players[cur.pid];
   if (!def || !who) return;
@@ -8344,6 +8364,25 @@ function showEntry(e){
     if (answerable) answerShowcase(e);
     return;
   }
+  /* Already turned over on its way out of the hand, and the thing it did is
+     the thing worth watching.
+
+     Alter the Future cannot be journalled until its two hexes are named, so
+     the entry — and the reveal that comes off it — arrives at the very
+     instant the numbers move. Showing the card again there puts it straight
+     back over the only part of this anybody needed to see. The card has had
+     its moment; let the board have the next one. The log still carries which
+     two numbers changed places.
+
+     Only board cards. A targeted card changes nothing on the board, so its
+     second reveal covers nothing and is worth having — it is the one that
+     names the victim. */
+  if (e.card && e.card.id === justRevealed && def.kind === "board"){
+    justRevealed = null;
+    if (answerable) answerShowcase(e);
+    return;
+  }
+  if (e.card && e.card.id === justRevealed) justRevealed = null;
   const face = cardArt({ key: e.show, flavor: (e.card && e.card.flavor) || null });
   showcase('<div class="showcard">' +
              (face ? '<img src="' + face + '" alt="">' : '<span class="kn">' + esc(def.name) + "</span>") +
@@ -9105,13 +9144,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29k"></script>
+<script src="ai.js?v=2026-08-29l"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29k"></script>
-<script src="net.js?v=2026-08-29k"></script>
+<script src="firebase-config.js?v=2026-08-29l"></script>
+<script src="net.js?v=2026-08-29l"></script>
 </body>
 </html>
