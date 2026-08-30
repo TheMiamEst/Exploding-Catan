@@ -330,6 +330,155 @@ tab: a browser that considers the window not visible never paints a frame, so
 the animations are dropped rather than queued up to replay against a board that
 has moved on since.
 
+### The discard pile, and playing without the log
+
+The kitten deck sits in the **top** right corner of the board now. The corner
+it used to hold, bottom right, is the **discard pile**: every kitten card
+anybody has played, face up, newest on top. Under it, the card's name, who
+played it and at whom, and whether there is still time to answer it. Scroll the
+wheel over the pile to walk back through it and forwards again; the arrows
+under it do the same thing for anyone who would rather click.
+
+This exists because the game log had quietly become mandatory. A Nope was
+played by dragging it onto a **line of the log** — which meant the log was not
+a record of the game, it was a control surface, and a player who had closed it
+or was not reading it could not use one of the eleven cards at all. The pile
+puts the card you would have been looking for a line about on the table, face
+up, where you can point at it. The log is back to being what it should be:
+worth reading, never required.
+
+The pile is read off the **journal**, not off `S.discard`, which is the other
+obvious source and the wrong one. `S.discard` is a bag of cards; the pile has
+to say who played each one, at whom, and whether it can still be answered, and
+all of that is already on the journal entry. Taking it from there means the
+pile and the log can never disagree about what happened. A Nope and a Defuse
+are journalled as the answer rather than as a card play, so they carry `spent`
+instead of `card` — they are still cards somebody played and they still belong
+on the pile, so `spent` now travels to terminals too.
+
+### What a Nope does now
+
+Two uses, and they no longer bleed into each other.
+
+**On a card** — dropped on the discard pile, or still on a log line if you
+prefer — it cancels that card. The card is spent, what it was going to do does
+not happen, and **the player carries on with the rest of their turn**.
+
+Cancelling a card used to end the victim's turn outright. That made one Nope
+the most punishing card in the game, made playing anything at all a risk you
+thought twice about, and — worst of the three — meant a Nope had to be aimed at
+exactly the right log line, because catching the wrong entry took somebody's
+whole turn by accident.
+
+**On a player** — dropped on their seat card — it cancels their whole turn, the
+same way a win is cancelled. Everything they drew, built and played that turn
+is gone. That is still available and is still brutal; it is now something you
+choose deliberately rather than something that happens as a side effect of
+answering a card.
+
+**Knights and victory points are never touched by either**, unless the thing
+being cancelled is a **win**. The guard used to let the hidden-points sweep
+through whenever the player happened to be sitting on the target score, so
+Noping the turn of somebody who had merely got there burned their whole hand of
+Feral Kittens — and said so in the log, announcing cards nobody had any
+business seeing. Cancelling a turn undoes that turn; it is not licence to reach
+into a hand for something bought three turns ago. A knight played on the
+cancelled turn is undone with everything else that turn did, which is a
+different thing from taking the knight.
+
+### Aiming a card after you have played it
+
+Every kitten card can be dropped on the discard pile, and for the ones that
+need a victim the game then stops — the turn clock pauses — and asks who it is
+for.
+
+This is the way round it should always have been. Dragging a card onto
+somebody's seat card means choosing the target **before** the card is played,
+which is fine once you know the game and invisible until then: nothing on
+screen says an Attack is a thing you aim, so a new player picks it up, finds
+nowhere obvious to put it, and puts it back. Playing to the pile is one gesture
+that works for all eleven cards, and the question arrives when it is actually a
+question. Favor chains straight on into naming its three resources.
+
+Aiming a card at a seat still works and is quicker. Nothing here takes that
+away.
+
+### The turn clock, and why it was eating clicks
+
+The clock in the bottom bar repaints itself and nothing else. That sounds like
+an optimisation and is actually a correctness fix.
+
+It used to call `render()` on every tick, four times a second. `render()` is
+not a touch-up: `drawBoard` replaces the board's markup wholesale with
+`svg.innerHTML = h`, and `drawPlayers` and `drawBottom` do the same to the seat
+cards and the bottom bar. So every clickable thing on screen was being
+destroyed and rebuilt every 250ms, all game long.
+
+A browser only fires `click` when the press and the release land on the same
+element. Any click whose mousedown and mouseup straddled one of those
+rebuilds produced **no click event at all** — the element it began on no longer
+existed by the time the button came up. A comfortable click takes 80–150ms
+against a 250ms rebuild cycle, which is why it presented the way it did: clicks
+that sometimes just do not register, with no pattern you could pin down. It was
+also republishing the whole game state to Firebase at 4Hz, because `render()`
+ends with `NET.publishSoon`.
+
+The clock is one span with a width and a number in it, so the tick writes those
+two things. A full repaint is owed only when the clock **appears or
+disappears**, because that changes the bar's layout — and that happens at turn
+boundaries, not on every tick. Worth remembering for anything else that wants
+to update on a timer: repainting the world to change a number costs you every
+click that lands while you are doing it.
+
+### What the seven's watchdog must not mistake for silence
+
+The watchdog re-asks when a seven's prompt goes missing, because a table that
+can never move again is worse than whatever dropped the window. It fires only
+when there is no dialog open anywhere on the table — and a **bot** never opens
+one.
+
+A bot pays the instant it is asked and then holds for `AI_PACE` before the
+queue moves on, so the table can see it pay. `AI_PACE` is 3000ms. The
+watchdog's two quiet passes are 2 × 1500ms, which is also 3000ms. A dead heat,
+settled by whichever timer the browser happened to fire first — and when the
+watchdog won, it asked a bot that had already paid to pay again.
+
+It only bit on big hands, and the reason is exact: a bot holding 16 discards
+half and is left with 8, which is **still over the limit**, so it stays at the
+head of the queue and can be asked a second time. A bot holding 10 discards 5,
+drops under the line, and `stepSeven`'s own `while (totalRes <= 7) shift()`
+clears it — the second ask finds nothing to do. Sixteen cards or more was the
+threshold.
+
+So a bot with an answer in flight now counts as somebody answering. It is a
+**deadline rather than a flag** on purpose: a flag left set by a path that
+never runs its clean-up would wedge the watchdog permanently, which is the
+exact class of bug the watchdog exists to catch. A deadline expires on its own.
+
+### The Imploding Kitten's twenty seconds start when the card lands
+
+The reveal is the biggest thing this game puts on screen — the one card nobody
+ever holds, spun up out of nothing over a full second and held for four more —
+and the clock used to start underneath it. The turn it grants began with five
+of its twenty seconds already spent watching an animation, on a turn that
+cannot be Noped and that ends the moment the clock does. You were being charged
+for the cutscene.
+
+`S.implodeFrom` is when the twenty seconds actually begin; `S.implodeUntil` is
+that plus twenty. Between the draw and `implodeFrom` the table is frozen:
+`uiBlocked` returns true ahead of everything else it tests, including the proxy
+exemption, because this one blocks everybody — the player whose card it is most
+of all. The bots hold off on the same condition, and the banner holds at "20s
+begins when the card lands" rather than counting down through the reveal.
+
+The freeze length is read off the two constants that drive the animation
+(`IMPLODE_SHOW_MS` and `SHOWCASE_FADE`) rather than typed again, so it cannot
+drift out of step with the thing it is waiting for — and read at call time,
+because both are declared further down the file than the function that wants
+them. The lead-in travels to terminals as its own remaining-milliseconds field
+alongside the deadline, so a guest freezes for exactly as long as the host does
+instead of starting its own clock when the state lands.
+
 ### The seat cards
 
 Laid out the way Catan Universe lays its player box out, because that is an

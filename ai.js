@@ -1147,6 +1147,15 @@ function tickNow(){
     return schedule(IDLE);
   }
 
+  // The Imploding Kitten is still landing. Nobody acts through that, a bot
+  // that just drew it least of all - it would spend the reveal playing its
+  // turn behind a card covering the middle of the board, and the twenty
+  // seconds it is owed have not started yet.
+  if (typeof implodeRevealing === "function" && implodeRevealing()){
+    guard = 0;
+    return schedule(IDLE);
+  }
+
   // A forced board selection may belong to a bot even on a human's turn
   // (a Defused knight hands the robber to whoever defused it).
   const owner = selectOwner();

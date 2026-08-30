@@ -251,7 +251,68 @@
     display:flex; flex-direction:column; gap:4px;
   }
   #zoomWrap button{width:30px; text-align:center; padding:3px 0; font-size:14px; line-height:1}
-  #deckWrap{position:absolute; right:12px; bottom:12px; z-index:3; transition:left .12s, top .12s}
+  #deckWrap{position:absolute; right:12px; top:12px; z-index:3; transition:left .12s, top .12s}
+
+  /* ── The discard pile ────────────────────────────────────────────
+     Every kitten card ever played, face up, newest on top, in the corner the
+     deck used to hold. It is the answer to "what just happened" for anybody
+     who is not reading the log - which is the point of it: the log is a
+     transcript, and a transcript is a thing you have to have been keeping up
+     with. The pile is a place you can look. */
+  #discardWrap{position:absolute; right:12px; bottom:12px; z-index:3;
+               transition:left .12s, top .12s; width:86px}
+  .discpile{
+    width:74px; height:104px; border-radius:9px; position:relative;
+    border:2px solid var(--line); background:linear-gradient(150deg,#242a36,#171b23);
+    box-shadow:0 5px 16px #0007; overflow:visible; cursor:default;
+  }
+  /* Two thin slivers behind the top card, so the pile reads as a pile even
+     when you are looking at the only card in it. */
+  .discpile::before, .discpile::after{
+    content:""; position:absolute; inset:0; border-radius:8px; z-index:0;
+    border:1px solid #0b0d10; background:#1b2029;
+  }
+  .discpile::before{transform:translate(4px,4px)}
+  .discpile::after{transform:translate(2px,2px)}
+  .discpile.empty::before, .discpile.empty::after{display:none}
+  .discface{
+    position:absolute; inset:0; border-radius:7px; overflow:hidden; z-index:1;
+    background:linear-gradient(150deg,#2c3444,#1c222c);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .discface img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+  .discface .kn{position:relative; z-index:1; font-size:12px; font-weight:800;
+                text-align:center; padding:0 5px; text-shadow:0 2px 6px #000; line-height:1.15}
+  .discempty{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:9.5px; letter-spacing:.5px; text-transform:uppercase; color:var(--dim);
+    text-align:center; padding:0 6px; z-index:1;
+  }
+  /* A ring when the card on top is still open to an answer, because that is
+     the whole reason to be looking at it. */
+  .discpile.live{border-color:#4bb1d9; box-shadow:0 5px 16px #0007, 0 0 0 3px #4bb1d933}
+  .discpile.droppable{border-color:#7fc48f; box-shadow:0 0 0 3px #7fc48f44}
+  .discpile.dropping{border-color:#a6e6b4; box-shadow:0 0 0 4px #7fc48f77}
+  /* Who played it, and at whom. Sits under the pile like the deck's cost line. */
+  .discmeta{
+    font-size:9.5px; line-height:1.3; color:var(--dim); text-align:center;
+    margin-top:5px; max-width:86px; word-break:break-word;
+  }
+  .discmeta b{color:var(--ink); font-weight:700}
+  .discmeta .ans{color:#8ad8f5; font-weight:700}
+  /* Where you are in the pile. Only drawn once there is more than one card,
+     because "1 of 1" is noise. */
+  .discnav{
+    display:flex; align-items:center; justify-content:center; gap:4px;
+    margin-top:3px; font-size:9px; color:var(--dim); font-variant-numeric:tabular-nums;
+  }
+  .discnav button{
+    padding:0 4px; font-size:10px; line-height:14px; min-width:15px;
+    background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:4px; cursor:pointer;
+  }
+  .discnav button:disabled{opacity:.3; cursor:default}
+  .discpile.back{border-style:dashed; opacity:.9}
   .rank{width:100%; border-collapse:collapse; font-size:13px; margin-top:4px}
   .rank th{text-align:left; font-size:10px; letter-spacing:.5px; text-transform:uppercase;
            color:var(--dim); font-weight:600; padding:4px 6px; border-bottom:1px solid var(--line)}
@@ -1148,6 +1209,9 @@
     .slot .rn{display:none}          /* unreadable at this size, and the art says it */
     .kcard .pip{font-size:7px; padding:0 2px}
     .deck{width:52px; height:72px}
+    #discardWrap{width:64px}
+    .discpile{width:52px; height:72px}
+    .discmeta{max-width:64px; font-size:9px}
     .deckcost{display:none}
     .die{width:40px; height:40px; border-radius:8px; padding:5px}
     .die i{width:7px; height:7px}
@@ -1233,6 +1297,7 @@
       <button class="sm" onclick="resetZoom()" title="Reset view">⌂</button>
     </div>
     <div id="deckWrap"></div>
+    <div id="discardWrap"></div>
     <div id="panels"></div>
     <div id="showcase" hidden></div>
   </div>
@@ -1276,7 +1341,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29a";
+const GAME_VERSION = "2026-08-29c";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1778,6 +1843,9 @@ function drivenByProxy(){
 }
 
 function uiBlocked(){
+  // Ahead of everything, including the proxy exemption: this one blocks the
+  // whole table, the player whose card it is most of all.
+  if (typeof implodeRevealing === "function" && implodeRevealing()) return true;
   if (drivenByProxy()) return false;
   if (window.NET && NET.isOnline && NET.isOnline()){
     // A prompt handed to you is yours to answer even on somebody else's turn.
@@ -1796,6 +1864,19 @@ function botTick(){}
    ══════════════════════════════════════════════════════════════════════ */
 
 let S = null;
+
+/* Which card of the discard pile is being looked at. 0 is the top - the card
+   played most recently - and it snaps back there whenever something new lands
+   on it, because the card you have just been dealt is the one you are most
+   likely to want to answer.
+
+   Declared up here rather than beside the pile's own code because renderIdle
+   resets it, and renderIdle is defined further up the file than that code is.
+   A `let` is in its temporal dead zone until the line declaring it actually
+   runs, so leaving it down there meant the opening screen worked only because
+   the page happens to start the game from the bottom of the script. */
+let discardIdx = 0;
+let discardTopId = -1;
 
 function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
   BOARDSET = boardFor(numPlayers, boardKey);
@@ -1874,6 +1955,7 @@ function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
     implodeTurn: -1,          // turn number made Nope-proof by an Imploding Kitten
     implodeBy: null,          // who drew it, so the seal outlives their turn
     implodeUntil: 0,          // wall-clock deadline for that turn
+    implodeFrom: 0,           // ...which does not begin until the card lands
     feed: [],                 // the on-screen event list, so it can be sent online
     chat: [],                 // what has been said, for the same reason
     emotes: [],               // emoji thrown recently — see syncEmotes
@@ -2262,6 +2344,8 @@ function renderIdle(){
   const strip = document.getElementById("players"); if (strip) strip.innerHTML = "";
   const svg = document.getElementById("board");     if (svg) svg.innerHTML = "";
   const dk  = document.getElementById("deckWrap");  if (dk) dk.innerHTML = "";
+  const dsc = document.getElementById("discardWrap"); if (dsc) dsc.innerHTML = "";
+  discardIdx = 0;
   const dc  = document.getElementById("diceWrap");  if (dc) dc.innerHTML = "";
   const bot = document.getElementById("bottom");
   if (bot) bot.innerHTML = '<div class="bside"></div><div class="bcentre">' +
@@ -2330,7 +2414,7 @@ function render(){
   // Before the strip is drawn, not after: a throw that has just arrived wants
   // to be in this repaint rather than to cause another one.
   syncEmotes();
-  drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDice(); drawHint();
+  drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDiscard(); drawDice(); drawHint();
   drawModeTag(); drawChat(); drawTurnOrder();
   refreshFeedMarks();
   checkStalePanels();
@@ -3008,16 +3092,24 @@ function hexFieldBounds(){
    positioned, so it can never take space from the board or resize it. */
 const DECK_GAP = 50;      // per axis — about 70px on the diagonal
 
-function placeDeck(){
-  const el = document.getElementById("deckWrap");
+/* The deck and the discard pile stand in the two right-hand corners of the
+   board: the deck you draw from at the top, the pile you have played to at the
+   bottom, where the deck used to be. Both are placed off the hex field's own
+   corners rather than off the window, so they sit just outside the board at
+   any zoom instead of drifting over it.
+
+   One function for both, because the only thing that differs is which corner
+   and which edge of the card is pinned to it. */
+function placeCorner(wrapId, cardSel, atTop){
+  const el = document.getElementById(wrapId);
   if (!el) return;
-  const card = el.querySelector(".deck");
+  const card = el.querySelector(cardSel);
   const area = document.getElementById("boardArea");
   const content = boardContentRect();
   if (!card || !area || !content){ el.style.left = ""; el.style.top = ""; return; }
 
   const hb = hexFieldBounds();
-  const corner = svgToScreen(hb.maxX, hb.maxY);
+  const corner = svgToScreen(hb.maxX, atTop ? hb.minY : hb.maxY);
   if (!corner){ el.style.left = ""; el.style.top = ""; return; }
 
   const ar = area.getBoundingClientRect();
@@ -3025,11 +3117,16 @@ function placeDeck(){
   const wrapW = el.offsetWidth  || 86;
   const wrapH = el.offsetHeight || 122;
 
-  // Bottom edge of the card sits level with the board's lowest point at most.
-  const boardBottom = content.top + content.height;
-  const bottom = Math.min(corner.y + DECK_GAP, boardBottom);
   let left = corner.x + DECK_GAP;
-  let top  = bottom - cardH;
+  let top;
+  if (atTop){
+    // Top edge of the card level with the board's highest point at least.
+    top = Math.max(corner.y - DECK_GAP, content.top);
+  } else {
+    // Bottom edge of the card sits level with the board's lowest point at most.
+    const bottom = Math.min(corner.y + DECK_GAP, content.top + content.height);
+    top = bottom - cardH;
+  }
 
   left = Math.max(6, Math.min(left, ar.width  - wrapW - 6));
   top  = Math.max(6, Math.min(top,  ar.height - wrapH - 6));
@@ -3039,6 +3136,129 @@ function placeDeck(){
   el.style.right = "auto";
   el.style.bottom = "auto";
 }
+function placeDeck(){
+  placeCorner("deckWrap", ".deck", true);
+  placeCorner("discardWrap", ".discpile", false);
+}
+
+/* ══ THE DISCARD PILE ═════════════════════════════════════════════════
+   Every kitten card that has been played, newest first.
+
+   Read off the JOURNAL rather than off S.discard, which is the other obvious
+   place to get it and the wrong one. S.discard is a bag of cards; the pile has
+   to say more than which cards are in it - who played each one, at whom, and
+   whether there is still time to answer it. All of that is already on the
+   journal entry, and taking it from there means the pile and the log can never
+   disagree about what happened.
+
+   A Nope and a Defuse are journalled as what they ANSWERED rather than as a
+   card play, so they carry `spent` instead of `card`. They are still cards
+   somebody played and they still belong on the pile. */
+function entryCardKey(e){
+  if (!e) return null;
+  if (e.card && e.card.key && e.card.key !== "hidden") return e.card.key;
+  if (e.spent && e.spent.key) return e.spent.key;
+  return null;
+}
+function entryCardPlayer(e){
+  if (e.spent && e.spent.pid !== undefined && e.spent.pid !== null) return e.spent.pid;
+  return e.actor;
+}
+function discardStack(){
+  if (!S || !S.journal) return [];
+  const out = [];
+  for (let i = S.journal.length - 1; i >= 0; i--){
+    if (entryCardKey(S.journal[i])) out.push(S.journal[i]);
+  }
+  return out;
+}
+
+function discardShown(){
+  const st = discardStack();
+  if (!st.length) return null;
+  const i = Math.max(0, Math.min(discardIdx, st.length - 1));
+  return st[i];
+}
+function scrollDiscard(delta){
+  const st = discardStack();
+  if (!st.length) return;
+  const was = discardIdx;
+  discardIdx = Math.max(0, Math.min(discardIdx + delta, st.length - 1));
+  if (discardIdx !== was) drawDiscard();
+}
+
+function drawDiscard(){
+  const el = document.getElementById("discardWrap");
+  if (!el) return;
+  if (!S || S.phase === "over" || S.phase.startsWith("setup")){
+    if (el.innerHTML){ el.innerHTML = ""; el.dataset.sig = ""; }
+    return;
+  }
+  const st = discardStack();
+  // Something new on top: come back to it.
+  const topId = st.length ? st[0].id : -1;
+  if (topId !== discardTopId){ discardTopId = topId; discardIdx = 0; }
+  if (discardIdx > st.length - 1) discardIdx = Math.max(0, st.length - 1);
+
+  const e = st.length ? st[Math.min(discardIdx, st.length - 1)] : null;
+  const key = e ? entryCardKey(e) : null;
+  const def = key ? KITTEN[key] : null;
+  const who = e ? S.players[entryCardPlayer(e)] : null;
+  const at  = (e && e.target !== null && e.target !== undefined) ? S.players[e.target] : null;
+  const live = !!(e && canNopeEntry(e));
+
+  let face = "";
+  if (e && def){
+    const img = cardArt({ key: key, flavor: (e.card && e.card.flavor) || null });
+    face = '<div class="discface">' +
+             (img ? '<img src="' + img + '" alt="">'
+                  : '<span class="kn">' + esc(def.name) + "</span>") +
+           "</div>";
+  } else {
+    face = '<div class="discempty">nothing played yet</div>';
+  }
+
+  let meta = "";
+  if (e && def){
+    meta = "<b>" + esc(def.name) + "</b>";
+    if (who) meta += "<br>" + esc(who.name) + (at ? " \u2192 " + esc(at.name) : "");
+    if (live) meta += '<br><span class="ans">can be answered</span>';
+  }
+
+  let nav = "";
+  if (st.length > 1){
+    nav = '<div class="discnav">' +
+            '<button onclick="scrollDiscard(1)"' + (discardIdx >= st.length - 1 ? " disabled" : "") +
+              ' title="Further down the pile">\u25b2</button>' +
+            "<span>" + (discardIdx + 1) + " / " + st.length + "</span>" +
+            '<button onclick="scrollDiscard(-1)"' + (discardIdx <= 0 ? " disabled" : "") +
+              ' title="Back towards the top">\u25bc</button>' +
+          "</div>";
+  }
+
+  const cls = "discpile" + (st.length ? "" : " empty") + (live ? " live" : "") +
+              (discardIdx > 0 ? " back" : "");
+  const html = '<div class="' + cls + '" data-jid="' + (e ? e.id : "") + '" title="' +
+                 (st.length ? "Scroll to look back through the pile" : "Cards played land here") +
+               '">' + face + "</div>" +
+               '<div class="discmeta">' + meta + "</div>" + nav;
+
+  // Compare before writing, like the log and the dice: this is redrawn on
+  // every repaint and rebuilding it would kill any drop highlight mid-drag.
+  if (el.dataset.sig === html) return;
+  el.dataset.sig = html;
+  el.innerHTML = html;
+}
+
+/* The wheel walks the pile. Bound once, on the window, and filtered by what
+   is under the pointer - the pile is redrawn constantly, so a listener on the
+   element itself would have to be rebound every time. */
+window.addEventListener("wheel", function(ev){
+  const el = ev.target && ev.target.closest && ev.target.closest("#discardWrap");
+  if (!el) return;
+  ev.preventDefault();
+  scrollDiscard(ev.deltaY > 0 ? 1 : -1);
+}, { passive: false });
 
 function drawDeck(){
   const el = document.getElementById("deckWrap");
@@ -3442,18 +3662,46 @@ function clearImplodeClock(){
   if (el) el.remove();
 }
 
+/* How long the Imploding Kitten's reveal owns the screen: its dwell, plus the
+   fade it goes out on. Read off the two constants that actually drive the
+   animation rather than typed again, so the freeze can never drift out of step
+   with the thing it is waiting for - and read at call time, because both of
+   them are declared further down this file than this line. */
+function implodeRevealMs(){ return IMPLODE_SHOW_MS + SHOWCASE_FADE; }
+
 function startImplodeClock(){
   // The Imploding Kitten replaces the ordinary turn timer completely.
   pauseTurnTimer("implode");
   clearImplodeClock();
-  S.implodeUntil = Date.now() + 20000;
+  /* The twenty seconds start when the card has finished landing, not when it
+     is drawn.
+
+     The reveal is the biggest thing this game ever puts on screen - the one
+     card nobody ever holds, spun up out of nothing over a full second and held
+     for four more - and the clock used to start underneath it. So the turn it
+     is supposedly granting began with five of its twenty seconds already spent
+     watching an animation, on a turn that cannot be Noped and ends the moment
+     the clock does. You were being charged for the cutscene.
+
+     The table is frozen for the same window, which is the other half of it:
+     the reveal is 60 deep with pointer-events off, so clicks went straight
+     through it to a board nobody could see. */
+  S.implodeFrom  = Date.now() + implodeRevealMs();
+  S.implodeUntil = S.implodeFrom + 20000;
   implodeClockTick();
+}
+
+/* The card is still landing: nobody may act, and the clock has not started. */
+function implodeRevealing(){
+  return !!(S && implodeActive() && S.implodeFrom && Date.now() < S.implodeFrom);
 }
 
 function implodeClockTick(){
   implodeTimer = null;
   if (!S || !implodeActive() || S.phase === "over"){ clearImplodeClock(); return; }
-  const left = Math.max(0, Math.ceil((S.implodeUntil - Date.now()) / 1000));
+  const waiting = implodeRevealing();
+  const left = waiting ? 20
+                       : Math.max(0, Math.ceil((S.implodeUntil - Date.now()) / 1000));
 
   let el = document.getElementById("implodeClock");
   if (!el){
@@ -3462,9 +3710,13 @@ function implodeClockTick(){
     const area = document.getElementById("boardArea");
     if (area) area.appendChild(el);
   }
-  el.className = left <= 5 ? "urgent" : "";
+  el.className = waiting ? "" : (left <= 5 ? "urgent" : "");
   el.innerHTML = "💥 <b>" + S.players[S.cur].name + "</b> imploded — un-Nopeable<br><span>" +
-                 left + "s left in this turn</span>";
+                 (waiting ? "20s begins when the card lands"
+                          : left + "s left in this turn") + "</span>";
+
+  // Still landing: hold here, and hold the whole table with it.
+  if (waiting){ implodeTimer = setTimeout(implodeClockTick, 120); return; }
 
   if (left <= 0){
     clearImplodeClock();
@@ -3489,7 +3741,7 @@ function implodeClockTick(){
    is both easier to understand and never makes anyone wait. */
 function mirrorClocks(){
   if (!S) return;
-  if (S.implodeUntil > Date.now() && S.implodeTurn === S.turnCounter){
+  if ((S.implodeUntil > Date.now() || implodeRevealing()) && S.implodeTurn === S.turnCounter){
     if (!implodeTimer) implodeClockTick();
   } else if (S.implodeTurn !== S.turnCounter){
     clearImplodeClock();
@@ -4308,11 +4560,36 @@ function owesSevenCut(pid){
 const SEVEN_WATCH_MS = 1500;
 let sevenWatchIdle = 0;
 
+/* A bot answering is not the same as nobody answering.
+
+   A bot pays the instant it is asked and then holds for AI_PACE - three whole
+   seconds by default - before the queue moves on, so that the table can SEE it
+   pay. For every one of those milliseconds there is no dialog open on any
+   screen, because a bot never opens one. That is precisely the state the
+   watchdog reads as "the prompt has gone missing".
+
+   And the two windows were the same length. Two quiet passes of 1500ms is
+   3000ms; AI_PACE is 3000ms. A dead heat, settled by whichever timer the
+   browser happened to fire first - and when the watchdog won it asked a bot
+   that had already paid to pay again, halving a hand twice. A big hand tipped
+   the coin: more cards to fly, more work in the repaint, and a deferred answer
+   that slips while a watchdog on a fixed interval does not.
+
+   So the watchdog now knows the difference. This is a deadline rather than a
+   flag on purpose: a flag can be left set by a path that never runs its
+   clean-up and would wedge the watchdog permanently, which is the exact class
+   of bug the watchdog exists to catch. A deadline expires on its own. */
+let botAnswerUntil = 0;
+function botAnswerHold(){ botAnswerUntil = Date.now() + AI_PACE + 1200; }
+function botAnswerDone(){ botAnswerUntil = 0; }
+function botAnswering(){ return Date.now() < botAnswerUntil; }
+
 function sevenWatchdog(){
   if (!S || !S.seven || !S.seven.queue.length){ sevenWatchIdle = 0; return; }
   // A terminal decides nothing, here as everywhere else.
   if (window.NET && NET.isGuest && NET.isGuest()) return;
   if (typeof humanPromptOpen === "function" && humanPromptOpen()){ sevenWatchIdle = 0; return; }
+  if (botAnswering()){ sevenWatchIdle = 0; return; }
   if (++sevenWatchIdle < 2) return;
   sevenWatchIdle = 0;
   stepSeven();
@@ -4365,7 +4642,11 @@ function chooseVictim(victims, sel){
   if (vag && vag.chooseVictim){
     const pickId = vag.chooseVictim(victims, sel).id;
     const gameAtCall = S;
-    setTimeout(function(){ if (S === gameAtCall) window.__pickVictim(pickId); }, AI_PACE);
+    botAnswerHold();
+    setTimeout(function(){
+      botAnswerDone();
+      if (S === gameAtCall) window.__pickVictim(pickId);
+    }, AI_PACE);
   } else {
     openModal("Choose a victim", html, []);
   }
@@ -4581,7 +4862,7 @@ function playCard(idx, ownerId){
   if (p.id !== S.cur) return;                  // board plays are on-turn only
 
   if (def.kind === "target"){
-    hint("Drag " + def.name + " onto the player you want to hit.");
+    hint("Drop " + def.name + " on the discard pile, or straight onto the player you want to hit.");
   } else if (def.kind === "board"){
     // The two tokens must be named before anyone can react — whether a player
     // may Defuse depends on which hexes are being swapped.
@@ -4591,6 +4872,102 @@ function playCard(idx, ownerId){
   } else {
     proposeAction({ type:"card", card:c, idx, actor:p.id, target:null, payload:{} });
   }
+}
+
+/* ══ PLAYING A CARD ONTO THE PILE ═════════════════════════════════════
+   Every kitten card can be played by dropping it on the discard pile, and for
+   the ones that need a victim the game then stops and asks who.
+
+   This is the way round it should always have been. Dragging a card onto
+   somebody's seat card means choosing the target BEFORE the card is played,
+   which is fine once you know the game and is invisible until then: nothing on
+   screen says an Attack is a thing you aim, so a new player picks it up, finds
+   nowhere obvious to put it, and drops it back. Playing to the pile is one
+   gesture that works for all eleven cards, and the question comes when it is
+   actually a question.
+
+   Aiming a card straight at a seat still works and is quicker. Nothing here
+   takes that away. */
+
+/* May this card be played to the pile at all, by this player, right now? */
+function canPlayToPile(key, me){
+  if (!S || S.phase === "over" || S.phase.startsWith("setup")) return false;
+  const def = KITTEN[key];
+  if (!def) return false;
+  if (def.kind === "vp") return false;             // a point, never a play
+  if (def.kind === "response") return false;       // answered above, not played
+  // Starting something new while you still owe somebody an answer is how the
+  // seven queue gets lost. Reactions are exempt and are handled before this.
+  if (S.pending || owesAnswer()) return false;
+  // Your own turn: anything. Somebody else's: only the two cards the rules
+  // already let you interrupt with.
+  if (me === S.cur) return true;
+  return OFF_TURN.has(key);
+}
+
+/* The player has let go of the card over the pile. */
+function playToPile(idx, ownerId){
+  const p = S.players[ownerId];
+  const c = p && p.cards[idx];
+  if (!c) return;
+  const def = KITTEN[c.key];
+  if (!def || !canPlayToPile(c.key, ownerId)) return;
+
+  if (def.kind === "target"){ targetPickDialog(c, idx, ownerId); return; }
+
+  // Everything else already knows what it is going to do. Alter the Future
+  // still asks for its two tokens on the board, exactly as it does when it is
+  // dropped there, because which hexes are being swapped decides who may
+  // answer it.
+  if (def.kind === "board"){
+    beginAlterPick(ownerId, (a, b) => {
+      playResolved({ type:"card", card:c, idx, actor:ownerId, target:null,
+                     payload:{ hexes:[a, b] } });
+    });
+    return;
+  }
+  playResolved({ type:"card", card:c, idx, actor:ownerId, target:null, payload:{} });
+  render();
+}
+
+/* Who is it for? Asked after the card is played, with the game held while the
+   question is on screen — the turn clock stops, so nobody is choosing a victim
+   against a countdown. */
+function targetPickDialog(c, idx, ownerId){
+  const def = KITTEN[c.key];
+  const asker = S.players[ownerId];
+  pauseTurnTimer("choice");
+  promptFor(ownerId);
+  const others = S.players.filter(q => q.id !== ownerId);
+  const face = cardArt({ key: c.key, flavor: c.flavor || null });
+  let h = '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px">';
+  if (face) h += '<img src="' + face + '" alt="" style="width:64px;border-radius:7px;' +
+                 'border:1px solid var(--line);flex:0 0 auto">';
+  h += '<p class="sub" style="margin:0"><b>' + esc(def.name) + "</b> \u2014 " +
+       esc(def.text) + "</p></div>";
+  h += '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Who is it for?</div>';
+  h += '<div class="pick">';
+  for (const q of others){
+    h += '<button onclick="window.__tp(' + q.id + ')">' +
+           '<span class="dot" style="background:' + q.color +
+           ';display:inline-block;vertical-align:-2px;margin-right:6px"></span>' +
+           esc(q.name) + "</button>";
+  }
+  h += "</div>";
+
+  window.__tp = function(tid){
+    closeModal();
+    const p = S.players[ownerId];
+    // The hand may have moved under the dialog - a Nope answered somewhere
+    // else, a rewind - so find the card again rather than trusting the index.
+    if (p.cards.indexOf(c) < 0) return;
+    if (c.key === "favor"){ favorGuessDialog(c, p.cards.indexOf(c), tid, ownerId); return; }
+    playResolved({ type:"card", card:c, actor:ownerId, target:tid, payload:{} });
+    render();
+  };
+  openModal("Play " + def.name, h,
+            [{ label:"Put it back", fn: () => { closeModal(); render(); } }],
+            { mini: true });
 }
 
 /* The confirmation prompts that used to stand between a click and a card
@@ -5213,17 +5590,22 @@ function nopeEntry(id, noperId){
     // available: there is no turn left to end, and ending the NEXT player's
     // would be punishing the wrong person.
   } else if (wasNoperTurn && !e.redo && !e.turnSafe){
-    // Being Noped costs you the rest of your turn, whatever you were doing.
-    //
-    // Not so for a Defuse (the `e.redo` case above, and `turnSafe` for the one
-    // spent on a seven). That is a defensive card played out of turn;
-    // cancelling it means the original attack lands after all, which is
-    // punishment enough. Ending the defender's turn on top of it was wrong —
-    // an Exploding Kitten thrown at them on their OWN turn, then Defused, then
-    // Noped, cost them the turn instead of the resources.
-    announce(pdot(victim) + " is Noped — their turn ends", "attack");
-    logMsg(`<b>${victim.name}</b>'s turn ends.`);
-    endTurnAfterNope();
+    /* The card is cancelled. The turn is not.
+
+       This used to end the victim's turn outright, which made a single Nope
+       the most punishing card in the game and made playing anything at all a
+       risk you thought twice about. Worse, it meant a Nope had to be aimed at
+       exactly the right log line — cancel the wrong entry and you took
+       somebody's whole turn by accident.
+
+       A Nope now does what it says: it cancels a card. The card is spent, the
+       thing it was going to do does not happen, and the player carries on with
+       whatever is left of their turn. Taking the whole turn is still on the
+       table — that is the card's OTHER use, aimed at the player rather than at
+       what they played, and chosen deliberately rather than as a side effect
+       of answering a card. */
+    announce(pdot(victim) + "'s card is cancelled — their turn continues", "defend");
+    logMsg(`<b>${victim.name}</b>'s card is cancelled; their turn continues.`);
   }
   // A Nope that ends a turn (or hands one back) belongs to the turn it
   // produced, not the one it interrupted. Without this the "current turn
@@ -5586,11 +5968,21 @@ function cancelTurn(actorId, wasWin){
    points that carried them over — hidden Feral Kittens first, then the knights
    propping up Largest Army — until they are actually short of the target. */
 function stripWinningPoints(p, wasWin){
-  // Only a cancelled WIN costs Feral Kittens. cancelTurn runs this on every
-  // Noped turn, win or not, so without this guard Noping somebody who was
-  // merely having a good turn burned their whole hand of hidden points — and
-  // said so in the log, announcing cards nobody had any business seeing.
-  if (!wasWin && totalVP(p) < S.winPoints) return;
+  /* Only a cancelled WIN costs Feral Kittens, and nothing ever costs knights.
+
+     cancelTurn runs this on every Noped turn, win or not. The guard used to
+     let it through whenever the player happened to be sitting on the target
+     score, which meant Noping the turn of somebody who had merely got there
+     quietly burned their whole hand of hidden points — and said so in the log,
+     announcing cards nobody had any business seeing. Cancelling a turn undoes
+     that turn; it is not licence to reach into a hand and destroy what was
+     bought three turns ago.
+
+     Knights are untouched either way. One played on the cancelled turn is
+     already undone by wipeNopedTurn along with everything else that turn did;
+     knights from earlier turns, and the Largest Army resting on them, were
+     never part of what is being cancelled. */
+  if (!wasWin) return;
 
   let ferals = 0;
   // A cancelled win costs EVERY Feral Kitten in the hand, not just enough of
@@ -5694,14 +6086,14 @@ function scheduleTurnTimer(){
 function turnTimerTick(){
   turnTimerHandle = null;
   if (window.NET && NET.isGuest && NET.isGuest()){
-    render();
+    paintTurnTimer();
     scheduleTurnTimer();
     return;
   }
   if (!timerEnabled() || S.phase === "over") return;
   if (S.seven || S.turnTimerPaused){ scheduleTurnTimer(); return; }
   if (S.turnTimerUntil > Date.now()){
-    render();
+    paintTurnTimer();
     scheduleTurnTimer();
     return;
   }
@@ -5717,13 +6109,59 @@ function turnTimerTick(){
     render();
   }
 }
+/* Asked in one place, so the drawing and the repainting below can never
+   disagree about whether there is a clock on screen. */
+function timerVisible(){
+  return !!(timerEnabled() && !implodeActive() &&
+            (S.turnTimerUntil || S.turnTimerPaused));
+}
+function turnTimerSecondsLeft(){
+  return S.turnTimerPaused ? S.turnTimerRemaining
+                           : Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
+}
 function turnTimerDisplay(){
-  if (!timerEnabled() || implodeActive() || (!S.turnTimerUntil && !S.turnTimerPaused)) return "";
-  const left = S.turnTimerPaused ? S.turnTimerRemaining
-                                 : Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
+  if (!timerVisible()) return "";
+  const left = turnTimerSecondsLeft();
   const pct = Math.min(100, Math.max(0, left / S.turnSeconds * 100));
   return `<span class="turntimer"><span class="timerfill" style="width:${pct}%"></span>` +
          `<span class="timertext">${Math.ceil(left)}s</span></span>`;
+}
+
+/* Repaint the clock, and NOTHING else.
+
+   The tick used to call render(), four times a second, for the whole game.
+   render() is not a touch-up: drawBoard replaces the board's markup wholesale
+   (`svg.innerHTML = h`), and drawPlayers and drawBottom do the same to the
+   seat cards and the bottom bar. Every clickable thing on screen was being
+   destroyed and rebuilt every 250ms.
+
+   A click only fires when the press and the release land on the same element.
+   So any click whose mousedown and mouseup straddled one of those rebuilds
+   produced no click event at all - the element it started on no longer
+   existed. A comfortable click takes 80-150ms and the rebuilds came every
+   250ms, which is exactly the bug as reported: clicks that sometimes just do
+   not register, for no reason you could pin down, all game long. (It was also
+   republishing the entire game state to Firebase at 4Hz, because render() ends
+   with NET.publishSoon.)
+
+   The clock is one span with a width and a number in it. Write those two
+   things. A full repaint is only owed when the clock APPEARS or DISAPPEARS,
+   because that changes the bar's layout - and that happens at turn
+   boundaries, not on every tick. */
+function paintTurnTimer(){
+  if (!S) return;
+  const el = document.querySelector(".turntimer");
+  const wanted = timerVisible();
+  if (!!el !== !!wanted){ render(); return; }
+  if (!el) return;
+  const left = turnTimerSecondsLeft();
+  const pct = Math.min(100, Math.max(0, left / S.turnSeconds * 100));
+  const fill = el.querySelector(".timerfill");
+  const text = el.querySelector(".timertext");
+  const w = pct + "%";
+  if (fill && fill.style.width !== w) fill.style.width = w;
+  const secs = Math.ceil(left) + "s";
+  if (text && text.textContent !== secs) text.textContent = secs;
 }
 
 /* Ending a turn no longer polls the table for Nopes. A Nope must be played
@@ -6195,7 +6633,9 @@ function discardDialog(p, n, done, opts){
     // has started by the time it fires, it belongs to a game that no longer
     // exists — S is a fresh object then, and continuing would reach into it.
     const gameAtCall = S;
+    botAnswerHold();
     setTimeout(function(){
+      botAnswerDone();
       if (S !== gameAtCall) return;
       if (timerPause) resumeTurnTimer();
       done();
@@ -7057,6 +7497,10 @@ function checkBoardChanges(){
    the board: only so many may wait, the oldest waiting one is dropped when
    that fills, and a card with something behind it holds for a shorter beat. */
 const SHOWCASE_FADE = 400;
+/* The Imploding Kitten is held far longer than any other card: it never
+   reaches a hand, so this is the only time anybody ever sees it. The turn it
+   grants is frozen for exactly this long - see startImplodeClock. */
+const IMPLODE_SHOW_MS = 4600;
 const SHOWCASE_GAP  = 140;        // a breath between one card and the next
 const SHOWCASE_RUSH = 1100;       // dwell while others are waiting their turn
 const SHOWCASE_WAIT = 2;          // how many may queue behind the one showing
@@ -7185,7 +7629,8 @@ function showEntry(e){
     showcase('<div class="showcard implode">' +
                (iface ? '<img src="' + iface + '" alt="">'
                       : '<span class="kn">Imploding Kitten</span>') +
-             "</div>", tintNames(String(e.plain).replace(/\s+/g, " ")), "implode", 4600, true);
+             "</div>", tintNames(String(e.plain).replace(/\s+/g, " ")),
+             "implode", IMPLODE_SHOW_MS, true);
     return;
   }
   const def = KITTEN[e.show];
@@ -7626,6 +8071,14 @@ function cancelCardDrag(){
 function dropTargetAt(x, y){
   const el = document.elementFromPoint(x, y);
   if (!el || !el.closest) return null;
+  // The discard pile, which answers whichever card it is currently showing.
+  // Ahead of the log, because the pile is the one that is always on screen.
+  const pileEl = el.closest("#discardWrap");
+  if (pileEl){
+    const shown = discardShown();
+    return { kind:"pile", jid: shown ? shown.id : null,
+             el: pileEl.querySelector(".discpile") || pileEl };
+  }
   const evEl = el.closest(".ev[data-jid]");
   if (evEl) return { kind:"entry", jid: +evEl.dataset.jid, el: evEl };
   const pc = el.closest(".pcard[data-pid]");
@@ -7672,6 +8125,23 @@ function dropAllowed(info, drop){
     if (key === "defuse") return canDefuseEntry(e, me);
     return false;
   }
+  /* The pile takes two quite different things.
+
+     A Nope or a Defuse dropped on it answers the card it is showing — which is
+     what makes the log optional, because the card you would have had to find a
+     line for is sitting there face up.
+
+     Anything else dropped on it is simply PLAYED. That is the other half of
+     it: you no longer have to know in advance who a card is aimed at and hit
+     their seat with it. Play it to the pile and the game stops and asks. */
+  if (drop.kind === "pile"){
+    if (key === "nope" || key === "defuse"){
+      const e = drop.jid === null ? null : S.journal.find(x => x.id === drop.jid);
+      if (!e) return false;
+      return key === "nope" ? canNopeFor(e, me) : canDefuseEntry(e, me);
+    }
+    return canPlayToPile(key, me);
+  }
   if (drop.kind === "player") return pcardAccepts(key, me, drop.pid);
   if (drop.kind === "board")
     return BOARD_PLAY.has(key) && me === S.cur && !S.pending && !owesAnswer();
@@ -7694,6 +8164,12 @@ function markDropTargets(){
   const me = dragCard.ownerId;
   const area = document.getElementById("boardArea");
   if (area && dropAllowed(dragCard, { kind:"board", el:area })) area.classList.add("droppable");
+  const pile = document.querySelector("#discardWrap .discpile");
+  if (pile){
+    const shown = discardShown();
+    if (dropAllowed(dragCard, { kind:"pile", jid: shown ? shown.id : null, el: pile }))
+      pile.classList.add("droppable");
+  }
   document.querySelectorAll(".pcard[data-pid]").forEach(el => {
     if (dropAllowed(dragCard, { kind:"player", pid:+el.dataset.pid, el })) el.classList.add("droppable");
   });
@@ -7726,10 +8202,18 @@ function performDrop(info, drop){
   const { idx, ownerId, key, card } = info;
   if (netSend("drop", [idx, drop.kind,
         drop.kind === "entry"  ? drop.jid :
+        drop.kind === "pile"   ? drop.jid :
         drop.kind === "player" ? drop.pid :
         drop.kind === "hand"   ? drop.overIdx : null])) return;
 
   if (drop.kind === "hand"){ reorderHand(ownerId, idx, drop.overIdx); return; }
+
+  if (drop.kind === "pile"){
+    if (key === "nope"){ nopeEntry(drop.jid, ownerId); return; }
+    if (key === "defuse"){ defuseEntry(drop.jid, ownerId); return; }
+    playToPile(idx, ownerId);
+    return;
+  }
 
   if (drop.kind === "entry"){
     if (key === "nope") nopeEntry(drop.jid, ownerId);
@@ -7923,13 +8407,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29a"></script>
+<script src="ai.js?v=2026-08-29c"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29a"></script>
-<script src="net.js?v=2026-08-29a"></script>
+<script src="firebase-config.js?v=2026-08-29c"></script>
+<script src="net.js?v=2026-08-29c"></script>
 </body>
 </html>

@@ -213,6 +213,10 @@ function serializeGame(){
     // The deadline travels as "milliseconds still to run", so nobody has to
     // trust anybody else's wall clock. Same for the gap between turns.
     implodeLeft: Math.max(0, (S.implodeUntil || 0) - Date.now()),
+    // The lead-in travels the same way, so a terminal freezes for the reveal
+    // exactly as long as the host does rather than starting its own clock the
+    // moment the state lands.
+    implodeLeadLeft: Math.max(0, (S.implodeFrom || 0) - Date.now()),
     handoverLeft: Math.max(0, (S.handoverUntil || 0) - Date.now()),
     handoverTurn: S.handoverTurn === undefined ? -1 : S.handoverTurn,
 
@@ -222,6 +226,11 @@ function serializeGame(){
       id: e.id, turn: e.turn, actor: e.actor, target: e.target, kind: e.kind,
       card: e.card ? { key: e.card.key, flavor: e.card.flavor || null } : null,
       payload: e.payload || null, nopeable: e.nopeable, noped: e.noped,
+      // What was spent ANSWERING this entry. A Nope and a Defuse are
+      // journalled as the answer rather than as a card play, so this is the
+      // only record that they were cards at all - and the discard pile has to
+      // show them like any other card somebody played.
+      spent: e.spent ? { pid: e.spent.pid, key: e.spent.key } : null,
       cardOwner: e.cardOwner, participants: e.participants || null,
       noDefuse: !!e.noDefuse,
       show: e.show || null, plain: e.plain, snap: 1,
@@ -335,6 +344,7 @@ function applyGame(b){
   S.discard = new Array(b.discardLen || 0).fill(null).map(() => ({ key:"hidden" }));
 
   S.implodeUntil = b.implodeLeft > 0 ? Date.now() + b.implodeLeft : 0;
+  S.implodeFrom  = b.implodeLeadLeft > 0 ? Date.now() + b.implodeLeadLeft : 0;
   S.handoverUntil = b.handoverLeft > 0 ? Date.now() + b.handoverLeft : 0;
   S.handoverTurn = (b.handoverTurn === undefined) ? -1 : b.handoverTurn;
   if (typeof scheduleTurnTimer === "function") scheduleTurnTimer();
@@ -472,6 +482,10 @@ function applyRemoteDrop(seat, idx, kind, id){
   const info = { idx: idx, ownerId: seat, key: card.key, card: card };
   let drop = null;
   if (kind === "entry")  drop = { kind:"entry",  jid: id };
+  // The pile carries the journal id of whatever card it was showing on the
+  // guest's screen, so the host answers the same card they were looking at
+  // rather than whatever happens to be on top by the time this lands.
+  if (kind === "pile")   drop = { kind:"pile",   jid: id };
   if (kind === "player") drop = { kind:"player", pid: id };
   if (kind === "board")  drop = { kind:"board" };
   if (kind === "hand")   drop = { kind:"hand", owner: seat, overIdx: id };
