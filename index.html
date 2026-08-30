@@ -9276,17 +9276,7 @@ function showRules(){
   }
   h += `</ul>
     <h4>Playing a card</h4>
-    <p>Every kitten card is played by <b>dragging it</b> out of your hand and dropping it where it
-    should go. Nothing is played by clicking, so a card can never go off twice by accident, and
-    nobody watching learns anything from you picking one up.</p>
-    <ul>
-      <li><b>Onto another player</b> — Skip, Attack, Exploding Kitten and Favor.</li>
-      <li><b>Onto the board</b> — Knight, Alter the Future and Reverse.</li>
-      <li><b>Onto a line in the game log</b> — Nope and Defuse, to answer that exact action.</li>
-      <li><b>Anywhere in your own hand</b> — to move the card about. The order is yours to keep.</li>
-    </ul>
-    <p>Hover a card to blow it up and read it. Dropping it somewhere it cannot go simply puts it
-    back, and Escape drops it mid-drag.</p>
+    <p>Every kitten card is played by <b>dragging it</b> out of your hand and dropping it to the discard pile.</p>
 
     <h4>Nope &amp; Defuse</h4>
     <p>Both are reactions, played out of turn, and the card is always expended.
@@ -9300,33 +9290,10 @@ function showRules(){
     once a turn is over, everything in it is settled. Lines you are holding the card to answer
     wear a small badge of that card; only you can see it, so a badge never gives away what is in
     your hand. Bots take three seconds between moves, so there is always time.</p>
-    <p>Answering a line also erases everything that came after it, which is why the reach is short
-    rather than the whole turn.</p>
-    <p><b>Being Noped ends your turn.</b> Whatever you were Noped for — a roll, a build, a card —
-    the rest of that turn goes with it. A counter-Nope hands that turn straight back: the
-    interrupted player picks up exactly where they were standing.</p>
-    <p>Noping a <b>Defuse</b> is the exception: it costs nobody their turn. The "no you" is simply
-    cancelled and the original card lands where it was first aimed.</p>
-    <p>When a card forces a window open on you — the discard from an Attack, the handover from a
-    Favor — <b>Defuse</b> and <b>Nope</b> sit in that window next to the usual buttons, so you can
-    answer before you pay rather than afterwards. They only appear when you are actually holding
-    the card, so an empty hand looks exactly like a hand that is holding back.</p>
-    <p><b>Nope</b> has exactly two uses:</p>
-    <ul>
-      <li><b>Cancel an attack aimed at you.</b> Drop it on that line in the log. The attack and the
-      Nope are both spent, and the attacker's turn is over.</li>
-      <li><b>Cancel a player's whole turn.</b> Drop it on the player themselves.
-      Everything they gained that turn is
-      <b>destroyed, not returned</b>: kitten cards drawn are removed from the game rather than
-      shuffled back, buildings put up that turn come down, resources collected that turn go back to
-      the bank — and resources they already spent are <i>still</i> not refunded. If a Feral Kitten or
-      a knight took them to 10 points that turn, it is gone from play, and a Longest Road earned that
-      turn goes down with the roads.</li>
-    </ul>
     <p><b>Defuse</b> answers an attack aimed at you by turning it around. Alter the Future and
     Favor hand you the card's power rather than simply reflecting it — you name the two tokens,
     or your own three resources.</p>
-    <p><b>Forced Nope.</b> The moment someone reaches the configured target, the next player in turn order who
+    <p><b>Forced Nope.</b> The moment someone wins, the next player in turn order who
     holds a Nope <i>must</i> spend it — no choice. Otherwise everyone would sit on their Nopes
     waiting for somebody else to spend theirs first.</p>
     <p>The <b>Imploding Kitten</b> is immune to all of it. It cannot be Noped or Defused.</p>
