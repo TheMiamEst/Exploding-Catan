@@ -403,6 +403,51 @@ question. Favor chains straight on into naming its three resources.
 Aiming a card at a seat still works and is quicker. Nothing here takes that
 away.
 
+### Whose turn it is, on their face
+
+A ring turns around the portrait of whoever is playing, in their own colour.
+It is the same signal every piece of software on earth uses to mean *this is
+the one that is working*, it needs no key and no reading, and it is the second
+thing (after the discard pile) that the game log used to be the only source of.
+
+It survives a repaint, which is the whole trick. A CSS animation starts from
+nothing the moment its element is created, so a ring inside markup that gets
+replaced would snap back to twelve o'clock every time anything on the table
+changed. `resumeSeatAnimations` sets a **negative `animation-delay`** after each
+write, starting it part-way through instead — the same trick the emote bubbles
+already used. The ring loops forever and so has no start of its own to measure
+from; the clock modulo the period is as good an anchor as exists.
+
+The emote bubbles had that delay written *into* their markup, which was fine on
+its own and became a problem the moment the seat strip started comparing itself
+before writing: how far a bubble has got changes every repaint, so the strip
+would have looked different every time and rebuilt constantly. What travels in
+the markup now is when the bubble **started**, which does not change.
+
+### Nothing on the table reloads while you are looking at it
+
+The seat strip and the bottom bar are compared before they are written, like
+the log, the chat, the side panels and the dice already were.
+
+The bottom bar is the one that mattered. **Your hand lives there**, and it was
+being rebuilt from scratch on every repaint — which dropped whatever card you
+were hovering, restarted the lift on the one you were about to play, and made
+the art blink as the `<img>` elements were replaced. You could watch your own
+hand reload every time anything happened anywhere on the table. Same story on
+the seat strip: four portraits re-fetched for a repaint caused by somebody
+else's road.
+
+The turn clock is the one thing in the bar that changes on its own, and a
+ticking second is not a reason to throw a hand away. So `turnTimerShell` writes
+the clock's **shape** with nothing in it, the comparison never sees it change,
+and `paintTurnTimer` writes the width and the number straight into it
+afterwards — the same in-place update that stopped the clock eating clicks.
+
+`renderIdle` blanks both elements directly rather than going through their draw
+functions, so it clears their stored signatures too. Otherwise the first
+repaint of the next game would be compared against markup that is no longer on
+screen.
+
 ### The turn clock, and why it was eating clicks
 
 The clock in the bottom bar repaints itself and nothing else. That sounds like

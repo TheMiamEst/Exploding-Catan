@@ -108,6 +108,22 @@
     border:2px solid var(--pc, var(--line)); background:#0b0d10;
     box-shadow:0 2px 8px #0008;
   }
+  /* Whose turn it is, said on the portrait rather than in the log.
+
+     A ring turning around somebody's face is the one signal on this screen
+     that needs no key and no reading: it is the same thing every piece of
+     software on earth uses to mean "this is the one that is working". In their
+     own colour, so it agrees with the bar down their seat card and their
+     pieces on the board. */
+  .turnspin{
+    position:absolute; inset:-6px; border-radius:50%; pointer-events:none;
+    border:3px solid transparent;
+    border-top-color:var(--pc, var(--accent));
+    border-right-color:var(--pc, var(--accent));
+    filter:drop-shadow(0 0 4px var(--pcEdge, #0000));
+    animation:turnspin 1.1s linear infinite;
+  }
+  @keyframes turnspin{ to{ transform:rotate(360deg) } }
   .avwrap .avin{
     position:absolute; inset:0; border-radius:50%; overflow:hidden;
     display:flex; align-items:center; justify-content:center;
@@ -1341,7 +1357,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29c";
+const GAME_VERSION = "2026-08-29d";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2341,15 +2357,23 @@ function tradeRate(p, r){
    Online button — and that local game, bots and all, then went on running
    underneath the online session. */
 function renderIdle(){
-  const strip = document.getElementById("players"); if (strip) strip.innerHTML = "";
+  // Blanked directly rather than through drawPlayers/drawBottom, so the
+  // compare-before-write signatures those two keep have to be cleared with
+  // them - otherwise the first repaint of the next game is compared against
+  // markup that is no longer on screen.
+  const strip = document.getElementById("players");
+  if (strip){ strip.innerHTML = ""; strip.dataset.h = ""; }
   const svg = document.getElementById("board");     if (svg) svg.innerHTML = "";
   const dk  = document.getElementById("deckWrap");  if (dk) dk.innerHTML = "";
   const dsc = document.getElementById("discardWrap"); if (dsc) dsc.innerHTML = "";
   discardIdx = 0;
   const dc  = document.getElementById("diceWrap");  if (dc) dc.innerHTML = "";
   const bot = document.getElementById("bottom");
-  if (bot) bot.innerHTML = '<div class="bside"></div><div class="bcentre">' +
-    '<span class="emptyhand">No game running.</span></div><div class="bside right"></div>';
+  if (bot){
+    bot.innerHTML = '<div class="bside"></div><div class="bcentre">' +
+      '<span class="emptyhand">No game running.</span></div><div class="bside right"></div>';
+    bot.dataset.h = "";
+  }
   hint(null);
   drawModeTag();
   drawTurnOrder();
@@ -2978,9 +3002,11 @@ function avatarHTML(p){
   const face = src
     ? `<img src="${src}" alt="" draggable="false">`
     : `<span class="avinit">${esc(initialOf(p.name))}</span>`;
+  const theirTurn = p.id === S.cur && S.phase !== "over" && !S.phase.startsWith("setup");
   return `<div class="avwrap ${mine ? "mine" : ""}"
                ${mine ? 'onclick="avatarDialog()" title="Your picture — click to change it"' : ""}>
             <span class="avin">${face}</span>
+            ${theirTurn ? '<span class="turnspin"></span>' : ""}
             ${vpStat(p)}
             ${emoteHTML(p.id)}
           </div>`;
@@ -3014,7 +3040,15 @@ function drawPlayers(){
             </div>`;
     h += `</div>`;
   }
-  document.getElementById("players").innerHTML = h;
+  /* Compare before writing, like the log, the chat, the side panels and the
+     dice. Replacing this markup throws away every animation running inside it
+     and restarts the portraits' images, and it was being replaced on every
+     repaint whether or not a single number had moved. */
+  const strip = document.getElementById("players");
+  if (strip.dataset.h === h) return;
+  strip.dataset.h = h;
+  strip.innerHTML = h;
+  resumeSeatAnimations();
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -3284,7 +3318,7 @@ function drawBottom(){
   const netOn = !!(window.NET && NET.isOnline && NET.isOnline());
   const myTurn = netOn ? S.cur === p.id
                        : (!anyBots() || (S.cur === p.id && !uiBlocked()));
-  let h = `<div class="bside"><div class="actions-bar">${turnTimerDisplay()}</div></div><div class="bcentre"><div class="group">`;
+  let h = `<div class="bside"><div class="actions-bar">${turnTimerShell()}</div></div><div class="bcentre"><div class="group">`;
   for (const r of RES){
     const face = art("res", r);
     h += `<div class="slot ${p.res[r] ? "" : "zero"}" title="${RES_NAME[r]}">
@@ -3383,7 +3417,22 @@ function drawBottom(){
   }
   h += `</div></div>`;
 
-  document.getElementById("bottom").innerHTML = h;
+  /* The reason this guard matters more than the others: your hand lives here.
+     Rebuilding the bar re-creates every card in it, which drops whatever you
+     were hovering, restarts the lift on the card you were about to play, and
+     makes the art blink as the <img> elements are replaced. You could watch
+     your own hand reload every time anything happened anywhere on the table.
+
+     The clock is the one thing in here that changes on its own, and it is
+     deliberately empty in this markup — paintTurnTimer writes the numbers
+     straight into it below, so a ticking second is not a reason to throw the
+     hand away. */
+  const bar = document.getElementById("bottom");
+  if (bar.dataset.h !== h){
+    bar.dataset.h = h;
+    bar.innerHTML = h;
+  }
+  paintTurnTimer();
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -4054,14 +4103,41 @@ function scheduleEmoteSweep(){
 }
 
 /* A repaint in the middle of a bubble's life must not restart the pop, so the
-   animation is resumed with a negative delay rather than begun again. */
+   animation is resumed with a negative delay rather than begun again.
+
+   That delay is deliberately NOT written into the markup. How far a bubble has
+   got changes every single repaint, so putting it here would make this seat
+   card different every time it was drawn — which would defeat the
+   compare-before-write guard in drawPlayers and rebuild the whole strip
+   constantly, the exact thing the guard is there to stop. What travels instead
+   is when the bubble STARTED, which does not change, and resumeSeatAnimations
+   turns that into a delay after the write. */
 function emoteHTML(pid){
   const e = liveEmotes[pid];
   if (!e) return "";
-  const left = e.until - Date.now();
-  if (left <= 0) return "";
-  const elapsed = Math.max(0, EMOTE_MS - left);
-  return `<span class="emote" style="animation-delay:-${elapsed}ms">${e.key}</span>`;
+  if (e.until - Date.now() <= 0) return "";
+  return `<span class="emote" data-start="${e.until - EMOTE_MS}">${e.key}</span>`;
+}
+
+/* Pick both of the strip's animations up mid-stride.
+
+   Only ever called just after the seat cards have actually been rewritten. A
+   CSS animation starts from nothing the moment its element is created, so
+   without this an emote would pop again and the turn ring would jump back to
+   twelve o'clock every time anything on the strip changed. Setting
+   animation-delay negative starts them part-way through instead.
+
+   The ring loops forever, so it has no start of its own to measure from — any
+   whole number of turns back is the same picture, and the clock modulo the
+   period is as good an anchor as exists. */
+const TURNSPIN_MS = 1100;
+function resumeSeatAnimations(){
+  const now = Date.now();
+  document.querySelectorAll("#players .emote[data-start]").forEach(el => {
+    el.style.animationDelay = "-" + Math.max(0, now - (+el.dataset.start || now)) + "ms";
+  });
+  const ring = document.querySelector("#players .turnspin");
+  if (ring) ring.style.animationDelay = "-" + (now % TURNSPIN_MS) + "ms";
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -6119,12 +6195,18 @@ function turnTimerSecondsLeft(){
   return S.turnTimerPaused ? S.turnTimerRemaining
                            : Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
 }
-function turnTimerDisplay(){
+/* An EMPTY clock: the element, with nothing in it that changes.
+
+   The bottom bar is compared before it is written (see drawBottom), and the
+   seconds ticking down inside the clock would have made that comparison fail
+   about once a second forever — rebuilding the bar, and with it every kitten
+   card in your hand, while you were in the middle of looking at one. So the
+   markup carries the shape and paintTurnTimer fills in the numbers afterwards,
+   in place, touching nothing else. */
+function turnTimerShell(){
   if (!timerVisible()) return "";
-  const left = turnTimerSecondsLeft();
-  const pct = Math.min(100, Math.max(0, left / S.turnSeconds * 100));
-  return `<span class="turntimer"><span class="timerfill" style="width:${pct}%"></span>` +
-         `<span class="timertext">${Math.ceil(left)}s</span></span>`;
+  return '<span class="turntimer"><span class="timerfill"></span>' +
+         '<span class="timertext"></span></span>';
 }
 
 /* Repaint the clock, and NOTHING else.
@@ -8407,13 +8489,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29c"></script>
+<script src="ai.js?v=2026-08-29d"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29c"></script>
-<script src="net.js?v=2026-08-29c"></script>
+<script src="firebase-config.js?v=2026-08-29d"></script>
+<script src="net.js?v=2026-08-29d"></script>
 </body>
 </html>
