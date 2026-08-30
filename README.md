@@ -499,7 +499,17 @@ board, while the actual card appeared somewhere else entirely, never said
 
 A kitten card you drew turns face up on the way into your hand. Nobody else
 sees which one it was; the identity rides in a `privateCard` field that net.js
-strips for every other seat, the same way a robbery's does.
+strips for every other seat, the same way a robbery's does — and the drawing
+code reads `privateCard` as well as the projected field, because a game played
+on one screen never goes through that projection and so had nothing to read.
+The card came face down to the one person entitled to see it.
+
+**Cards you lose leave from where you keep them.** A discard drops out of the
+bottom bar, away from your hand; everybody else's drops out from under their
+seat card as it always did. Your resources live in the bottom bar now, so a
+discard of yours falling away beneath your portrait was leaving from a place it
+had never been — and moving in the same direction as everything you gain, which
+made losing cards look like a payout.
 
 **A robbery is now face up at both ends of it.** It travels face down so the
 table cannot read what was taken — but the person it was taken *from* is not
@@ -592,7 +602,15 @@ action that still read as though it stood — the robber had gone back and the
 card had gone back, and the log said it happened. Struck through now, like the
 rest.
 
-The clock stops for it, too. `finishRobber` has always resumed the clock and
+A clock that is not running cannot be paused, either. The turn clock does not
+start until the dice are thrown, so anything pausing it before the roll — a
+Knight played first, which is an ordinary opening — was pausing nothing, and
+writing `turnTimerRemaining = max(0, 0 - now) = 0` while it did. The next
+resume then started a clock that had already expired, and the player was told
+their turn had run out of time before it had begun. Both ends are guarded now:
+nothing pauses a stopped clock, and nothing resumes one with nought left.
+
+The clock stops for a Defused robbery, too. `finishRobber` has always resumed the clock and
 nothing ever stopped it — an asymmetry that stayed hidden while the only robber
 moves came from a seven, which pauses for its own reasons. A robbery Defused on
 somebody else's turn handed the defuser a board decision with the current

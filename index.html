@@ -1431,7 +1431,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29j";
+const GAME_VERSION = "2026-08-29k";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -6443,6 +6443,15 @@ function startTurnTimer(){
 }
 function pauseTurnTimer(reason){
   if (!timerEnabled() || S.turnTimerPaused) return;
+  /* There is no clock to pause yet.
+
+     The turn clock does not start until the dice are thrown, so anything that
+     pauses it before the roll — a Knight played first, which is a perfectly
+     ordinary opening — was pausing nothing. And "pausing nothing" wrote
+     turnTimerRemaining = max(0, 0 - now) = 0: a clock with nought left on it.
+     The next resume then started a clock that had already expired, and the
+     player was told their turn had run out of time before it had begun. */
+  if (!S.turnTimerUntil) return;
   if (turnTimerHandle){ clearTimeout(turnTimerHandle); turnTimerHandle = null; }
   S.turnTimerRemaining = Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
   S.turnTimerPaused = true;
@@ -6454,6 +6463,10 @@ function resumeTurnTimer(){
   if (!timerEnabled() || !S.turnTimerPaused) return;
   S.turnTimerPaused = false;
   S.turnTimerPauseReason = null;
+  // Belt and braces on the same thing: never start a clock that is already
+  // out. If there is genuinely nothing left, leave it stopped and let the
+  // roll start a fresh one, rather than expiring on the next tick.
+  if (S.turnTimerRemaining <= 0){ S.turnTimerUntil = 0; return; }
   S.turnTimerUntil = Date.now() + S.turnTimerRemaining * 1000;
   scheduleTurnTimer();
 }
@@ -7883,7 +7896,13 @@ function playProduction(src){
 function playKitten(f){
   // Older records were just the seat id.
   const pid = (f && typeof f === "object") ? f.p : f;
-  const key = (f && typeof f === "object") ? f.c : null;
+  /* `c` is what net.js hands the buyer and strips from everybody else. In a
+     game with no network there is no such projection and nothing to strip, so
+     the record still carries its own privateCard — which is why the card came
+     face down to the one person entitled to see it whenever the game was being
+     played on one screen. The `pid === viewSeat()` test below is what keeps it
+     private either way. */
+  const key = (f && typeof f === "object") ? (f.c || f.privateCard || null) : null;
   fxSoon(function(){
     const to = kitLandPoint(pid);
     if (!to) return;
@@ -7910,6 +7929,24 @@ function playKitten(f){
    somebody — and there is nobody on the other side of it. It is their own
    transaction and it belongs at their elbow. */
 function benchPoint(pid){
+  /* Cards going to the bank drop just under the seat card they came off —
+     everybody's but your own.
+
+     Your resources live in the bottom bar now, not on your seat card, so a
+     discard of yours that fell away beneath your portrait was leaving from a
+     place it had not been and moving in the same direction as everything you
+     GAIN. It read as a payout. Yours drop out of the bottom bar instead, away
+     from your hand, which is the direction losing something should go. */
+  if (S && pid === viewSeat()){
+    const bar = document.getElementById("bottom");
+    const row = document.querySelector("#bottom .bcentre .group:not(.hand)");
+    if (bar){
+      const br = bar.getBoundingClientRect();
+      const rr = row && row.getBoundingClientRect();
+      return { x: rr && rr.width ? rr.left + rr.width / 2 : br.left + br.width / 2,
+               y: br.top - 52 };
+    }
+  }
   const card = document.querySelector('.pcard[data-pid="' + pid + '"]');
   const seat = seatResPoint(pid);
   if (!card || !seat) return null;
@@ -9068,13 +9105,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29j"></script>
+<script src="ai.js?v=2026-08-29k"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29j"></script>
-<script src="net.js?v=2026-08-29j"></script>
+<script src="firebase-config.js?v=2026-08-29k"></script>
+<script src="net.js?v=2026-08-29k"></script>
 </body>
 </html>
