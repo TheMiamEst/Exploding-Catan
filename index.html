@@ -267,7 +267,15 @@
     display:flex; flex-direction:column; gap:4px;
   }
   #zoomWrap button{width:30px; text-align:center; padding:3px 0; font-size:14px; line-height:1}
-  #deckWrap{position:absolute; right:12px; top:12px; z-index:3; transition:left .12s, top .12s}
+  /* The draw pile and the discard pile stand one above the other down the
+     right-hand side, clear of the dice. Discard on top, because that is the
+     one you look at and the one you play onto; the deck you only ever click. */
+  #piles{
+    position:absolute; right:12px; bottom:12px; z-index:3;
+    transition:left .12s, top .12s;
+    display:flex; flex-direction:column; align-items:center; gap:9px;
+  }
+  #deckWrap, #discardWrap{position:relative}
 
   /* ── The discard pile ────────────────────────────────────────────
      Every kitten card ever played, face up, newest on top, in the corner the
@@ -275,10 +283,8 @@
      who is not reading the log - which is the point of it: the log is a
      transcript, and a transcript is a thing you have to have been keeping up
      with. The pile is a place you can look. */
-  #discardWrap{position:absolute; right:12px; bottom:12px; z-index:3;
-               transition:left .12s, top .12s; width:86px}
   .discpile{
-    width:74px; height:104px; border-radius:9px; position:relative;
+    width:96px; height:134px; border-radius:9px; position:relative;
     border:2px solid var(--line); background:linear-gradient(150deg,#242a36,#171b23);
     box-shadow:0 5px 16px #0007; overflow:visible; cursor:default;
   }
@@ -304,31 +310,24 @@
     font-size:9.5px; letter-spacing:.5px; text-transform:uppercase; color:var(--dim);
     text-align:center; padding:0 6px; z-index:1;
   }
-  /* A ring when the card on top is still open to an answer, because that is
-     the whole reason to be looking at it. */
-  .discpile.live{border-color:#4bb1d9; box-shadow:0 5px 16px #0007, 0 0 0 3px #4bb1d933}
   .discpile.droppable{border-color:#7fc48f; box-shadow:0 0 0 3px #7fc48f44}
   .discpile.dropping{border-color:#a6e6b4; box-shadow:0 0 0 4px #7fc48f77}
-  /* Who played it, and at whom. Sits under the pile like the deck's cost line. */
-  .discmeta{
-    font-size:9.5px; line-height:1.3; color:var(--dim); text-align:center;
-    margin-top:5px; max-width:86px; word-break:break-word;
-  }
-  .discmeta b{color:var(--ink); font-weight:700}
-  .discmeta .ans{color:#8ad8f5; font-weight:700}
-  /* Where you are in the pile. Only drawn once there is more than one card,
-     because "1 of 1" is noise. */
-  .discnav{
-    display:flex; align-items:center; justify-content:center; gap:4px;
-    margin-top:3px; font-size:9px; color:var(--dim); font-variant-numeric:tabular-nums;
-  }
-  .discnav button{
-    padding:0 4px; font-size:10px; line-height:14px; min-width:15px;
-    background:var(--panel2); border:1px solid var(--line); color:var(--ink);
-    border-radius:4px; cursor:pointer;
-  }
-  .discnav button:disabled{opacity:.3; cursor:default}
+  /* Looked back through rather than sitting on top. */
   .discpile.back{border-style:dashed; opacity:.9}
+
+  /* Answerable, marked exactly the way the log marks it: the card that would
+     answer it, pinned to the corner, and the word for what to do. Personal to
+     whoever is sitting here — it appears only when THIS player is holding the
+     card, so it gives the rest of the table nothing. */
+  .discpile.answerable{border-color:#4bb1d9; box-shadow:0 5px 16px #0007, 0 0 0 3px #4bb1d933}
+  .discpile .evmarks{top:-10px; right:-6px}
+  .disctag{
+    position:absolute; left:50%; bottom:-9px; transform:translateX(-50%);
+    background:#0d1014; border:1px solid #4bb1d9; color:#8ad8f5;
+    font-size:9px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase;
+    padding:2px 8px; border-radius:9px; z-index:3; pointer-events:none;
+    box-shadow:0 2px 8px #000a; animation:markpop .9s ease-out infinite alternate;
+  }
   .rank{width:100%; border-collapse:collapse; font-size:13px; margin-top:4px}
   .rank th{text-align:left; font-size:10px; letter-spacing:.5px; text-transform:uppercase;
            color:var(--dim); font-weight:600; padding:4px 6px; border-bottom:1px solid var(--line)}
@@ -606,19 +605,19 @@
 
   /* Kitten deck */
   .deck{
-    width:74px; height:104px; border-radius:9px; border:2px solid var(--line);
+    width:96px; height:134px; border-radius:9px; border:2px solid var(--line);
     background:linear-gradient(150deg,#2a3242,#1a1f29); cursor:pointer;
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
     box-shadow:0 5px 16px #0007; position:relative; overflow:hidden;
   }
   .deck img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
-  .deck .cnt{position:relative; font-size:21px; font-weight:700; z-index:1; text-shadow:0 1px 4px #000}
+  .deck .cnt{position:relative; font-size:26px; font-weight:700; z-index:1; text-shadow:0 1px 4px #000}
   .deck .lbl{position:relative; font-size:9px; letter-spacing:.5px; color:var(--dim); z-index:1;
              text-transform:uppercase; text-shadow:0 1px 4px #000}
   .deck.buyable{border-color:#5a8f68}
   .deck.buyable:hover{transform:translateY(-2px); border-color:#7fc48f}
   .deck.dim{opacity:.45; cursor:not-allowed}
-  .deckcost{font-size:10px; color:var(--dim); text-align:center; margin-top:4px; max-width:84px}
+  .deckcost{font-size:10px; color:var(--dim); text-align:center; margin-top:4px; max-width:100px}
 
   /* ── Bottom bar ──────────────────────────────────────────────────── */
   #bottom{
@@ -926,6 +925,19 @@
   /* The Imploding Kitten is not so much drawn as arrived at. It spins up out
      of nothing, half again the size of any other card, and stops dead at full
      size — the one card the whole table has to look at. */
+  /* The answer prompt: the card you hold, with the word on it. Blue like every
+     other "you may respond to this" thing on the screen. */
+  .showcard.answer{
+    border-color:#4bb1d9;
+    box-shadow:0 26px 64px #000d, 0 0 0 5px #4bb1d92e, 0 0 34px #4bb1d944;
+  }
+  .answerflag{
+    position:absolute; left:50%; bottom:6px; transform:translateX(-50%); z-index:2;
+    background:#0d1014e6; border:1px solid #4bb1d9; color:#8ad8f5;
+    font-size:10px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase;
+    padding:2px 10px; border-radius:9px; white-space:nowrap;
+  }
+  .answerline{color:#8ad8f5; font-weight:800}
   .showcard.implode{
     width:clamp(178px, 27vh, 250px);
     border-color:var(--danger);
@@ -1224,10 +1236,10 @@
     .slot .n{font-size:12px}
     .slot .rn{display:none}          /* unreadable at this size, and the art says it */
     .kcard .pip{font-size:7px; padding:0 2px}
-    .deck{width:52px; height:72px}
-    #discardWrap{width:64px}
-    .discpile{width:52px; height:72px}
-    .discmeta{max-width:64px; font-size:9px}
+    .deck{width:68px; height:94px}
+    .deck .cnt{font-size:20px}
+    .discpile{width:68px; height:94px}
+    #piles{gap:7px}
     .deckcost{display:none}
     .die{width:40px; height:40px; border-radius:8px; padding:5px}
     .die i{width:7px; height:7px}
@@ -1312,8 +1324,10 @@
       <button class="sm" onclick="zoomBoard(-0.12)" title="Zoom out">−</button>
       <button class="sm" onclick="resetZoom()" title="Reset view">⌂</button>
     </div>
-    <div id="deckWrap"></div>
-    <div id="discardWrap"></div>
+    <div id="piles">
+      <div id="discardWrap"></div>
+      <div id="deckWrap"></div>
+    </div>
     <div id="panels"></div>
     <div id="showcase" hidden></div>
   </div>
@@ -1357,7 +1371,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29d";
+const GAME_VERSION = "2026-08-29e";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3147,19 +3161,18 @@ function placeCorner(wrapId, cardSel, atTop){
   if (!corner){ el.style.left = ""; el.style.top = ""; return; }
 
   const ar = area.getBoundingClientRect();
-  const cardH = card.offsetHeight || 104;
-  const wrapW = el.offsetWidth  || 86;
-  const wrapH = el.offsetHeight || 122;
+  const wrapW = el.offsetWidth  || 100;
+  const wrapH = el.offsetHeight || 250;
 
   let left = corner.x + DECK_GAP;
   let top;
   if (atTop){
-    // Top edge of the card level with the board's highest point at least.
     top = Math.max(corner.y - DECK_GAP, content.top);
   } else {
-    // Bottom edge of the card sits level with the board's lowest point at most.
+    // The stack hangs UP from the board's lowest point, so it grows away from
+    // the bottom bar rather than into it.
     const bottom = Math.min(corner.y + DECK_GAP, content.top + content.height);
-    top = bottom - cardH;
+    top = bottom - wrapH;
   }
 
   left = Math.max(6, Math.min(left, ar.width  - wrapW - 6));
@@ -3171,8 +3184,7 @@ function placeCorner(wrapId, cardSel, atTop){
   el.style.bottom = "auto";
 }
 function placeDeck(){
-  placeCorner("deckWrap", ".deck", true);
-  placeCorner("discardWrap", ".discpile", false);
+  placeCorner("piles", ".discpile", false);
 }
 
 /* ══ THE DISCARD PILE ═════════════════════════════════════════════════
@@ -3213,12 +3225,40 @@ function discardShown(){
   const i = Math.max(0, Math.min(discardIdx, st.length - 1));
   return st[i];
 }
+/* Positive walks DOWN into the pile, towards older cards. The wheel maps to it
+   the way a stack of paper does: push forwards and you are lifting the top
+   card off to see the one under it. It was the other way round, which made
+   scrolling forward climb back towards the card you were already looking at. */
 function scrollDiscard(delta){
   const st = discardStack();
   if (!st.length) return;
   const was = discardIdx;
   discardIdx = Math.max(0, Math.min(discardIdx + delta, st.length - 1));
   if (discardIdx !== was) drawDiscard();
+}
+
+/* "You can answer this", drawn for the seat at this keyboard and nobody else.
+
+   Exactly the badges the log pins to an answerable line — the same markFace,
+   the same colours, the same pulse — plus the word for what to do with them,
+   because on the pile there is no line of text alongside to make it obvious.
+   It appears only while THIS player is holding the card that would answer,
+   so it still tells the rest of the table nothing. */
+function answerMarks(e){
+  if (!e || !S) return "";
+  const me = viewSeat();
+  const p = S.players[me];
+  if (!p) return "";
+  const fresh = c => c.boughtTurn !== S.turnCounter || playableWhenDrawn(c);
+  const canD = p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, me);
+  const canN = p.cards.some(c => c.key === "nope"   && fresh(c)) && canNopeFor(e, me);
+  if (!canD && !canN) return "";
+  let marks = "";
+  if (canD) marks += markFace("defuse", "defuse", "Drop your Defuse here to answer this");
+  if (canN) marks += markFace("nope", "nope",
+    e.kind === "roll" ? "Drop your Nope here to throw again"
+                      : "Drop your Nope here to cancel this card");
+  return '<div class="evmarks">' + marks + '</div><span class="disctag">answer</span>';
 }
 
 function drawDiscard(){
@@ -3237,9 +3277,6 @@ function drawDiscard(){
   const e = st.length ? st[Math.min(discardIdx, st.length - 1)] : null;
   const key = e ? entryCardKey(e) : null;
   const def = key ? KITTEN[key] : null;
-  const who = e ? S.players[entryCardPlayer(e)] : null;
-  const at  = (e && e.target !== null && e.target !== undefined) ? S.players[e.target] : null;
-  const live = !!(e && canNopeEntry(e));
 
   let face = "";
   if (e && def){
@@ -3252,30 +3289,17 @@ function drawDiscard(){
     face = '<div class="discempty">nothing played yet</div>';
   }
 
-  let meta = "";
-  if (e && def){
-    meta = "<b>" + esc(def.name) + "</b>";
-    if (who) meta += "<br>" + esc(who.name) + (at ? " \u2192 " + esc(at.name) : "");
-    if (live) meta += '<br><span class="ans">can be answered</span>';
-  }
-
-  let nav = "";
-  if (st.length > 1){
-    nav = '<div class="discnav">' +
-            '<button onclick="scrollDiscard(1)"' + (discardIdx >= st.length - 1 ? " disabled" : "") +
-              ' title="Further down the pile">\u25b2</button>' +
-            "<span>" + (discardIdx + 1) + " / " + st.length + "</span>" +
-            '<button onclick="scrollDiscard(-1)"' + (discardIdx <= 0 ? " disabled" : "") +
-              ' title="Back towards the top">\u25bc</button>' +
-          "</div>";
-  }
-
-  const cls = "discpile" + (st.length ? "" : " empty") + (live ? " live" : "") +
-              (discardIdx > 0 ? " back" : "");
+  // The same badges the log pins to an answerable line, on the card itself.
+  // Nothing else: what the card is, it says by being face up, and who played
+  // it at whom is what the log is for.
+  const ans = answerMarks(e);
+  const cls = "discpile" + (st.length ? "" : " empty") +
+              (ans ? " answerable" : "") + (discardIdx > 0 ? " back" : "");
   const html = '<div class="' + cls + '" data-jid="' + (e ? e.id : "") + '" title="' +
-                 (st.length ? "Scroll to look back through the pile" : "Cards played land here") +
-               '">' + face + "</div>" +
-               '<div class="discmeta">' + meta + "</div>" + nav;
+                 (st.length ? (def ? esc(def.name) + " \u2014 scroll to look further down the pile"
+                                   : "Scroll to look further down the pile")
+                            : "Cards played land here") +
+               '">' + face + ans + "</div>";
 
   // Compare before writing, like the log and the dice: this is redrawn on
   // every repaint and rebuilding it would kill any drop highlight mid-drag.
@@ -3291,6 +3315,14 @@ window.addEventListener("wheel", function(ev){
   const el = ev.target && ev.target.closest && ev.target.closest("#discardWrap");
   if (!el) return;
   ev.preventDefault();
+  // Forward, away from you, digs DOWN the pile towards older cards: the newest
+  // is on top and you lift it off to see the one underneath.
+  //
+  // The wheel always did this. What did not were the two arrows that used to
+  // sit under the pile, where the up arrow went to older cards and the down
+  // arrow to newer ones - so pressing "down" climbed back towards the card you
+  // were already looking at and, at the top of the pile, did nothing at all.
+  // They are gone with the rest of the furniture.
   scrollDiscard(ev.deltaY > 0 ? 1 : -1);
 }, { passive: false });
 
@@ -7695,11 +7727,48 @@ function tintNames(plain){
     m => '<b class="capname" style="color:' + colour[m] + '">' + m + "</b>");
 }
 
+/* Is there an answer in this hand for this entry, right now?
+
+   Asked of the seat at THIS keyboard, which is what makes it safe to shout
+   about: a prompt only ever appears for somebody who is actually holding the
+   card, so it gives the rest of the table nothing. */
+function iCanAnswer(e){
+  return !!answerMarks(e);
+}
+
+/* The card that would answer it, held up in the middle of the board.
+
+   The red "answer" tag on the pile was doing this job on its own and it was
+   too quiet — the pile is 96 pixels wide in the corner of the screen, and the
+   moment that matters is the two seconds after somebody moves the robber onto
+   your wheat. A seven gets a popup. A card being played gets a popup. The one
+   thing that did NOT was the thing you are actually being asked to react to,
+   which is backwards. */
+function answerShowcase(e){
+  const me = viewSeat();
+  const p = S && S.players[me];
+  if (!p) return;
+  const fresh = c => c.boughtTurn !== S.turnCounter || playableWhenDrawn(c);
+  const canD = p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, me);
+  const key = canD ? "defuse" : "nope";
+  const face = art("card", key);
+  showcase('<div class="showcard answer">' +
+             (face ? '<img src="' + face + '" alt="">'
+                   : '<span class="kn">' + esc(KITTEN[key].name) + "</span>") +
+           '<span class="answerflag">answer</span></div>',
+           tintNames(String(e.plain).replace(/\s+/g, " ")) +
+             '<br><span class="answerline">You can ' +
+             (canD ? "Defuse" : "Nope") + " this \u2014 drop the card on the pile</span>",
+           "defend", 2600);
+}
+
 function showEntry(e){
+  const answerable = iCanAnswer(e);
   if (e.show === "seven"){
     showcase('<div class="showseven">7</div>',
              tintNames((S.players[e.actor] ? S.players[e.actor].name : "") +
              " rolls a seven — hands over 7 are cut, and the robber moves"), "seven");
+    if (answerable) answerShowcase(e);
     return;
   }
   // The Imploding Kitten never reaches a hand, so it would otherwise be the
@@ -7716,11 +7785,17 @@ function showEntry(e){
     return;
   }
   const def = KITTEN[e.show];
-  if (!def) return;
+  if (!def){
+    // No card of its own to turn over — a robbery, most of the time, which is
+    // the single most Defusable thing in the game and had no moment at all.
+    if (answerable) answerShowcase(e);
+    return;
+  }
   const face = cardArt({ key: e.show, flavor: (e.card && e.card.flavor) || null });
   showcase('<div class="showcard">' +
              (face ? '<img src="' + face + '" alt="">' : '<span class="kn">' + esc(def.name) + "</span>") +
            "</div>", tintNames(String(e.plain).replace(/\s+/g, " ")));
+  if (answerable) answerShowcase(e);
 }
 
 /* ══ SIDE PANELS ═════════════════════════════════════════════════
@@ -8035,7 +8110,6 @@ let pressPend = null;     // a press that has not moved far enough to be a drag
 const DRAG_SLOP = 5;      // px of travel before a press becomes a drag
 
 /* Cards that resolve on the board rather than at a player. */
-const BOARD_PLAY = new Set(["knight", "alter", "reverse"]);
 
 function cardPointerDown(ev, idx, ownerId){
   if (ev.button) return;                       // left button / touch only
@@ -8078,15 +8152,16 @@ function onCardPointerUp(ev){
   else render();                               // the card goes back where it was
 }
 
-/* Where this card wants to be dropped, in one line. */
+/* Where this card wants to be dropped, in one line. Every one of them ends at
+   the discard pile now, so the answer is the same sentence for all eleven —
+   which is rather the point of having moved them all there. */
 function cardDestinationHint(c){
   const def = KITTEN[c.key];
   if (c.boughtTurn === S.turnCounter) return def.name + " was bought this turn — it plays next turn.";
   if (def.kind === "vp") return "Feral Kittens are never played — they are points in your hand.";
-  if (c.key === "defuse") return "Drag Defuse onto the log entry you want to turn around.";
-  if (c.key === "nope") return "Drag Nope onto a log entry to cancel it, or onto the player whose turn it is to cancel the whole turn.";
-  if (BOARD_PLAY.has(c.key)) return "Drag " + def.name + " onto the board.";
-  return "Drag " + def.name + " onto the player you want to hit.";
+  if (c.key === "defuse") return "Drop Defuse on the discard pile to turn the card on it around.";
+  if (c.key === "nope") return "Drop Nope on the discard pile to cancel the card on it, or on the player whose turn it is to cancel their whole turn.";
+  return "Drop " + def.name + " on the discard pile — it will ask for anything else it needs.";
 }
 
 function beginCardDrag(ev){
@@ -8225,8 +8300,14 @@ function dropAllowed(info, drop){
     return canPlayToPile(key, me);
   }
   if (drop.kind === "player") return pcardAccepts(key, me, drop.pid);
-  if (drop.kind === "board")
-    return BOARD_PLAY.has(key) && me === S.cur && !S.pending && !owesAnswer();
+  /* The board is no longer a place to play a card.
+
+     Knight, Alter the Future and Reverse used to be dropped on the board while
+     everything else was dropped on a player, which meant knowing which of two
+     gestures a card wanted before you could play it at all — and nothing on
+     screen said which. They all go to the pile now, and the ones that need a
+     board answer ask for it after they are played, the same way the targeted
+     ones ask who they are for. One place to play a card. */
   return false;
 }
 
@@ -8244,8 +8325,6 @@ function highlightUnder(x, y){
 function markDropTargets(){
   if (!dragCard) return;
   const me = dragCard.ownerId;
-  const area = document.getElementById("boardArea");
-  if (area && dropAllowed(dragCard, { kind:"board", el:area })) area.classList.add("droppable");
   const pile = document.querySelector("#discardWrap .discpile");
   if (pile){
     const shown = discardShown();
@@ -8302,8 +8381,6 @@ function performDrop(info, drop){
     else if (key === "defuse") defuseEntry(drop.jid, ownerId);
     return;
   }
-
-  if (drop.kind === "board"){ playCard(idx, ownerId); return; }
 
   const pid = drop.pid;
   if (key === "nope"){ nopeWholeTurn(ownerId, pid); return; }
@@ -8489,13 +8566,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29d"></script>
+<script src="ai.js?v=2026-08-29e"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29d"></script>
-<script src="net.js?v=2026-08-29d"></script>
+<script src="firebase-config.js?v=2026-08-29e"></script>
+<script src="net.js?v=2026-08-29e"></script>
 </body>
 </html>

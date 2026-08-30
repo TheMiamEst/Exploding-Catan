@@ -332,12 +332,21 @@ has moved on since.
 
 ### The discard pile, and playing without the log
 
-The kitten deck sits in the **top** right corner of the board now. The corner
-it used to hold, bottom right, is the **discard pile**: every kitten card
-anybody has played, face up, newest on top. Under it, the card's name, who
-played it and at whom, and whether there is still time to answer it. Scroll the
-wheel over the pile to walk back through it and forwards again; the arrows
-under it do the same thing for anyone who would rather click.
+The two piles stand one above the other down the right-hand side of the board,
+clear of the dice: the **discard pile** on top, the **draw pile** under it.
+Discard on top because that is the one you look at and the one you play onto;
+the deck you only ever click. Both are card-sized rather than thumbnail-sized.
+
+The discard pile is every kitten card anybody has played, face up, newest on
+top. Nothing is written under it — what the card is, it says by being face up,
+and who played it at whom is what the log is for. Scroll the wheel over it to
+dig down towards older cards and back up again.
+
+The arrows that used to sit under the pile are gone, and good riddance: the up
+arrow went to older cards and the down arrow to newer ones, so pressing "down"
+climbed back towards the card you were already looking at and, at the top of
+the pile, did nothing at all. The wheel always dug the right way; the furniture
+around it was lying.
 
 This exists because the game log had quietly become mandatory. A Nope was
 played by dragging it onto a **line of the log** — which meant the log was not
@@ -359,6 +368,11 @@ on the pile, so `spent` now travels to terminals too.
 ### What a Nope does now
 
 Two uses, and they no longer bleed into each other.
+
+When the card on the pile is one **you** can answer, the pile is marked the way
+the log marks an answerable line: the card that would answer it pinned to the
+corner, pulsing, plus the word **answer**. It appears only while you are
+actually holding that card, so it still tells the rest of the table nothing.
 
 **On a card** — dropped on the discard pile, or still on a log line if you
 prefer — it cancels that card. The card is spent, what it was going to do does
@@ -388,9 +402,17 @@ different thing from taking the knight.
 
 ### Aiming a card after you have played it
 
-Every kitten card can be dropped on the discard pile, and for the ones that
-need a victim the game then stops — the turn clock pauses — and asks who it is
-for.
+Every kitten card is played by dropping it on the discard pile. **The board is
+no longer a place to play a card at all.** Knight, Alter the Future and Reverse
+used to be dropped on the board while everything else was dropped on a player,
+which meant knowing which of two gestures a card wanted before you could play
+it — and nothing on screen said which. They all go to the pile, and the ones
+that need a board answer ask for it afterwards, the same way the targeted ones
+ask who they are for. One place to play a card, and one sentence that describes
+where every card in the game goes.
+
+For the ones that need a victim the game stops — the turn clock pauses — and
+asks who it is for.
 
 This is the way round it should always have been. Dragging a card onto
 somebody's seat card means choosing the target **before** the card is played,
@@ -402,6 +424,21 @@ question. Favor chains straight on into naming its three resources.
 
 Aiming a card at a seat still works and is quicker. Nothing here takes that
 away.
+
+### Being asked to answer
+
+A seven gets a popup. A card being played gets a popup. The one thing that did
+**not** was the thing you are actually being asked to react to — a robbery has
+no card of its own to turn over, so moving the robber onto your wheat happened
+in silence apart from a line in the log.
+
+Anything you can still answer now holds up the card that would answer it, in
+the middle of the board, with the word **answer** on it and a line saying what
+to drop where. It is drawn for the seat at this keyboard and nobody else: it
+only appears when YOU are holding the card, so it gives the rest of the table
+nothing. The mark on the discard pile was doing this job alone and was too
+quiet — the pile is a hundred pixels wide in the corner of the screen, and the
+moment that matters is the two seconds after the robber lands.
 
 ### Whose turn it is, on their face
 
