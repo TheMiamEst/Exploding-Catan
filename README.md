@@ -340,11 +340,13 @@ the deck you only ever click. Both are card-sized rather than thumbnail-sized.
 The discard pile is every kitten card anybody has played, face up, newest on
 top. Nothing is written under it — what the card is, it says by being face up,
 and who played it at whom is what the log is for. Scroll the wheel over it to
-dig down towards older cards and back up again: scrolling the way you would
-scroll **down** a page walks from the top card towards the bottom of the pile.
-Worth stating in those terms, because "forward" turned out to mean opposite
-things to the person writing this and the person using it — twice, in both
-directions.
+walk through it. **Scrolling up — the same gesture you would use to scroll up a
+page — walks towards the bottom of the pile.** Scrolling down comes back to the
+top card.
+
+Stated as the gesture and the destination, with no word like "forward"
+anywhere in it, because that word cost three goes at this one line in three
+different directions.
 
 The arrows that used to sit under the pile are gone, and good riddance: the up
 arrow went to older cards and the down arrow to newer ones, so pressing "down"
@@ -526,6 +528,27 @@ Two things make that safe rather than a new way to wedge the table:
 - `clearShowcase` **releases** whatever was queued. A reveal thrown away by a
   rewind or a new game was released by nobody, and its card never appeared on
   the pile at all — a permanent hole, one card wide.
+
+### A card leaves your hand when you play it
+
+Not when it finishes resolving. Alter the Future asks for two number tokens
+before it can be journalled — which hexes are being swapped decides who is
+allowed to Defuse it — so the card used to sit in your hand, with no reveal and
+no acknowledgement of any kind, until after you had picked both. It read as
+though the click had missed.
+
+`S.playing` holds a card that has been played and is still waiting on
+something. It leaves the hand at once, and turns over in the middle of the
+board like any other play. It lives on the **state** rather than in a variable
+because the person playing it may be at another screen entirely: online, the
+drag happens on their machine and the play runs on the host's, so a
+browser-local flag would have hidden the card from the wrong hand and shown the
+reveal to the wrong person.
+
+It can never outlive the pick it is waiting on. Anything that ends a pick
+without going through its own callback — Escape, a rewind, a Nope landing
+somewhere else — would otherwise leave a card out of its owner's hand for good,
+so `render` clears it whenever no pick is open.
 
 ### The table goes quiet while you aim
 
@@ -1191,6 +1214,31 @@ the hex is not a choice, and the window went up in front of an answer that had
 already been decided.
 
 ---
+
+### When a bot spends a Nope
+
+Two reasons, and no others: **to cancel a win**, or **to protect a hand that is
+about to win**.
+
+It used to have an opinion about nearly everything — a big hand about to be
+halved, an Attack it would rather not wear, an Alter aimed at a hex it was
+settled on, anybody buying a card while ahead. Each is defensible on its own,
+and together they meant the bots burned every Nope they drew within a turn or
+two of drawing it. So there was never a Nope in a bot's hand at the moment
+somebody actually won, which is the one moment the card exists for. Holding it
+is a move.
+
+"About to win" is `publicVP`, not `totalVP`: a hidden Feral Kitten is not
+something a bot may look at. An actual declared win is caught by the forced
+Nope instead, which is a rule of the game rather than a decision.
+
+"A hand that is about to win" is `vpNearest(p) === 0` — no resources missing
+from the nearest scoring build — and one point short of the target, since a
+settlement and a city upgrade are each worth exactly one. Its own hand and its
+own hidden points are the one thing a bot is entitled to see.
+
+The same rule governs the seven: a Defuse still goes on any cut worth
+answering, because it costs the table nothing else, but the Nope is kept.
 
 ### How the bots pick a road
 

@@ -379,40 +379,54 @@ function uniqueCount(p){ return RES.filter(r => p.res[r] > 0).length; }
 
 /* Is this journal entry worth a Nope? Mirrors the old prompt logic, but
    judged after the fact rather than before. */
+/* Can this hand finish the game on this bot's own turn?
+
+   vpNearest is how many resources are still missing from the nearest SCORING
+   build, so nought means "we could lay a settlement or raise a city right
+   now" — and either of those is worth exactly one point. Its own hand and its
+   own hidden points are the one thing a bot is entitled to look at. */
+function holdsTheWin(p){
+  return vpNearest(p) === 0 && totalVP(p) + 1 >= S.winPoints;
+}
+
+/* Has this player visibly reached the target? publicVP rather than totalVP,
+   because a hidden Feral Kitten is not something a bot may see — a declared
+   win is caught by the forced Nope in the main file, which is a rule of the
+   game rather than a decision. */
+function aboutToWin(q){
+  return publicVP(q) >= S.winPoints;
+}
+
+/* When a bot spends a Nope. Two reasons, and no others.
+
+   It used to have an opinion about nearly everything: a big hand about to be
+   halved, an Attack it would rather not wear, an Alter aimed at a hex it was
+   settled on, anybody buying a card while ahead. Each of those is defensible on
+   its own and together they meant the bots burned every Nope they drew within a
+   turn or two of drawing it — so a Nope was never in a bot's hand at the moment
+   somebody actually won, which is the one moment the card exists for. Holding
+   it is a move.
+
+   So: cancel a win, or protect the hand that is about to win. Nothing else is
+   worth the card. */
 function nopeJournalDecision(p, e){
   const actor = S.players[e.actor];
-  // Judge by what we held before the action, not by what is left afterwards.
-  const had = e.snap ? RES.reduce((n, r) => n + e.snap.res[p.id][r], 0) : totalRes(p);
 
-  // A Noped roll is thrown again, so a seven that is about to halve a big hand
-  // is worth a card: five sixths of the rerolls are not sevens. A small cut is
-  // not — the Nope is worth more held.
-  if (e.kind === "roll"){
-    return e.show === "seven" && owesSevenCut(p.id) &&
-           Math.floor(had / 2) >= W.sevenAnswerCut;
-  }
-  if (e.kind === "buy")  return publicVP(actor) >= 8;   // deny a closing player
+  // 1. Somebody has reached the target. This is what the card is for.
+  if (actor && actor.id !== p.id && aboutToWin(actor)) return true;
 
-  // A Nope. Worth answering only when it is OUR turn it just ended, and only
-  // when that turn had actually started — a counter-Nope hands it straight
-  // back. Refereeing an argument between two other players is not our job.
-  if (e.kind === "defend"){
-    return !!e.turnBack && e.turnBack.cur === p.id && e.turnBack.phase === "main";
-  }
+  // 2. Everything else is only worth answering if this hand is the win and
+  //    the action would take it away.
+  if (!holdsTheWin(p)) return false;
+
+  // A Noped roll is thrown again, so a seven that would halve the winning
+  // hand is worth the card.
+  if (e.kind === "roll") return e.show === "seven" && owesSevenCut(p.id);
 
   if (e.card){
     const k = e.card.key;
-    const aimedAtUs = e.target === p.id;
-    if (k === "explode") return aimedAtUs ? had >= 4 : publicVP(actor) >= 8;
-    if (k === "attack")  return aimedAtUs ? had >= 5 : false;
-    if (k === "favor")   return aimedAtUs ? had >= 6 : false;
-    if (k === "skip")    return aimedAtUs && publicVP(p) >= 6;
-    if (k === "alter"){
-      return (e.payload && e.payload.hexes || []).some(hid =>
-        hexes[hid].verts.some(v => vertices[v].owner === p.id));
-    }
-    if (k === "knight")  return publicVP(actor) >= 8;
-    if (k === "reverse") return false;
+    if (e.target !== p.id) return false;              // not aimed at us
+    return k === "explode" || k === "attack" || k === "favor";
   }
   return false;
 }
@@ -875,9 +889,12 @@ function makeAgent(pid){
           (c.boughtTurn !== S.turnCounter ||
            (typeof playableWhenDrawn === "function" && playableWhenDrawn(c))));
       // Defuse first: it costs the table nothing else, where a Nope throws away
-      // a roll everybody else may have been happy with.
+      // a roll everybody else may have been happy with. The Defuse still goes
+      // on any cut worth answering; the NOPE is kept for the win, the same rule
+      // nopeJournalDecision follows.
       if (fresh("defuse") && canDefuseEntry(e, p.id)) return defuseEntry(e.id, p.id);
-      if (fresh("nope")   && canNopeFor(e, p.id))    return nopeEntry(e.id, p.id);
+      if (fresh("nope") && holdsTheWin(p) && canNopeFor(e, p.id))
+        return nopeEntry(e.id, p.id);
       return false;
     },
 
@@ -1471,6 +1488,7 @@ window.AI = {
 
   /* Internals, exposed for diagnosis and weight tuning. */
   _dbg: { goal, planOptions, pickCardPayment, tryBankTrade, tryPlayerTrade,
+          holdsTheWin, aboutToWin, nopeJournalDecision,
           pickRoad, vpNearest, bestExpansion, expansionMap, reachValue,
           roadGoesSomewhere, longestRoadFor, dumpSurplus, shortfall,
           vertexValue, vertexValueFor, threat, production },

@@ -191,6 +191,9 @@ function serializeGame(){
     robber: S.robber, cur: S.cur, dir: S.dir, phase: S.phase,
     turnCounter: S.turnCounter, rolled: S.rolled, rollId: S.rollId || 0,
     extraTurn: S.extraTurn, armed: S.armed, select: S.select,
+    // A card played but not yet resolved. Travels so that it leaves the right
+    // hand and turns over on every screen, rather than only on the host's.
+    playing: S.playing || null,
     setupNeed: S.setupNeed,
     deckLen: S.deck.length, discardLen: S.discard.length,
     longestRoad: S.longestRoad, largestArmy: S.largestArmy, roadLens: S.roadLens,
@@ -330,6 +333,7 @@ function applyGame(b){
   S.robber = b.robber; S.cur = b.cur; S.dir = b.dir; S.phase = b.phase;
   S.turnCounter = b.turnCounter; S.rolled = b.rolled || null; S.rollId = b.rollId || 0;
   S.extraTurn = b.extraTurn; S.armed = b.armed || null; S.select = b.select || null;
+  S.playing = b.playing || null;
   S.setupNeed = b.setupNeed;
   S.longestRoad = b.longestRoad || { owner:null, len:0 };
   S.largestArmy = b.largestArmy || { owner:null, n:0 };

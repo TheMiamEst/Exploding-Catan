@@ -1419,7 +1419,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29h";
+const GAME_VERSION = "2026-08-29i";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2017,6 +2017,13 @@ function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
     seven: null,              // {actor, queue:[pid]} — a 7 still being paid for
     robberDue: [],            // robber moves owed behind the one in progress
     select: null,             // {kind, ...} forced board interaction
+    /* A card that has been PLAYED but is still waiting on something before it
+       can resolve — two number tokens for an Alter, a victim for an Attack.
+       On the state rather than in a variable because the person playing it may
+       be at another screen entirely: online, the drag happens on their machine
+       and this runs on the host's, so a browser-local flag would have hidden
+       the card from the wrong hand and shown the reveal to the wrong person. */
+    playing: null,            // {pid, id, key}
     armed: null,              // {kind, id} spot awaiting a confirming second click
     diceLog: [],              // every roll this game, for the history panel
     pending: null,            // response-window stack
@@ -2500,6 +2507,13 @@ function render(){
   // Before the board is drawn, not after: a piece that has just arrived is
   // taken off this very pass so the animation can bring it in, rather than
   // being drawn and then hidden by a second render a moment later.
+  /* A played card is only ever "in the air" while something is being picked
+     for it. Anything that ends a pick without going through its own callback —
+     Escape, a rewind, a Nope landing somewhere else — would otherwise leave a
+     card out of its owner's hand for good. */
+  if (S.playing && !(S.select && (S.select.kind === "seat" || S.select.kind === "alter")))
+    S.playing = null;
+  checkPlaying();
   checkBoardChanges();
   // Before the strip is drawn, not after: a throw that has just arrived wants
   // to be in this repaint rather than to cause another one.
@@ -3395,12 +3409,13 @@ window.addEventListener("wheel", function(ev){
   const el = ev.target && ev.target.closest && ev.target.closest("#discardWrap");
   if (!el) return;
   ev.preventDefault();
-  /* Scrolling the way you would scroll DOWN a page walks from the top card of
-     the pile towards the bottom of it. Scrolling up climbs back to the newest.
-     That is the whole rule, and it is worth stating in those terms because
-     "forward" turned out to mean opposite things to me and to the person
-     using this, twice, in both directions. */
-  scrollDiscard(ev.deltaY > 0 ? 1 : -1);
+  /* Scrolling UP - the same gesture you would use to scroll up a page - walks
+     towards the BOTTOM of the pile. Scrolling down comes back to the top card.
+
+     Stated as the gesture and the destination, with no word like "forward" in
+     it anywhere, because that word cost three goes at this line in three
+     different directions. Scroll up, reach the bottom. That is the rule. */
+  scrollDiscard(ev.deltaY < 0 ? 1 : -1);
 }, { passive: false });
 
 function drawDeck(){
@@ -3444,7 +3459,11 @@ function drawBottom(){
   h += `<div class="group hand" data-hand="${p.id}">`;
   // A card still crossing the screen is not in the hand yet. Drawn cards are
   // pushed on the end, so holding the tail back holds back the right ones.
-  const handShown = p.cards.slice(0, shownCardCount(p));
+  // A card that has been PLAYED is not in the hand either, whatever it is
+  // still waiting on.
+  const played = (S.playing && S.playing.pid === p.id) ? S.playing.id : null;
+  const handShown = p.cards.slice(0, shownCardCount(p))
+                           .filter(c => played === null || c.id !== played);
   if (!handShown.length){
     h += `<span class="emptyhand">No kitten cards</span>`;
   } else {
@@ -5136,6 +5155,12 @@ function playToPile(idx, ownerId){
   const def = KITTEN[c.key];
   if (!def || !canPlayToPile(c.key, ownerId)) return;
 
+  // Out of the hand and onto the screen NOW, rather than when whatever it is
+  // waiting for has been answered. Playing a card and seeing nothing happen —
+  // the card still sitting in your hand, no reveal, no acknowledgement until
+  // after you had picked two tokens — read as though the click had missed.
+  S.playing = { pid: ownerId, id: c.id, key: c.key };
+
   if (def.kind === "target"){ beginSeatPick(ownerId, c, "target"); return; }
 
   // Everything else already knows what it is going to do. Alter the Future
@@ -5144,11 +5169,14 @@ function playToPile(idx, ownerId){
   // answer it.
   if (def.kind === "board"){
     beginAlterPick(ownerId, (a, b) => {
+      S.playing = null;
       playResolved({ type:"card", card:c, idx, actor:ownerId, target:null,
                      payload:{ hexes:[a, b] } });
     });
     return;
   }
+  // Nothing to wait for: it resolves immediately and journals its own reveal.
+  S.playing = null;
   playResolved({ type:"card", card:c, idx, actor:ownerId, target:null, payload:{} });
   render();
 }
@@ -5200,6 +5228,7 @@ function seatClick(pid){
   // a rewind - so the card is found again by id rather than by where it was.
   const card = actor && actor.cards.find(c => c.id === s.cardId);
   S.select = null;
+  S.playing = null;
   hint(null);
   resumeTurnTimer();
   if (!card){ render(); return; }
@@ -5217,6 +5246,7 @@ function seatClick(pid){
 function cancelSeatPick(){
   if (!S || !S.select || S.select.kind !== "seat") return;
   S.select = null;
+  S.playing = null;
   hint(null);
   resumeTurnTimer();
   render();
@@ -8092,6 +8122,31 @@ function tintNames(plain){
     m => '<b class="capname" style="color:' + colour[m] + '">' + m + "</b>");
 }
 
+/* A card that has been played and is still waiting on its answer.
+
+   Shown once, when it appears, on every screen — the same journey a played
+   card's reveal makes, except that this one cannot be journalled yet: an Alter
+   the Future has to name its two hexes before anybody can judge whether they
+   may Defuse it, so the entry does not exist until the pick is finished. This
+   is the moment in between, which used to be silent. */
+let lastPlayingShown = null;
+function checkPlaying(){
+  if (!S) return;
+  const cur = S.playing;
+  if (!cur){ lastPlayingShown = null; return; }
+  const tag = cur.pid + ":" + cur.id;
+  if (tag === lastPlayingShown) return;
+  lastPlayingShown = tag;
+  const def = KITTEN[cur.key];
+  const who = S.players[cur.pid];
+  if (!def || !who) return;
+  const face = cardArt({ key: cur.key, flavor: null });
+  showcase('<div class="showcard">' +
+             (face ? '<img src="' + face + '" alt="">'
+                   : '<span class="kn">' + esc(def.name) + "</span>") +
+           "</div>", tintNames(who.name + " plays " + def.name), "", 1500);
+}
+
 /* Is there an answer in this hand for this entry, right now?
 
    Asked of the seat at THIS keyboard, which is what makes it safe to shout
@@ -8927,13 +8982,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29h"></script>
+<script src="ai.js?v=2026-08-29i"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29h"></script>
-<script src="net.js?v=2026-08-29h"></script>
+<script src="firebase-config.js?v=2026-08-29i"></script>
+<script src="net.js?v=2026-08-29i"></script>
 </body>
 </html>
