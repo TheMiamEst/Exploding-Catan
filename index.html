@@ -38,6 +38,9 @@
     background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto;
   }
   header h1{font-size:16px;margin:0;letter-spacing:.5px}
+  /* "Exploding" in the red the danger colour uses everywhere else, "Catan" in
+     the board's gold. */
+  header h1{color:var(--danger)}
   header h1 span{color:var(--accent)}
   header .spacer{flex:1}
   /* Which opening is in play, beside the build tag. Shown only when it is not
@@ -1460,7 +1463,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29s";
+const GAME_VERSION = "2026-08-29t";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2080,7 +2083,12 @@ function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
     zoom: 1, panX: 0, panY: 0,   // board view
     journal: [],              // every action, with the state that preceded it
     revealed: false,          // hands are face up once somebody has won
-    unstoppable: null,        // a win the table had no legal way to deny
+    /* Vestigial. It used to mark a win a cancel could not reduce, so cancelTurn
+       could hand it over on the spot; the rule now is that a win is denied by
+       any Nope at the table whether or not it moves the score, so nothing sets
+       this and nothing reads it. Left on the state because a terminal running
+       an older build still sends it. */
+    unstoppable: null,
     sweeping: false,          // re-entrancy guard for the turn-start win sweep
     implodeTurn: -1,          // turn number made Nope-proof by an Imploding Kitten
     implodeBy: null,          // who drew it, so the seal outlives their turn
@@ -3695,13 +3703,7 @@ function drawBottom(){
    view rather than deleted, so the list can be scrolled back through. The `ms`
    argument is accepted for compatibility with the old toast calls and ignored.
 */
-/* Some things are worked out by DOING them and then putting the board back —
-   see winSurvivesCancel. Nothing that happens inside one of those may reach
-   the log, the feed or the screen: it did not happen. */
-let quietRun = 0;
-
 function announce(html, kind, entry){
-  if (quietRun) return;
   const box = document.getElementById("feed");
   if (!box) return;
   const el = document.createElement("div");
@@ -4101,7 +4103,6 @@ function mirrorClocks(){
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
 
 function logMsg(msg){
-  if (quietRun) return;
   S.log.push(msg);
   if (S.log.length > 500) S.log.shift();
 }
@@ -6474,15 +6475,15 @@ function cancelTurn(actorId, wasWin){
   }
   stripWinningPoints(S.players[actorId], wasWin);
 
-  // The denial could not reduce them below 10 — their points are buildings and
-  // Longest Road from earlier turns, which a Nope may not touch. Rather than
-  // let them carry a silent win into the next turn, the win stands.
-  if (S.unstoppable !== null && S.unstoppable !== undefined){
-    const w = S.unstoppable;
-    S.unstoppable = null;
-    declareWinner(w);
-    return;
-  }
+  /* A cancelled win is cancelled.
+
+     This used to notice that the rewind had failed to take the winner back
+     under the target and hand them the game then and there — "rather than let
+     them carry a silent win into the next turn". That turned every such Nope
+     into a card spent on a win that was granted in the same breath. There is
+     no silent win to worry about: checkVictory will find them again the moment
+     anything happens, and demand the next Nope. They keep being denied until
+     the table runs out of them, and then they win. */
   if (onTheirTurn) advancePlayer();
   else { S.armed = null; render(); botTick(); }
 }
@@ -6509,16 +6510,16 @@ function stripWinningPoints(p, wasWin){
      never part of what is being cancelled. */
   if (!wasWin) return;
 
-  /* Would taking them help? If the score still clears the target without a
-     single Feral Kitten in the hand, then destroying them achieves nothing and
-     they are left alone. checkVictory asks the same question before it demands
-     a Nope, so this is the backstop for the voluntary case — somebody choosing
-     to Nope a turn that happens to be a winning one. */
+  /* Taking them may not be enough, and that is fine. A player whose points are
+     buildings and bonuses from earlier turns cannot be reduced by a Nope at
+     all — the Nope denies the win itself rather than the score behind it, and
+     they will be back at the target the moment the next thing happens. Say so,
+     rather than either pretending it worked or handing them the game for it. */
   const held = p.cards.filter(c => c.key === "vp").length;
   if (totalVP(p) - held >= S.winPoints){
     logMsg(`<span style="color:#d98b4b"><b>${p.name}</b> is still on ` +
-           `${totalVP(p)} without them — nothing a Nope can take.</span>`);
-    S.unstoppable = p.id;
+           `${totalVP(p)} — the Nope denies the win, not the points. They will ` +
+           `need answering again.</span>`);
     return;
   }
 
@@ -6542,40 +6543,6 @@ function stripWinningPoints(p, wasWin){
     logMsg(`<span style="color:#d98b4b">The cancelled win costs <b>${p.name}</b> ${what}.</span>`);
     announce(pdot(p) + " loses " + what + " to the cancelled win", "big", 5600);
   }
-}
-
-/* Would a cancelled turn actually take this player back under the target?
-
-   Worked out by doing it: rewind the turn, take the Feral Kittens, read the
-   score, then put everything back. snapAll covers every last thing
-   wipeNopedTurn touches — the board's owners, the bonuses, the hands, the turn
-   record — so the trial leaves nothing behind, and quietRun keeps it off the
-   log while it runs.
-
-   The alternative was to work the same sum out on paper, and that sum is not
-   simple: a cancelled turn takes back this turn's buildings and knights, and
-   then Longest Road and Largest Army have to be recomputed from what is left.
-   Doing it for real and asking the board is exact, where the paper version
-   would be a second implementation of the rules to keep in step with the
-   first. */
-function winSurvivesCancel(p){
-  const before = snapAll();
-  const curBefore = S.cur, phaseBefore = S.phase, winBefore = S.winner;
-  let survives;
-  quietRun++;
-  try {
-    if (p.id === S.cur) wipeNopedTurn();
-    const ferals = p.cards.filter(c => c.key === "vp").length;
-    survives = totalVP(p) - ferals >= S.winPoints;
-  } catch (err){
-    console.error("win trial failed:", err);
-    survives = false;          // if in doubt, let the table have its answer
-  } finally {
-    quietRun--;
-    restoreAll(before);
-    S.cur = curBefore; S.phase = phaseBefore; S.winner = winBefore;
-  }
-  return survives;
 }
 
 /* ── Forced Nope on a win ────────────────────────────────────────────────
@@ -6868,25 +6835,24 @@ function checkVictory(){
     declareWinner(claimant.id);
     return;
   }
-  /* Nothing to answer with.
+  /* One question, and only one: is there a Nope at this table that is not the
+     winner's own? If there is, the win does not land. If there is not, it does.
 
-     A Nope on a win cancels the winner's turn. If their points do not come
-     from that turn — buildings and bonuses standing since earlier, which a
-     cancel may not touch — then cancelling it denies nothing, and the card
-     would be spent for no reason at all. That is exactly what was happening:
-     a player at the target off the back of earlier turns had every Nope at the
-     table taken off it, one at a time, and won anyway. Asked first now, and
-     nobody is charged for an answer that was never available. */
-  if (winSurvivesCancel(claimant)){
-    logMsg(`<span style="color:#d98b4b"><b>${claimant.name}</b> is on ` +
-           `${totalVP(claimant)} from earlier turns — there is nothing a Nope ` +
-           `could take back.</span>`);
-    announce(pdot(claimant) + " reached " + S.winPoints +
-             " on points no Nope can reach", "big");
-    declareWinner(claimant.id);
-    return;
-  }
-  // Not optional: the next player in turn order holding a Nope must spend it.
+     There used to be a second question in front of it — "would cancelling the
+     turn actually take them back under the target?" — and if the answer was no,
+     the win was declared without anybody being asked. It was well meant: a Nope
+     spent on a win it cannot deny is a card thrown away. But it reads the card
+     backwards. A Nope does not have to reduce anybody's score to be worth
+     playing; it denies the win THIS time, and the winner has to come back and
+     do it again. Three bots each sat holding one while a fourth was handed the
+     game on the grounds that their Nopes would not have helped.
+
+     So it is asked plainly now. Every Nope at the table is one more turn the
+     winner has to survive, and the game ends when the last one is gone —
+     which is what the card has said on its face all along. The winner's own
+     Nope is not counted, because forcedNoperFor skips them: holding the last
+     one yourself wins you the game, and having spent it answering somebody
+     else is exactly how you end up in that position. */
   const forced = forcedNoperFor(claimant.id);
   if (forced !== null) forcedWinNope(claimant, forced);
   else declareWinner(claimant.id);
@@ -9407,13 +9373,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29s"></script>
+<script src="ai.js?v=2026-08-29t"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29s"></script>
-<script src="net.js?v=2026-08-29s"></script>
+<script src="firebase-config.js?v=2026-08-29t"></script>
+<script src="net.js?v=2026-08-29t"></script>
 </body>
 </html>

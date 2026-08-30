@@ -1435,6 +1435,33 @@ already been decided.
 
 ---
 
+### No win lands while somebody else holds a Nope
+
+One question decides it: **is there a Nope at this table that is not the
+winner's own?** If there is, the win does not land. If there is not, it does.
+
+There used to be a second question in front of that one — *would cancelling
+the turn actually take them back under the target?* — and if the answer was no,
+the win was declared without anybody being asked. It was well meant. A Nope
+spent on a win it cannot deny is a card thrown away, and that was a real
+complaint. But it reads the card backwards: a Nope does not have to reduce
+anybody's score to be worth playing. It denies the win **this time**, and the
+winner has to come back and do it again. A six-player game ended with three
+bots each holding one while a fourth was handed the game on the grounds that
+their Nopes would not have helped.
+
+So every Nope at the table is one more turn the winner has to survive, and the
+game ends when the last one is gone. A cancelled win is now genuinely cancelled
+— `cancelTurn` used to notice the rewind had failed to move the score and hand
+over the game on the spot, which turned each of those Nopes into a card spent
+on a win granted in the same breath. There is no silent win to head off:
+`checkVictory` finds them again the moment anything happens and demands the
+next Nope.
+
+The winner's own Nope is not counted, because `forcedNoperFor` skips them.
+Holding the last one yourself wins you the game — and having spent yours
+answering somebody else is exactly how you end up in that position.
+
 ### A win can be argued over until the Nopes run out
 
 Three things were wrong with a contested win, and together they produced a game
