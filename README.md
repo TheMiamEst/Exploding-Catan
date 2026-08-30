@@ -699,6 +699,29 @@ announcement about a cancelled turn, written just before the cancel, would have
 wiped out the very snapshot the cancel was about to rewind to. `notice` entries
 are skipped there. They carry no snapshot either, so they can never be answered.
 
+### Names, not dots
+
+A player's name in the log is written in that player's own colour. It used to
+be a coloured dot followed by a plain white name, which is two things where one
+will do — the dot carried the colour and the name carried the name, so at a
+glance down a busy log you were matching little circles rather than reading.
+The name is the label, so the name is what is coloured. Weighted and shadowed
+for the same reason the reveal captions are: a seat colour is chosen to sit
+against the board, not to be read as a word on a dark panel.
+
+### The Imploding Kitten used to lock its own player out
+
+Drawing it froze the table for the length of the reveal — `uiBlocked` returns
+true for everybody while the card is landing — and then never gave it back. The
+board's clickable spots are worked out when the board is **drawn**, so the board
+drawn during the freeze had nothing on it you could click, and nothing repainted
+when the freeze ended: the implode clock updates its own banner by hand and
+never asks for a repaint. The player who had just drawn the card was locked out
+of their own turn until something else happened to cause one — picking a card up
+and putting it down again did it, which is how this was found.
+
+The clock now notices the moment it stops holding the table and repaints once.
+
 ### Being asked to answer
 
 A seven gets a popup. A card being played gets a popup. The one thing that did

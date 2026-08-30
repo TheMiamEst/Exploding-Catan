@@ -674,6 +674,10 @@
      button on a narrow header even by accident. */
   #hintslot:empty{display:none}
   #tipBtn.off, #fxBtn.off{opacity:.5}
+  /* A player's name wherever it is written into a line of text — the log, the
+     feed, a reveal's caption. Their own colour, given enough weight and enough
+     shadow to be read against a dark panel. */
+  .pn, .ev .pn, .showcap .pn{font-weight:800; text-shadow:0 1px 3px #000, 0 0 8px #0008}
 
   /* Kitten deck */
   .deck{
@@ -1456,7 +1460,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29o";
+const GAME_VERSION = "2026-08-29p";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3833,9 +3837,19 @@ function bankToast(a, gave, got, snapBefore){
                    { actor: a.id, snap: snapBefore || snapAll() });
 }
 
+/* A player's name, in their own colour.
+
+   It used to be a coloured dot followed by a plain white name, which is two
+   things where one will do: the dot carried the colour and the name carried
+   the name, and at a glance down a busy log you were matching little circles
+   rather than reading. The name IS the label, so it may as well be the thing
+   that is coloured.
+
+   Weighted and shadowed for the same reason the reveal captions are: a seat
+   colour is picked to sit against the board, not to be read as a word on a
+   dark panel. */
 function pdot(p){
-  return '<span class="dot" style="background:' + p.color +
-         ';display:inline-block;vertical-align:-2px;margin-right:5px"></span><b>' + p.name + '</b>';
+  return '<b class="pn" style="color:' + p.color + '">' + esc(p.name) + "</b>";
 }
 
 /* Whether the one-line advice is wanted at all. Remembered, because somebody
@@ -3981,6 +3995,7 @@ function implodeActive(){ return S && S.implodeTurn === S.turnCounter; }
 
 function clearImplodeClock(){
   if (implodeTimer){ clearTimeout(implodeTimer); implodeTimer = null; }
+  implodeHeld = false;
   const el = document.getElementById("implodeClock");
   if (el) el.remove();
 }
@@ -4019,10 +4034,27 @@ function implodeRevealing(){
   return !!(S && implodeActive() && S.implodeFrom && Date.now() < S.implodeFrom);
 }
 
+/* Whether the last tick was still holding the table. The moment that stops
+   being true the board has to be DRAWN again — see below. */
+let implodeHeld = false;
+
 function implodeClockTick(){
   implodeTimer = null;
   if (!S || !implodeActive() || S.phase === "over"){ clearImplodeClock(); return; }
   const waiting = implodeRevealing();
+
+  /* The freeze has just lifted, so put the board back within reach.
+
+     uiBlocked returns true for everybody while the Imploding Kitten is landing,
+     and the board's clickable spots are worked out when the board is DRAWN. So
+     the board drawn during the freeze had nothing on it you could click, and
+     nothing repainted when the freeze ended: this clock updates its own banner
+     by hand and never asks for a repaint. The player who had just drawn the
+     card was locked out of their own turn until something else happened to
+     cause one — picking a card up and putting it down again did it, which is
+     how this was found. */
+  if (implodeHeld && !waiting){ implodeHeld = false; render(); botTick(); }
+  else if (waiting) implodeHeld = true;
   const left = waiting ? 20
                        : Math.max(0, Math.ceil((S.implodeUntil - Date.now()) / 1000));
 
@@ -9333,13 +9365,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29o"></script>
+<script src="ai.js?v=2026-08-29p"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29o"></script>
-<script src="net.js?v=2026-08-29o"></script>
+<script src="firebase-config.js?v=2026-08-29p"></script>
+<script src="net.js?v=2026-08-29p"></script>
 </body>
 </html>
