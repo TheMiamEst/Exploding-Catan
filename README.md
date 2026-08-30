@@ -448,8 +448,27 @@ away.
 
 ### Cards land where the cards are
 
-Your own cards fly to your own hand — resources to the resource row, kitten
-cards to the hand beside it. Everybody else's still arrive at their seat card,
+Your own cards fly to your own hand — each resource to **its own pile**, kitten
+cards to the hand beside them. A wheat card that lands on the wheat pile has
+said which pile went up without anybody having to read a number.
+
+**And the number does not move until the card gets there.** A counter that went
+up the instant a card was dealt told you the answer while the animation was
+still busy explaining the question, which made the card crossing the screen
+decoration rather than news. Every counter now subtracts whatever is still in
+the air on its way to that player, and each card clears its own hold at the
+moment it visually lands. A kitten card is not in your hand until it is in your
+hand — and it arrives face up, so the card you watched cross the screen is the
+one that turns up among your cards.
+
+That is a view and only a view: the state is correct the whole time, so the
+worst a bug in there can do is show a wrong number for a second. Every hold is
+cleared by a timer set when the hold is taken — nothing waits on an animation
+finishing, or even on it having started — no count can be pushed below zero,
+and the whole lot is dropped at the end of a turn. That last one matters
+because timers are throttled to a crawl in a tab nobody is looking at, so
+without it somebody who tabbed away mid-payout could come back to counters
+reading low until the backlog caught up. Everybody else's still arrive at their seat card,
 because a number about to change is all you can see of somebody else's hand
 anyway. Watching a card you had just been given land on a counter above the
 board, while the actual card appeared somewhere else entirely, never said
@@ -507,6 +526,33 @@ Two things make that safe rather than a new way to wedge the table:
 - `clearShowcase` **releases** whatever was queued. A reveal thrown away by a
   rewind or a new game was released by nobody, and its card never appeared on
   the pile at all — a permanent hole, one card wide.
+
+### The table goes quiet while you aim
+
+Playing a card that needs a victim already stopped the clock. Now it dims the
+board, the bottom bar and the header, and turns off pointer events on all
+three — the card is already played, the only thing left is to say who it is
+for, and a board you can still click is a board you can still misclick. The
+seat cards stay bright and lift above it.
+
+Only on the screen of whoever is choosing. Nobody else's game is interrupted by
+a decision that is not theirs.
+
+### A Defused robbery reads as cancelled
+
+Every other action a Defuse or a Nope undoes is spliced out of the journal, and
+the log strikes the line through for having vanished. A robbery is the
+exception: it stays, marked `answered`, because everybody else standing on that
+hex has to be able to see it is already settled. So it was the one cancelled
+action that still read as though it stood — the robber had gone back and the
+card had gone back, and the log said it happened. Struck through now, like the
+rest.
+
+The clock stops for it, too. `finishRobber` has always resumed the clock and
+nothing ever stopped it — an asymmetry that stayed hidden while the only robber
+moves came from a seven, which pauses for its own reasons. A robbery Defused on
+somebody else's turn handed the defuser a board decision with the current
+player's clock running down behind it.
 
 ### Popups for the things that have no card
 
