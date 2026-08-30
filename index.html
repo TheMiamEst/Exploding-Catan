@@ -457,7 +457,31 @@
     box-shadow:0 10px 30px #000a; backdrop-filter:blur(3px);
   }
   body.haschat #chatbox{display:flex}
-  body.haschat #feed{top:calc(var(--feedTop) + var(--chatH) + 8px)}
+  /* The dice history hangs on the same peg as the chat and the emoji tray,
+     and like them only one of the three is ever out. It used to be a modal
+     across the middle of the screen, which is a lot of furniture for a thing
+     you glance at — and unusable as a thing to keep OPEN beside the board,
+     which is what it is for now that the log is optional. */
+  #dicebox{
+    position:absolute; top:calc(100% + 6px); left:0; z-index:8;
+    width:clamp(200px, 21vw, 300px); height:var(--chatH);
+    display:none; flex-direction:column; overflow-y:auto; scrollbar-width:none;
+    padding:8px 10px 10px;
+    background:#151a22f2; border:1px solid var(--line); border-radius:8px;
+    box-shadow:0 10px 30px #000a; backdrop-filter:blur(3px);
+  }
+  #dicebox::-webkit-scrollbar{width:0}
+  body.hasdice #dicebox{display:flex}
+  /* Shorter bars and smaller type than the modal had: the same chart, in a
+     third of the width. */
+  #dicebox .vchart{height:112px; gap:3px; margin:6px 0 2px}
+  #dicebox .vcol .vn, #dicebox .vcol .vc{font-size:9.5px}
+  #dicebox .sub{margin:0; font-size:11.5px}
+  #dicebox h4{margin:10px 0 3px !important; font-size:11.5px !important}
+  #dicebox .recent span{font-size:11px; padding:1px 5px}
+  body.haschat #feed, body.hasdice #feed{
+    top:calc(var(--feedTop) + var(--chatH) + 8px);
+  }
   #chatlog{
     flex:1 1 auto; min-height:0; overflow-y:auto; scrollbar-width:none;
     padding:7px 8px; display:flex; flex-direction:column; gap:5px;
@@ -643,7 +667,7 @@
   #hintslot.on{opacity:1}
   /* The places where words are worth selecting: the log, the chat, and
      anything inside a dialog or a side panel. Everywhere else is furniture. */
-  #feed, #chatlog, .modal, .panel, .rank, .sub{
+  #feed, #chatlog, #dicebox, .modal, .panel, .rank, .sub{
     user-select:text; -webkit-user-select:text;
   }
   /* Nothing to say: out of the way entirely, so it can never sit over a
@@ -1393,13 +1417,14 @@
   </div>
   <div id="leftbtns">
     <button class="sm on" id="logBtn" onclick="toggleFeed()">Game log</button>
-    <button class="sm" onclick="showDice()">Dice history</button>
+    <button class="sm" id="diceBtn" onclick="toggleDice()">Dice history</button>
     <button class="sm" id="chatBtn" onclick="toggleChat()">Chat</button>
     <button class="sm" id="emojiBtn" onclick="toggleEmojiTray()">Emoji</button>
     <span class="turntag" id="turnDir" hidden></span>
     <!-- Both hang off the bottom of the strip, in the same place, and only one
          of them is ever out: opening either puts the other away. -->
     <div id="emojiTray"></div>
+    <div id="dicebox"></div>
     <div id="chatbox">
       <div id="chatlog"></div>
       <div id="chatrow">
@@ -1431,7 +1456,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29m";
+const GAME_VERSION = "2026-08-29n";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2468,6 +2493,7 @@ function renderIdle(){
   drawTurnOrder();
   drawChat();
   closeEmojiTray();
+  closeDice();
   showIdle(true);
 }
 
@@ -2535,7 +2561,7 @@ function render(){
   // to be in this repaint rather than to cause another one.
   syncEmotes();
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDiscard(); drawDice(); drawHint();
-  drawModeTag(); drawChat(); drawTurnOrder();
+  drawModeTag(); drawChat(); drawDiceBox(); drawTurnOrder();
   refreshFeedMarks();
   checkStalePanels();
   checkShowcase();
@@ -4058,7 +4084,49 @@ function toggleFeed(){
 }
 function showLog(){ toggleFeed(); }
 
-function showDice(){
+function diceIsOpen(){ return document.body.classList.contains("hasdice"); }
+
+function toggleDice(){
+  const on = document.body.classList.toggle("hasdice");
+  if (on){
+    closeChat();                       // three on one peg; only one hangs on it
+    closeEmojiTray();
+    drawDiceBox();
+  }
+  const btn = document.getElementById("diceBtn");
+  if (btn) btn.classList.toggle("on", on);
+  placeFeed();
+}
+
+function closeDice(){
+  if (!diceIsOpen()) return;
+  document.body.classList.remove("hasdice");
+  const btn = document.getElementById("diceBtn");
+  if (btn) btn.classList.remove("on");
+  placeFeed();
+}
+
+/* Redrawn on every repaint while it is open, and compared before it is
+   written — this is a chart of every roll of the game and it changes twice a
+   turn at most, so rebuilding it forty times a turn would be forty layouts
+   for nothing. */
+function drawDiceBox(){
+  const el = document.getElementById("dicebox");
+  if (!el) return;
+  if (!S || !diceIsOpen()){
+    if (el.innerHTML){ el.innerHTML = ""; el.dataset.h = ""; }
+    return;
+  }
+  const h = diceHistoryHTML();
+  if (el.dataset.h === h) return;
+  el.dataset.h = h;
+  el.innerHTML = h;
+}
+
+/* Shared by the panel and by nothing else now — the modal it used to open is
+   gone. Kept as its own function because the markup is worth reading on its
+   own, away from the plumbing that puts it on screen. */
+function diceHistoryHTML(){
   const rolls = S.diceLog || [];
   const tally = {};
   for (let n = 2; n <= 12; n++) tally[n] = 0;
@@ -4082,11 +4150,7 @@ function showDice(){
       h += `<span class="${r === 7 ? "seven" : ""}">${r}</span>`;
     h += `</div>`;
   }
-  // Tagged to this screen. Untagged, an online host shipped it to whichever
-  // seat happened to be left in NET.promptSeat, so asking for the dice history
-  // put it up on somebody else's screen instead of your own.
-  promptFor(viewSeat());
-  openModal("Dice history", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
+  return h;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -4137,7 +4201,8 @@ function clearChat(){
 function toggleChat(){
   const on = document.body.classList.toggle("haschat");
   if (on){
-    closeEmojiTray();                  // they share a peg; only one hangs on it
+    closeEmojiTray();                  // three share a peg; only one hangs on it
+    closeDice();
     drawChat();
     const log = document.getElementById("chatlog");
     if (log) log.scrollTop = log.scrollHeight;
@@ -4258,7 +4323,7 @@ function drawEmojiTray(){
 function toggleEmojiTray(){
   drawEmojiTray();
   const on = document.body.classList.toggle("hastray");
-  if (on) closeChat();                 // they share a peg; only one hangs on it
+  if (on){ closeChat(); closeDice(); } // three share a peg; only one hangs on it
   const btn = document.getElementById("emojiBtn");
   if (btn) btn.classList.toggle("on", on);
 }
@@ -4712,6 +4777,7 @@ function afterBuild(){
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (document.body.classList.contains("hastray")){ closeEmojiTray(); return; }
+  if (diceIsOpen()){ closeDice(); return; }
   if (!S) return;
   if (dragCard || pressPend){ cancelCardDrag(); return; }   // drop the card
   if (S.armed){ disarm(); return; }
@@ -9242,13 +9308,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29m"></script>
+<script src="ai.js?v=2026-08-29n"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29m"></script>
-<script src="net.js?v=2026-08-29m"></script>
+<script src="firebase-config.js?v=2026-08-29n"></script>
+<script src="net.js?v=2026-08-29n"></script>
 </body>
 </html>

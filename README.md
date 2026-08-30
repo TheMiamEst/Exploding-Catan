@@ -683,6 +683,22 @@ nothing. The mark on the discard pile was doing this job alone and was too
 quiet — the pile is a hundred pixels wide in the corner of the screen, and the
 moment that matters is the two seconds after the robber lands.
 
+### Three things on one peg
+
+The chat, the emoji tray and now the **dice history** all hang off the bottom
+of the button strip, in the same place, and only one of them is ever out —
+opening any one puts the other two away. The log starts below whichever is
+open, so nothing you were reading is covered by what somebody typed or by a
+chart you asked for.
+
+The dice history used to be a modal across the middle of the screen. That is a
+lot of furniture for something you glance at, and it made the one thing it is
+now good for impossible: keeping it **open beside the board while you play**,
+which is worth doing now that the log is optional rather than the only way to
+follow the game. Same chart, a third of the width, redrawn on every repaint and
+compared before it is written — it changes twice a turn at most, and rebuilding
+it on every repaint would be a layout each time for nothing.
+
 ### Whose turn it is, on their face
 
 A ring turns around the portrait of whoever is playing, in their own colour.
