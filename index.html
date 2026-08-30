@@ -1460,7 +1460,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29p";
+const GAME_VERSION = "2026-08-29q";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2503,7 +2503,6 @@ function renderIdle(){
   drawChat();
   closeEmojiTray();
   closeDice();
-  showIdle(true);
 }
 
 /* Put the table away and go back to the opening screen. */
@@ -2519,22 +2518,17 @@ function backToIdle(){
   renderIdle();
 }
 
-function showIdle(on){
-  let el = document.getElementById("idleCard");
-  if (!on){ if (el) el.remove(); return; }
-  if (el) return;
-  el = document.createElement("div");
-  el.id = "idleCard";
-  el.innerHTML = '<h2>Exploding <span>Catan</span></h2>' +
-    '<p>Catan with the development deck torn out and 54 kitten cards put in its place.</p>' +
-    '<div class="pick">' +
-      '<button class="primary" onclick="newGameDialog()">New game here</button>' +
-      '<button onclick="onlineDialog()">Play online</button>' +
-      '<button onclick="showRules()">Rules</button>' +
-    '</div>';
-  const area = document.getElementById("boardArea");
-  if (area) area.appendChild(el);
-}
+/* The opening screen used to put a card in the middle of the empty board: the
+   game's name, a line about what it is, and three buttons. All five things
+   were already in the header — New Game, Online and Rules are there, and so is
+   the title — so it was the same offer twice, and the second one had no styling
+   of its own and looked it.
+
+   Taken out rather than hidden. Anything left calling showIdle would throw
+   inside renderIdle, and renderIdle runs on every repaint of an empty table —
+   one exception there takes the whole opening screen down with it, header
+   buttons and all, which looks exactly like "the New Game button stopped
+   working". */
 
 /* A banner, not a dialog: the state arriving from the host would close a
    dialog on the next update, and this needs to stay put until it is fixed. */
@@ -2554,7 +2548,6 @@ function showVersionWarning(hostVer){
 
 function render(){
   if (!S){ renderIdle(); return; }
-  showIdle(false);
   // Before the board is drawn, not after: a piece that has just arrived is
   // taken off this very pass so the animation can bring it in, rather than
   // being drawn and then hidden by a second render a moment later.
@@ -9338,7 +9331,11 @@ function showRules(){
     waiting for somebody else to spend theirs first.</p>
     <p>The <b>Imploding Kitten</b> is immune to all of it. It cannot be Noped or Defused.</p>
   </div>`;
-  promptFor(viewSeat());
+  /* Tagged to this screen so an online host ships it to the right seat — but
+     only when there is a game to have seats in. The rules are readable before
+     anybody has started one, and viewSeat reads S.players, so asking on the
+     opening screen threw and the Rules button did nothing at all. */
+  if (S) promptFor(viewSeat());
   openModal("Exploding Catan — Rules", h, [{ label:"Close", cls:"primary", fn: closeModal }]);
 }
 
@@ -9365,13 +9362,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29p"></script>
+<script src="ai.js?v=2026-08-29q"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29p"></script>
-<script src="net.js?v=2026-08-29p"></script>
+<script src="firebase-config.js?v=2026-08-29q"></script>
+<script src="net.js?v=2026-08-29q"></script>
 </body>
 </html>

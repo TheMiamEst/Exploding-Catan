@@ -699,6 +699,28 @@ announcement about a cancelled turn, written just before the cancel, would have
 wiped out the very snapshot the cancel was about to rewind to. `notice` entries
 are skipped there. They carry no snapshot either, so they can never be answered.
 
+### The opening screen is just the board
+
+There used to be a card in the middle of the empty board carrying the game's
+name, a line about what it is, and three buttons. All of that was already in
+the header — New Game, Online and Rules are there, and so is the title — so it
+was the same offer twice, and the second one had no styling of its own and
+looked it.
+
+It is **removed**, not hidden, along with both calls to the function that drew
+it. `renderIdle` runs on every repaint of an empty table, so anything left
+calling a function that no longer exists throws in there — and one exception in
+`renderIdle` takes the whole opening screen down with it, header buttons and
+all. Which looks from the outside exactly like *the New Game button stopped
+working*.
+
+Taking the card out also uncovered a real fault in the header behind it:
+**Rules threw on the opening screen** and did nothing at all. It tags its dialog
+with `promptFor(viewSeat())` so an online host ships it to the right seat, and
+`viewSeat` reads `S.players` — but the rules are readable before anybody has
+started a game, and there is no `S` then. It only tags when there is a game to
+have seats in.
+
 ### Names, not dots
 
 A player's name in the log is written in that player's own colour. It used to
