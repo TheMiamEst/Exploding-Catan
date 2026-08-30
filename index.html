@@ -341,6 +341,18 @@
     font-size:9.5px; letter-spacing:.5px; text-transform:uppercase; color:var(--dim);
     text-align:center; padding:0 6px; z-index:1;
   }
+  /* Played, then answered. It stays on the pile because it really was spent —
+     it is only the things rewound BEHIND a Nope that go back to hands and off
+     the pile with them. */
+  .discpile.cancelled .discface{filter:grayscale(.8) brightness(.62)}
+  .discpile.cancelled{border-color:#5a6478}
+  .disccx{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) rotate(-14deg);
+    z-index:3; pointer-events:none;
+    border:2px solid var(--danger); color:#ffb3b3; background:#0b0d10cc;
+    font-size:10px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase;
+    padding:2px 8px; border-radius:5px;
+  }
   .discpile.droppable{border-color:#7fc48f; box-shadow:0 0 0 3px #7fc48f44}
   .discpile.dropping{border-color:#a6e6b4; box-shadow:0 0 0 4px #7fc48f77}
   /* Looked back through rather than sitting on top. */
@@ -1419,7 +1431,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29i";
+const GAME_VERSION = "2026-08-29j";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2024,6 +2036,10 @@ function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
        and this runs on the host's, so a browser-local flag would have hidden
        the card from the wrong hand and shown the reveal to the wrong person. */
     playing: null,            // {pid, id, key}
+    /* The discard pile: every kitten card that has been played, in the order
+       they were played. Kept as a record of its own rather than read off the
+       journal — see pileAdd. */
+    pile: [],
     armed: null,              // {kind, id} spot awaiting a confirming second click
     diceLog: [],              // every roll this game, for the history panel
     pending: null,            // response-window stack
@@ -3282,6 +3298,49 @@ function entryCardPlayer(e){
   if (e.spent && e.spent.pid !== undefined && e.spent.pid !== null) return e.spent.pid;
   return e.actor;
 }
+
+/* ── the pile keeps its own record ────────────────────────────────
+   This used to be read straight off the journal, which knows who played what
+   at whom and looked like the obvious place for it. It is not, and a Nope is
+   why: answering a card rewinds the board by splicing the entry it answers off
+   the journal, along with everything after it — so the card that had just been
+   played vanished off the pile as though it had never been played at all. It
+   had been. It was played, it was cancelled, and it is lying face up on the
+   table where everybody can see it.
+
+   So the pile is its own list now, appended to as cards are played, and the
+   journal is left to be the journal. The two disagree in exactly one way, on
+   purpose: a Noped card stays here, greyed, because it really was spent —
+   while an action that was merely rewound BEHIND the Nope had its card handed
+   back to its owner, so that one leaves. See pileCancel and pileDrop. */
+function pileAdd(e, card){
+  if (!S) return;
+  if (!S.pile) S.pile = [];
+  const key = card ? card.key : entryCardKey(e);
+  if (!key || key === "hidden") return;
+  S.pile.push({
+    jid: e.id,
+    key: key,
+    flavor: (card && card.flavor) || (e.card && e.card.flavor) || null,
+    by: entryCardPlayer(e),
+    at: (e.target === undefined || e.target === null) ? null : e.target,
+    dead: false
+  });
+  while (S.pile.length > 200) S.pile.shift();
+}
+
+/* Cancelled, but spent: it stays on the pile with a line through it. */
+function pileCancel(jid){
+  if (!S || !S.pile) return;
+  for (const rec of S.pile) if (rec.jid === jid) rec.dead = true;
+}
+
+/* Rewound, and the card went back to a hand — so it is not on the pile any
+   more, because it is not in the discard any more. */
+function pileDrop(jids){
+  if (!S || !S.pile || !jids.length) return;
+  S.pile = S.pile.filter(rec => jids.indexOf(rec.jid) < 0);
+}
 /* How far the pile has caught up with the middle of the board.
 
    A card is turned over in the centre of the screen for a couple of seconds
@@ -3295,13 +3354,12 @@ function entryCardPlayer(e){
 let pileRevealed = 0;
 
 function discardStack(){
-  if (!S || !S.journal) return [];
+  if (!S || !S.pile) return [];
   const out = [];
-  for (let i = S.journal.length - 1; i >= 0; i--){
-    const e = S.journal[i];
-    if (!entryCardKey(e)) continue;
-    if (e.id > pileRevealed) continue;      // still turning over in the middle
-    out.push(e);
+  for (let i = S.pile.length - 1; i >= 0; i--){
+    const rec = S.pile[i];
+    if (rec.jid > pileRevealed) continue;   // still turning over in the middle
+    out.push(rec);
   }
   return out;
 }
@@ -3331,8 +3389,14 @@ function scrollDiscard(delta){
    because on the pile there is no line of text alongside to make it obvious.
    It appears only while THIS player is holding the card that would answer,
    so it still tells the rest of the table nothing. */
-function answerMarks(e){
-  if (!e || !S) return "";
+/* `rec` is a pile record. The journal entry it came from may be long gone —
+   answered, rewound, or simply aged out — and a card nobody can answer any
+   more is exactly the case where this must draw nothing. */
+function answerMarks(rec){
+  if (!rec || !S) return "";
+  if (rec.dead) return "";
+  const e = S.journal.find(x => x.id === rec.jid);
+  if (!e) return "";
   const me = viewSeat();
   const p = S.players[me];
   if (!p) return "";
@@ -3363,18 +3427,19 @@ function drawDiscard(){
     return;
   }
   const st = discardStack();
-  // Something new on top: come back to it.
-  const topId = st.length ? st[0].id : -1;
+  // Something new on top: come back to it. Pile records have no id of their
+  // own, so the journal id of the newest is what says the top has changed.
+  const topId = st.length ? st[0].jid : -1;
   if (topId !== discardTopId){ discardTopId = topId; discardIdx = 0; }
   if (discardIdx > st.length - 1) discardIdx = Math.max(0, st.length - 1);
 
-  const e = st.length ? st[Math.min(discardIdx, st.length - 1)] : null;
-  const key = e ? entryCardKey(e) : null;
+  const rec = st.length ? st[Math.min(discardIdx, st.length - 1)] : null;
+  const key = rec ? rec.key : null;
   const def = key ? KITTEN[key] : null;
 
   let face = "";
-  if (e && def){
-    const img = cardArt({ key: key, flavor: (e.card && e.card.flavor) || null });
+  if (rec && def){
+    const img = cardArt({ key: key, flavor: rec.flavor || null });
     face = '<div class="discface">' +
              (img ? '<img src="' + img + '" alt="">'
                   : '<span class="kn">' + esc(def.name) + "</span>") +
@@ -3386,14 +3451,18 @@ function drawDiscard(){
   // The same badges the log pins to an answerable line, on the card itself.
   // Nothing else: what the card is, it says by being face up, and who played
   // it at whom is what the log is for.
-  const ans = answerMarks(e);
+  const ans = answerMarks(rec);
   const cls = "discpile" + (st.length ? "" : " empty") +
-              (ans ? " answerable" : "") + (discardIdx > 0 ? " back" : "");
-  const html = '<div class="' + cls + '" data-jid="' + (e ? e.id : "") + '" title="' +
-                 (st.length ? (def ? esc(def.name) + " \u2014 scroll to look further down the pile"
-                                   : "Scroll to look further down the pile")
-                            : "Cards played land here") +
-               '">' + face + ans + "</div>";
+              (ans ? " answerable" : "") + (rec && rec.dead ? " cancelled" : "") +
+              (discardIdx > 0 ? " back" : "");
+  const title = !st.length ? "Cards played land here"
+              : def ? esc(def.name) + (rec.dead ? " \u2014 cancelled" : "") +
+                      " \u2014 scroll up to look further down the pile"
+              : "Scroll up to look further down the pile";
+  const html = '<div class="' + cls + '" data-jid="' + (rec ? rec.jid : "") +
+               '" title="' + title + '">' + face + ans +
+               (rec && rec.dead ? '<span class="disccx">cancelled</span>' : "") +
+               "</div>";
 
   // Compare before writing, like the log and the dice: this is redrawn on
   // every repaint and rebuilding it would kill any drop highlight mid-drag.
@@ -5062,7 +5131,8 @@ function drawKitten(p){
     // cannot be refuted in any way, and the entry must not offer a window.
     logAction("💥 " + pdot(p) + " draws the <b>Imploding Kitten</b> — takes " + stolen +
               " resources from everyone", "big",
-              { actor: p.id, snap: snapBefore, nopeable: false, show: "implode" });
+              { actor: p.id, snap: snapBefore, nopeable: false, show: "implode",
+                pileCard: c });
     checkVictory();
     return;
   }
@@ -5486,6 +5556,8 @@ function logAction(html, kind, opts){
     participants: opts.participants ? opts.participants.slice() : null,
     noDefuse: !!opts.noDefuse,
     show: opts.show || null,
+    // A card to put on the discard pile that is not this entry's own `card`.
+    // Only the Imploding Kitten uses it — see logAction.
     // What this entry took OFF the table, if it is an answer to something.
     // Undoing it puts that back, and this is how the line saying so knows what
     // to name. Only a Nope sets it.
@@ -5506,6 +5578,11 @@ function logAction(html, kind, opts){
     plain: String(html).replace(/<[^>]+>/g, "").trim()
   };
   S.journal.push(e);
+  // Every card that reaches the journal reaches the pile, whether it was
+  // played (`card`) or spent answering something (`spent`). `pileCard` is for
+  // the one card that is neither: the Imploding Kitten, which fires straight
+  // out of the deck and never belongs to anybody.
+  pileAdd(e, opts.pileCard || null);
   while (S.journal.length > 240) S.journal.shift();
   announce(html, kind, e);
   return e;
@@ -5770,6 +5847,12 @@ function nopeEntry(id, noperId){
   // Rewind first, then spend the card — the entry's own snapshot predates the
   // Nope and would otherwise hand it straight back.
   restoreAll(e.snap);
+  /* Everything after the answered entry is genuinely un-happened: restoreAll
+     has just put those cards back in their owners' hands, so they leave the
+     pile. The answered card itself does not — it is spent either way, and a
+     few lines below it is pushed onto S.discard by hand. */
+  pileDrop(S.journal.slice(idx + 1).map(x => x.id));
+  pileCancel(e.id);
   S.journal.splice(idx);
   spendCard(noper, "nope");
 
@@ -6093,6 +6176,8 @@ function defuseEntry(id, defuserId){
 
   S.rewinds++;
   restoreAll(e.snap);
+  pileDrop(S.journal.slice(idx + 1).map(x => x.id));
+  pileCancel(e.id);
   S.journal.splice(idx);
   spendCard(d, "defuse");
   // Same as a Nope: whatever forced dialog was standing on the entry we just
@@ -8665,7 +8750,8 @@ function dropTargetAt(x, y){
   const pileEl = el.closest("#discardWrap");
   if (pileEl){
     const shown = discardShown();
-    return { kind:"pile", jid: shown ? shown.id : null,
+    // A pile record carries the journal id it came from, not an id of its own.
+    return { kind:"pile", jid: shown ? shown.jid : null,
              el: pileEl.querySelector(".discpile") || pileEl };
   }
   const evEl = el.closest(".ev[data-jid]");
@@ -8764,7 +8850,7 @@ function markDropTargets(){
   const pile = document.querySelector("#discardWrap .discpile");
   if (pile){
     const shown = discardShown();
-    if (dropAllowed(dragCard, { kind:"pile", jid: shown ? shown.id : null, el: pile }))
+    if (dropAllowed(dragCard, { kind:"pile", jid: shown ? shown.jid : null, el: pile }))
       pile.classList.add("droppable");
   }
   document.querySelectorAll(".ev[data-jid]").forEach(el => {
@@ -8982,13 +9068,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29i"></script>
+<script src="ai.js?v=2026-08-29j"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29i"></script>
-<script src="net.js?v=2026-08-29i"></script>
+<script src="firebase-config.js?v=2026-08-29j"></script>
+<script src="net.js?v=2026-08-29j"></script>
 </body>
 </html>

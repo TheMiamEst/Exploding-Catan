@@ -48,6 +48,7 @@ const PUBLISH_DEBOUNCE = 60;      // ms — coalesce the burst of renders per ac
    they are immutable once written, so nothing else would have to change.
    S.log is deliberately NOT sent at all: it is written but never displayed. */
 const FEED_KEEP = 40;
+const PILE_KEEP = 60;      // how much of the discard pile travels
 const JOURNAL_KEEP = 24;      // enough to judge the live entry and mark the feed
 
 /* Inline handlers a shipped dialog is allowed to call back into. Anything the
@@ -194,6 +195,10 @@ function serializeGame(){
     // A card played but not yet resolved. Travels so that it leaves the right
     // hand and turns over on every screen, rather than only on the host's.
     playing: S.playing || null,
+    // The discard pile travels as its own record. It is not derived from the
+    // journal any more, and a terminal is sent a shorter tail of the journal
+    // than the pile needs, so it could not be rebuilt at the far end anyway.
+    pile: (S.pile || []).slice(-PILE_KEEP),
     setupNeed: S.setupNeed,
     deckLen: S.deck.length, discardLen: S.discard.length,
     longestRoad: S.longestRoad, largestArmy: S.largestArmy, roadLens: S.roadLens,
@@ -334,6 +339,7 @@ function applyGame(b){
   S.turnCounter = b.turnCounter; S.rolled = b.rolled || null; S.rollId = b.rollId || 0;
   S.extraTurn = b.extraTurn; S.armed = b.armed || null; S.select = b.select || null;
   S.playing = b.playing || null;
+  S.pile = arr(b.pile, (b.pile && b.pile.length) || 0).filter(Boolean);
   S.setupNeed = b.setupNeed;
   S.longestRoad = b.longestRoad || { owner:null, len:0 };
   S.largestArmy = b.largestArmy || { owner:null, n:0 };

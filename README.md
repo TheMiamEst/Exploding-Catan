@@ -362,14 +362,35 @@ puts the card you would have been looking for a line about on the table, face
 up, where you can point at it. The log is back to being what it should be:
 worth reading, never required.
 
-The pile is read off the **journal**, not off `S.discard`, which is the other
-obvious source and the wrong one. `S.discard` is a bag of cards; the pile has
-to say who played each one, at whom, and whether it can still be answered, and
-all of that is already on the journal entry. Taking it from there means the
-pile and the log can never disagree about what happened. A Nope and a Defuse
-are journalled as the answer rather than as a card play, so they carry `spent`
-instead of `card` — they are still cards somebody played and they still belong
-on the pile, so `spent` now travels to terminals too.
+**The pile keeps its own record** — `S.pile`, appended to as cards are played.
+
+It used to be read off the journal, which knows who played what at whom and
+looked like the obvious place for it. It is not, and a Nope is why: answering a
+card rewinds the board by splicing the entry it answers off the journal, along
+with everything after it. So the card that had just been played vanished off
+the pile as though it had never been played at all. It had been. It was played,
+it was cancelled, and it is lying face up on the table where everybody can see
+it.
+
+The pile and the journal now disagree in exactly one way, on purpose:
+
+- the **answered card stays**, greyed, with `cancelled` stamped across it — it
+  really was spent, and the code pushes it onto `S.discard` by hand;
+- anything rewound **behind** the answer **leaves**, because `restoreAll` has
+  just put those cards back in their owners' hands. A pile that still showed
+  them would be describing cards that are no longer in it.
+
+That is `pileCancel` and `pileDrop`. Everything that reaches the journal with a
+card on it reaches the pile through `logAction`, which is the one place journal
+entries are made — a played card, and a Nope or a Defuse, which are journalled
+as the answer rather than as a play and so carry `spent` instead of `card`. The
+Imploding Kitten is the one card that is neither: it fires straight out of the
+deck and never belongs to anybody, so it is handed over explicitly as
+`pileCard`.
+
+The pile travels to terminals as its own list. It could not be rebuilt at the
+far end even in principle — a terminal is sent a shorter tail of the journal
+than the pile covers.
 
 ### What a Nope does now
 
