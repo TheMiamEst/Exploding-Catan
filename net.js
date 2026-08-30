@@ -232,7 +232,7 @@ function serializeGame(){
       // show them like any other card somebody played.
       spent: e.spent ? { pid: e.spent.pid, key: e.spent.key } : null,
       cardOwner: e.cardOwner, participants: e.participants || null,
-      noDefuse: !!e.noDefuse,
+      noDefuse: !!e.noDefuse, notice: !!e.notice,
       show: e.show || null, plain: e.plain, snap: 1,
       // Somebody already spent a Defuse on this one. Travels so the marker
       // stops offering itself the moment it is settled, rather than letting a
@@ -450,6 +450,10 @@ function handleIntent(m){
     case "vertex":      if (mine || ownsSelect(seat)) vertexClick(a[0]); break;
     case "edge":        if (mine || ownsSelect(seat)) edgeClick(a[0]); break;
     case "hex":         if (mine || ownsSelect(seat)) hexClick(a[0]); break;
+    // Choosing who a card is aimed at, by clicking their portrait. Guarded by
+    // ownsSelect like the board clicks: the pick belongs to whoever played the
+    // card, and nobody else may answer it for them.
+    case "seat":        if (ownsSelect(seat)) seatClick(a[0]); break;
     case "buy":         if (mine){ NET.promptSeat = seat; buyKittenDialog(); } break;
     case "bankTrade":   if (mine){ NET.promptSeat = seat; bankTradeDialog(); } break;
     case "playerTrade": if (mine){ NET.promptSeat = seat; playerTradeDialog(); } break;

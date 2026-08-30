@@ -369,10 +369,18 @@ on the pile, so `spent` now travels to terminals too.
 
 Two uses, and they no longer bleed into each other.
 
-When the card on the pile is one **you** can answer, the pile is marked the way
-the log marks an answerable line: the card that would answer it pinned to the
-corner, pulsing, plus the word **answer**. It appears only while you are
-actually holding that card, so it still tells the rest of the table nothing.
+When the card on the pile is one **you** can **Defuse**, the pile is marked the
+way the log marks an answerable line: the Defuse pinned to the corner, pulsing,
+plus the word **answer**. It appears only while you are actually holding one,
+so it still tells the rest of the table nothing.
+
+A **Nope** never puts a badge up. It answers almost anything, so the mark was
+on the pile more often than it was off it — and a prompt that is always on is
+not a prompt. The card lights up in your own hand when it can be played, which
+is the quiet version of the same thing, and the event worth Noping gets a popup
+of its own without needing to name the card. A Defuse is the opposite case:
+narrow, easy to miss, gone the moment the window shuts. That one is worth
+shouting about.
 
 **On a card** — dropped on the discard pile, or still on a log line if you
 prefer — it cancels that card. The card is spent, what it was going to do does
@@ -402,8 +410,8 @@ different thing from taking the knight.
 
 ### Aiming a card after you have played it
 
-Every kitten card is played by dropping it on the discard pile. **The board is
-no longer a place to play a card at all.** Knight, Alter the Future and Reverse
+Every kitten card is played by dropping it on the discard pile. **Neither the
+board nor a seat card is a place to play one any more.** Knight, Alter the Future and Reverse
 used to be dropped on the board while everything else was dropped on a player,
 which meant knowing which of two gestures a card wanted before you could play
 it — and nothing on screen said which. They all go to the pile, and the ones
@@ -411,8 +419,17 @@ that need a board answer ask for it afterwards, the same way the targeted ones
 ask who they are for. One place to play a card, and one sentence that describes
 where every card in the game goes.
 
-For the ones that need a victim the game stops — the turn clock pauses — and
-asks who it is for.
+For the ones that need a victim, the game stops — the turn clock pauses — and
+the seats it could be aimed at **glow**. Click a face. That replaced a dialog
+listing everybody's name as buttons, which had replaced dragging the card onto
+somebody's seat card, and it is better than both: the dialog put a box over the
+table naming players you were already looking at, and dragging was fine to use
+and impossible to discover. Escape puts the card back and restarts the clock.
+
+A **Nope** dropped on the pile does whichever of its two jobs is available. If
+the card lying there can still be answered, it cancels that card. If it cannot
+— nothing played, or the window shut — the seats light up instead and you pick
+whose whole turn to cancel.
 
 This is the way round it should always have been. Dragging a card onto
 somebody's seat card means choosing the target **before** the card is played,
@@ -424,6 +441,27 @@ question. Favor chains straight on into naming its three resources.
 
 Aiming a card at a seat still works and is quicker. Nothing here takes that
 away.
+
+### Popups for the things that have no card
+
+A seven gets a popup. A played card gets a popup. Three things that matter just
+as much had nothing but a line in the log, and all three now turn over on every
+screen:
+
+- a **robbery**, which has no card of its own and is the most Defusable thing
+  in the game;
+- a **turn running out** on the clock, which is the one thing that happens
+  because nobody did anything, and so had nothing to announce it;
+- a **win being taken away** by the forced Nope — the biggest moment the game
+  has.
+
+The last two are journalled as **notices**: entries that say something happened
+without anything having happened. That matters more than it sounds. Journal
+entries are what `turnStartSnap` walks to find where a turn began, and it
+treats an un-Nopeable entry as a line drawn under everything before it — so an
+announcement about a cancelled turn, written just before the cancel, would have
+wiped out the very snapshot the cancel was about to rewind to. `notice` entries
+are skipped there. They carry no snapshot either, so they can never be answered.
 
 ### Being asked to answer
 

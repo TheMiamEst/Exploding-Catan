@@ -83,6 +83,18 @@
       "av   name"
       "av   board";
   }
+  /* Waiting to be chosen. A card has been played and the table is held while
+     whoever played it says who it is for; the seats it may legally be aimed
+     at breathe until one is clicked. */
+  .pcard.pickable{
+    cursor:pointer; border-color:#7fc48f;
+    animation:pickglow 1.15s ease-in-out infinite alternate;
+  }
+  @keyframes pickglow{
+    from{box-shadow:0 0 0 2px #7fc48f2e, 0 0 12px #7fc48f1f}
+    to  {box-shadow:0 0 0 4px #7fc48f77, 0 0 26px #7fc48f55}
+  }
+  .pcard.pickable:hover{border-color:#a6e6b4}
   .pcard.active{
     border-color:var(--accent); border-left-color:var(--pc);
     box-shadow:0 0 0 2px var(--accent) inset;
@@ -925,6 +937,18 @@
   /* The Imploding Kitten is not so much drawn as arrived at. It spins up out
      of nothing, half again the size of any other card, and stops dead at full
      size — the one card the whole table has to look at. */
+  /* Two moments with no card to turn over: a turn running out, and a win
+     being taken away. Same footprint as the seven's disc so they land with the
+     same weight. */
+  .showglyph{
+    width:clamp(84px, 13vh, 116px); aspect-ratio:1; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:clamp(38px, 6vh, 56px); line-height:1;
+    box-shadow:0 26px 64px #000d; animation:sevenin .5s cubic-bezier(.2,.9,.3,1.3) both;
+  }
+  .showglyph.timeout{background:#2a2f3a; border:3px solid #7f8ba0; color:#e7ebf1}
+  .showglyph.winnoped{background:#3a2b1c; border:3px solid var(--accent); color:#ffd77a}
+
   /* The answer prompt: the card you hold, with the word on it. Blue like every
      other "you may respond to this" thing on the screen. */
   .showcard.answer{
@@ -1371,7 +1395,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29e";
+const GAME_VERSION = "2026-08-29f";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2091,6 +2115,7 @@ function turnStartSnap(){
   let snap = null;
   for (const e of S.journal){
     if (e.turn !== S.turnCounter) continue;
+    if (e.notice) continue;                               // says something, does nothing
     if (e.nopeable === false){ snap = null; continue; }   // begin again after it
     if (!snap && e.snap) snap = e.snap;
   }
@@ -3030,8 +3055,10 @@ function drawPlayers(){
   let h = "";
   for (const p of S.players){
     const active = p.id === S.cur && S.phase !== "over";
-    h += `<div class="pcard ${active ? "active" : ""} ${p.skipTokens ? "done" : ""}"
+    const pick = seatPickable(p.id);
+    h += `<div class="pcard ${active ? "active" : ""} ${p.skipTokens ? "done" : ""} ${pick ? "pickable" : ""}"
                 data-pid="${p.id}"
+                ${pick ? `onclick="seatClick(${p.id})"` : ""}
                 style="--pc:${p.color}; --pcTint:${p.color}26; --pcEdge:${p.color}88">
             ${avatarHTML(p)}
             <div class="pname">
@@ -3250,15 +3277,22 @@ function answerMarks(e){
   const p = S.players[me];
   if (!p) return "";
   const fresh = c => c.boughtTurn !== S.turnCounter || playableWhenDrawn(c);
+  /* A DEFUSE only.
+
+     The Nope used to put its own badge up here too, and it was too much: a
+     Nope answers almost anything, so the badge was on the pile more often than
+     it was off it, and a prompt that is always on is not a prompt. The card
+     lights up in your own hand when it can be played, which is the quiet
+     version of the same thing and is enough — and the event that would be
+     Noped gets a popup of its own without needing to name the card.
+
+     A Defuse is the opposite case: narrow, easy to miss, and gone the moment
+     the window closes. That one is worth shouting about. */
   const canD = p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, me);
-  const canN = p.cards.some(c => c.key === "nope"   && fresh(c)) && canNopeFor(e, me);
-  if (!canD && !canN) return "";
-  let marks = "";
-  if (canD) marks += markFace("defuse", "defuse", "Drop your Defuse here to answer this");
-  if (canN) marks += markFace("nope", "nope",
-    e.kind === "roll" ? "Drop your Nope here to throw again"
-                      : "Drop your Nope here to cancel this card");
-  return '<div class="evmarks">' + marks + '</div><span class="disctag">answer</span>';
+  if (!canD) return "";
+  return '<div class="evmarks">' +
+           markFace("defuse", "defuse", "Drop your Defuse here to answer this") +
+         '</div><span class="disctag">answer</span>';
 }
 
 function drawDiscard(){
@@ -3315,15 +3349,14 @@ window.addEventListener("wheel", function(ev){
   const el = ev.target && ev.target.closest && ev.target.closest("#discardWrap");
   if (!el) return;
   ev.preventDefault();
-  // Forward, away from you, digs DOWN the pile towards older cards: the newest
-  // is on top and you lift it off to see the one underneath.
-  //
-  // The wheel always did this. What did not were the two arrows that used to
-  // sit under the pile, where the up arrow went to older cards and the down
-  // arrow to newer ones - so pressing "down" climbed back towards the card you
-  // were already looking at and, at the top of the pile, did nothing at all.
-  // They are gone with the rest of the furniture.
-  scrollDiscard(ev.deltaY > 0 ? 1 : -1);
+  /* Pushing the wheel FORWARD, away from you, walks from the top card down
+     towards the bottom of the pile.
+
+     Forward is a negative deltaY - the browser reports pushing the wheel away
+     as scrolling up - which is why reading "forward" as deltaY > 0 got this
+     backwards twice. Pulling the wheel back climbs towards the newest card
+     again. */
+  scrollDiscard(ev.deltaY < 0 ? 1 : -1);
 }, { passive: false });
 
 function drawDeck(){
@@ -3431,7 +3464,11 @@ function drawBottom(){
     // The buttons are gated anyway; this is so a folded-away window does not
     // read as a game that has stopped responding.
     h += `<span class="thinking owed">⏳ ${
-            S.select ? "finish the move on the board"
+            (S.select && S.select.kind === "seat")
+              ? (S.select.purpose === "nopeturn"
+                   ? "click the portrait of the player whose turn you are cancelling"
+                   : "click the portrait of the player you are aiming at")
+          : S.select ? "finish the move on the board"
           : (S.seven && !owesSevenCut(p.id)) ? "waiting on the seven to be paid"
           : "finish the open window first"}</span>`;
   } else if (S.phase === "roll"){
@@ -3703,6 +3740,16 @@ function drawHint(){
     ours = !anyBots() || myTurnNow();
   }
   if (!ours){ hint(null); return; }
+  // Aiming a card that has already been played. Said here rather than shouted
+  // once from beginSeatPick, because every repaint runs through this function
+  // and would wipe anything set from outside it.
+  if (S.select && S.select.kind === "seat"){
+    hint(S.select.purpose === "nopeturn"
+         ? "Click the portrait of the player whose turn you are cancelling."
+         : "Click the portrait of the player you are aiming " +
+           ((KITTEN[S.select.key] && KITTEN[S.select.key].name) || "it") + " at.", true);
+    return;
+  }
   if (S.armed){
     const what = S.armed.kind;
     if (what === "robber"){
@@ -4505,6 +4552,7 @@ document.addEventListener("keydown", e => {
   if (!S) return;
   if (dragCard || pressPend){ cancelCardDrag(); return; }   // drop the card
   if (S.armed){ disarm(); return; }
+  if (S.select && S.select.kind === "seat"){ cancelSeatPick(); return; }
   if (S.select && !S.phase.startsWith("setup") && S.select.kind !== "robber"){
     S.select = null; render();
   }
@@ -4997,6 +5045,12 @@ function playCard(idx, ownerId){
    Aiming a card straight at a seat still works and is quicker. Nothing here
    takes that away. */
 
+/* Is there a turn going that this player could cancel outright? */
+function canNopeTurnNow(me){
+  if (!S || S.phase === "over" || S.phase.startsWith("setup")) return false;
+  return S.cur !== me && !implodeActive();
+}
+
 /* May this card be played to the pile at all, by this player, right now? */
 function canPlayToPile(key, me){
   if (!S || S.phase === "over" || S.phase.startsWith("setup")) return false;
@@ -5021,7 +5075,7 @@ function playToPile(idx, ownerId){
   const def = KITTEN[c.key];
   if (!def || !canPlayToPile(c.key, ownerId)) return;
 
-  if (def.kind === "target"){ targetPickDialog(c, idx, ownerId); return; }
+  if (def.kind === "target"){ beginSeatPick(ownerId, c, "target"); return; }
 
   // Everything else already knows what it is going to do. Alter the Future
   // still asks for its two tokens on the board, exactly as it does when it is
@@ -5038,44 +5092,73 @@ function playToPile(idx, ownerId){
   render();
 }
 
-/* Who is it for? Asked after the card is played, with the game held while the
-   question is on screen — the turn clock stops, so nobody is choosing a victim
-   against a countdown. */
-function targetPickDialog(c, idx, ownerId){
-  const def = KITTEN[c.key];
-  const asker = S.players[ownerId];
-  pauseTurnTimer("choice");
-  promptFor(ownerId);
-  const others = S.players.filter(q => q.id !== ownerId);
-  const face = cardArt({ key: c.key, flavor: c.flavor || null });
-  let h = '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px">';
-  if (face) h += '<img src="' + face + '" alt="" style="width:64px;border-radius:7px;' +
-                 'border:1px solid var(--line);flex:0 0 auto">';
-  h += '<p class="sub" style="margin:0"><b>' + esc(def.name) + "</b> \u2014 " +
-       esc(def.text) + "</p></div>";
-  h += '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Who is it for?</div>';
-  h += '<div class="pick">';
-  for (const q of others){
-    h += '<button onclick="window.__tp(' + q.id + ')">' +
-           '<span class="dot" style="background:' + q.color +
-           ';display:inline-block;vertical-align:-2px;margin-right:6px"></span>' +
-           esc(q.name) + "</button>";
-  }
-  h += "</div>";
+/* Who is it for? Asked after the card is played, by lighting up the people it
+   could be aimed at and waiting for one to be clicked.
 
-  window.__tp = function(tid){
-    closeModal();
-    const p = S.players[ownerId];
-    // The hand may have moved under the dialog - a Nope answered somewhere
-    // else, a rewind - so find the card again rather than trusting the index.
-    if (p.cards.indexOf(c) < 0) return;
-    if (c.key === "favor"){ favorGuessDialog(c, p.cards.indexOf(c), tid, ownerId); return; }
-    playResolved({ type:"card", card:c, actor:ownerId, target:tid, payload:{} });
-    render();
-  };
-  openModal("Play " + def.name, h,
-            [{ label:"Put it back", fn: () => { closeModal(); render(); } }],
-            { mini: true });
+   This replaced a dialog listing everybody's name as buttons, which replaced
+   dragging the card onto somebody's seat card. The dialog was the worse of the
+   three: it put a box over the table naming players you were already looking
+   at, and it asked you to read when you could have been pointing. Dragging was
+   fine to use and impossible to discover — nothing said an Attack was a thing
+   you aimed, so the card had two quite different homes depending on which one
+   it was and no way to tell which.
+
+   Playing to the pile and then clicking a face is one gesture for every card
+   in the game, and the thing you click is the thing you mean. The table is
+   held while it is open: the turn clock stops, so nobody picks a victim
+   against a countdown. */
+function beginSeatPick(actorId, card, purpose){
+  pauseTurnTimer("choice");
+  S.select = { kind:"seat", actor: actorId, cardId: card.id,
+               key: card.key, purpose: purpose };
+  // The wording lives in drawHint, which runs on every repaint and would
+  // overwrite anything set from out here.
+  render();
+}
+
+/* May this seat be chosen for whatever is currently being aimed?
+   Asked of every seat card on every screen, so it is also what draws the
+   glow — one answer, so the light and the click can never disagree. */
+function seatPickable(pid){
+  const s = S && S.select;
+  if (!s || s.kind !== "seat") return false;
+  if (pid === s.actor) return false;
+  if (S.phase === "over" || S.phase.startsWith("setup")) return false;
+  // Cancelling a turn can only be aimed at the person having one.
+  if (s.purpose === "nopeturn") return pid === S.cur && !implodeActive();
+  return true;
+}
+
+function seatClick(pid){
+  const s = S && S.select;
+  if (!s || s.kind !== "seat") return;
+  if (netSend("seat", [pid])) return;
+  if (!seatPickable(pid)) return;
+  const actor = S.players[s.actor];
+  // The hand can move while the question is open - a Nope answered elsewhere,
+  // a rewind - so the card is found again by id rather than by where it was.
+  const card = actor && actor.cards.find(c => c.id === s.cardId);
+  S.select = null;
+  hint(null);
+  resumeTurnTimer();
+  if (!card){ render(); return; }
+  if (s.purpose === "nopeturn"){ nopeWholeTurn(s.actor, pid); render(); return; }
+  if (card.key === "favor"){
+    favorGuessDialog(card, actor.cards.indexOf(card), pid, s.actor);
+    return;
+  }
+  playResolved({ type:"card", card: card, actor: s.actor, target: pid, payload: {} });
+  render();
+}
+
+/* Thought better of it. The card was never played, so there is nothing to put
+   back but the clock. */
+function cancelSeatPick(){
+  if (!S || !S.select || S.select.kind !== "seat") return;
+  S.select = null;
+  hint(null);
+  resumeTurnTimer();
+  render();
 }
 
 /* The confirmation prompts that used to stand between a click and a card
@@ -5319,6 +5402,14 @@ function logAction(html, kind, opts){
     // Undoing this must not also end its actor's turn: it was defensive, and
     // played out of turn. Set by the Defuse spent on a seven.
     turnSafe: !!opts.turnSafe,
+    /* Nothing happened; this entry only says that something did.
+       A notice exists to put a moment on screen for everybody, including the
+       screens that are only watching. It must be invisible to turnStartSnap,
+       which walks this same journal looking for where a turn began and treats
+       an un-Nopeable entry as a line under everything before it - so a notice
+       announcing a cancelled turn would wipe out the very snapshot the cancel
+       is about to rewind to. */
+    notice: !!opts.notice,
     nopeable: opts.nopeable !== false,
     noped: false,
     plain: String(html).replace(/<[^>]+>/g, "").trim()
@@ -6142,8 +6233,12 @@ function forcedWinNope(winner, pid){
   const i = p.cards.findIndex(c => c.key === "nope");
   S.discard.push(p.cards.splice(i, 1)[0]);
   logMsg(`<b>${winner.name}</b> reaches ${S.winPoints} VP — <b>${p.name}</b> is forced to Nope it.`);
-  announce("🏆 " + pdot(winner) + " reached " + S.winPoints + " VP — " + pdot(p) +
-           " is <b>forced to Nope</b> it", "big", 6000);
+  // The biggest moment the game has, and it used to be a line in the log.
+  // A notice, so that saying it cannot disturb the rewind that follows.
+  logAction("🏆 " + pdot(winner) + " reached " + S.winPoints + " VP — " + pdot(p) +
+            " is <b>forced to Nope</b> it", "big",
+            { actor: winner.id, target: pid, nopeable: false, notice: true,
+              show: "winnoped" });
   // Only the player being forced gets a prompt. Everyone else just sees it
   // happen — being asked to confirm somebody else's obligation is noise.
   if (isBot(pid)){ cancelTurn(winner.id, true); return; }
@@ -6209,7 +6304,11 @@ function turnTimerTick(){
   S.turnTimerUntil = 0;
   if (!S.pending && !S.select && (S.phase === "main" || S.phase === "roll")){
     logMsg("⏱ " + pdot(cur()) + "'s turn timer expires.");
-    announce("⏱ " + pdot(cur()) + "'s turn ends", "attack");
+    // Journalled rather than announced, so it turns over on every screen the
+    // way a played card does. Nobody should have to be reading the log to
+    // notice that a turn ended without anybody doing anything.
+    logAction("⏱ " + pdot(cur()) + " runs out of time — their turn ends", "attack",
+              { actor: S.cur, nopeable: false, notice: true, show: "timeout" });
     doEndTurn();
   } else {
     S.turnTimerPaused = true;
@@ -7745,25 +7844,35 @@ function iCanAnswer(e){
    thing that did NOT was the thing you are actually being asked to react to,
    which is backwards. */
 function answerShowcase(e){
-  const me = viewSeat();
-  const p = S && S.players[me];
-  if (!p) return;
-  const fresh = c => c.boughtTurn !== S.turnCounter || playableWhenDrawn(c);
-  const canD = p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, me);
-  const key = canD ? "defuse" : "nope";
-  const face = art("card", key);
+  const face = art("card", "defuse");
   showcase('<div class="showcard answer">' +
              (face ? '<img src="' + face + '" alt="">'
-                   : '<span class="kn">' + esc(KITTEN[key].name) + "</span>") +
+                   : '<span class="kn">' + esc(KITTEN.defuse.name) + "</span>") +
            '<span class="answerflag">answer</span></div>',
            tintNames(String(e.plain).replace(/\s+/g, " ")) +
-             '<br><span class="answerline">You can ' +
-             (canD ? "Defuse" : "Nope") + " this \u2014 drop the card on the pile</span>",
+             '<br><span class="answerline">You can Defuse this \u2014 drop the card on the pile</span>',
            "defend", 2600);
 }
 
 function showEntry(e){
   const answerable = iCanAnswer(e);
+  // A turn that ended because nobody did anything, and a win taken off
+  // somebody the instant they earned it. Both were log lines; both are the
+  // sort of thing the whole table needs to look up for.
+  /* The glyph is already the biggest thing on screen, so the caption does
+     not repeat it - otherwise the line carries the same symbol twice. */
+  const bare = String(e.plain).replace(/\s+/g, " ")
+                              .replace(/^[\u23f1\u{1F3C6}]\ufe0f?\s*/u, "");
+  if (e.show === "timeout"){
+    showcase('<div class="showglyph timeout">\u23f1</div>',
+             tintNames(bare), "seven", 2400);
+    return;
+  }
+  if (e.show === "winnoped"){
+    showcase('<div class="showglyph winnoped">\u{1F3C6}</div>',
+             tintNames(bare), "big", 3600, true);
+    return;
+  }
   if (e.show === "seven"){
     showcase('<div class="showseven">7</div>',
              tintNames((S.players[e.actor] ? S.players[e.actor].name : "") +
@@ -8160,7 +8269,7 @@ function cardDestinationHint(c){
   if (c.boughtTurn === S.turnCounter) return def.name + " was bought this turn — it plays next turn.";
   if (def.kind === "vp") return "Feral Kittens are never played — they are points in your hand.";
   if (c.key === "defuse") return "Drop Defuse on the discard pile to turn the card on it around.";
-  if (c.key === "nope") return "Drop Nope on the discard pile to cancel the card on it, or on the player whose turn it is to cancel their whole turn.";
+  if (c.key === "nope") return "Drop Nope on the discard pile: it cancels the card lying there, or asks whose whole turn to cancel if there is nothing to answer.";
   return "Drop " + def.name + " on the discard pile — it will ask for anything else it needs.";
 }
 
@@ -8292,14 +8401,18 @@ function dropAllowed(info, drop){
      it: you no longer have to know in advance who a card is aimed at and hit
      their seat with it. Play it to the pile and the game stops and asks. */
   if (drop.kind === "pile"){
-    if (key === "nope" || key === "defuse"){
-      const e = drop.jid === null ? null : S.journal.find(x => x.id === drop.jid);
-      if (!e) return false;
-      return key === "nope" ? canNopeFor(e, me) : canDefuseEntry(e, me);
-    }
+    const e = drop.jid === null ? null : S.journal.find(x => x.id === drop.jid);
+    if (key === "defuse") return !!e && canDefuseEntry(e, me);
+    /* A Nope has two jobs and one gesture. Dropped on the pile it answers the
+       card lying there, if that card can still be answered; if it cannot -
+       nothing played, or the window shut - it goes after a whole turn instead,
+       and the seats light up for you to say whose. */
+    if (key === "nope") return (!!e && canNopeFor(e, me)) || canNopeTurnNow(me);
     return canPlayToPile(key, me);
   }
-  if (drop.kind === "player") return pcardAccepts(key, me, drop.pid);
+  /* A seat card is no longer somewhere you can drop a card. Everything is
+     played to the pile and aimed afterwards - see beginSeatPick. */
+  if (drop.kind === "player") return false;
   /* The board is no longer a place to play a card.
 
      Knight, Alter the Future and Reverse used to be dropped on the board while
@@ -8331,31 +8444,11 @@ function markDropTargets(){
     if (dropAllowed(dragCard, { kind:"pile", jid: shown ? shown.id : null, el: pile }))
       pile.classList.add("droppable");
   }
-  document.querySelectorAll(".pcard[data-pid]").forEach(el => {
-    if (dropAllowed(dragCard, { kind:"player", pid:+el.dataset.pid, el })) el.classList.add("droppable");
-  });
   document.querySelectorAll(".ev[data-jid]").forEach(el => {
     if (dropAllowed(dragCard, { kind:"entry", jid:+el.dataset.jid, el })) el.classList.add("droppable");
   });
   const hand = document.querySelector('.hand[data-hand="' + me + '"]');
   if (hand) hand.classList.add("droppable");
-}
-
-function pcardAccepts(key, me, pid){
-  if (!S || S.phase === "over" || S.phase.startsWith("setup")) return false;
-  if (key === "nope") return pid === S.cur && pid !== me && !implodeActive();
-  // Noping a turn is a reaction and stays open above; starting something new
-  // while you still owe an answer does not.
-  if (owesAnswer()) return false;
-  if (key === "defuse") return false;                  // Defuse answers an entry
-  if (key === "vp") return false;
-  const def = KITTEN[key];
-  if (!def || def.kind !== "target") return false;
-  if (pid === me || S.pending) return false;
-  // On your own turn you may aim any targeted card. Off your turn only the two
-  // direct attacks may be thrown — the same cards the rules already let you
-  // interrupt with, and exactly the ones that could not be dragged before.
-  return me === S.cur ? true : OFF_TURN.has(key);
 }
 
 /* ── doing the drop ──────────────────────────────────────────────────── */
@@ -8370,8 +8463,13 @@ function performDrop(info, drop){
   if (drop.kind === "hand"){ reorderHand(ownerId, idx, drop.overIdx); return; }
 
   if (drop.kind === "pile"){
-    if (key === "nope"){ nopeEntry(drop.jid, ownerId); return; }
     if (key === "defuse"){ defuseEntry(drop.jid, ownerId); return; }
+    if (key === "nope"){
+      const e = drop.jid === null ? null : S.journal.find(x => x.id === drop.jid);
+      if (e && canNopeFor(e, ownerId)) nopeEntry(drop.jid, ownerId);
+      else beginSeatPick(ownerId, card, "nopeturn");
+      return;
+    }
     playToPile(idx, ownerId);
     return;
   }
@@ -8382,11 +8480,6 @@ function performDrop(info, drop){
     return;
   }
 
-  const pid = drop.pid;
-  if (key === "nope"){ nopeWholeTurn(ownerId, pid); return; }
-  if (key === "favor"){ favorGuessDialog(card, idx, pid, ownerId); return; }
-  playResolved({ type:"card", card, actor:ownerId, target:pid, payload:{} });
-  render();
 }
 
 /* Dropping a Nope on whoever is playing cancels their whole turn — the second
@@ -8566,13 +8659,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29e"></script>
+<script src="ai.js?v=2026-08-29f"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29e"></script>
-<script src="net.js?v=2026-08-29e"></script>
+<script src="firebase-config.js?v=2026-08-29f"></script>
+<script src="net.js?v=2026-08-29f"></script>
 </body>
 </html>
