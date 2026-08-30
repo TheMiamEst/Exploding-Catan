@@ -1156,6 +1156,16 @@ function tickNow(){
     return schedule(IDLE);
   }
 
+  // A card is still being turned over in the middle of the board. Wait for it.
+  // Bots move faster than anybody can read, and playing the next card while
+  // the last one is still on screen stacked reveals two and three deep - the
+  // queue would drop the middle one and the table would simply never see it.
+  // One at a time, so every play gets its moment.
+  if (typeof showcaseBusy === "function" && showcaseBusy()){
+    guard = 0;
+    return schedule(IDLE);
+  }
+
   // A forced board selection may belong to a bot even on a human's turn
   // (a Defused knight hands the robber to whoever defused it).
   const owner = selectOwner();

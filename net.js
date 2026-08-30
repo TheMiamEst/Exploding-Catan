@@ -270,14 +270,26 @@ function viewFor(blob, seat){
     return q;
   });
   v.fx = (blob.fx || []).map(f => {
-    if (!f.privatePid) return f;
-    if (f.privatePid === seat){
+    /* `!f.privatePid` was the test here, which is false for seat 0 — so every
+       robbery by the player in the first seat travelled unredacted, private
+       bundle and all, to everybody at the table. Ask whether the field is
+       there, not whether it is truthy. */
+    const owner = (f.privatePid === undefined || f.privatePid === null) ? null : f.privatePid;
+    if (owner === null) return f;
+    // The owner, and whoever it came off. A robbery is between two people and
+    // both of them are entitled to know which card moved; the rest of the
+    // table gets the count and a row of card backs.
+    if (owner === seat || f.f === seat){
       const out = Object.assign({}, f);
-      out.b = f.privateBundle || {};
+      if (f.privateBundle) out.b = f.privateBundle;
+      if (f.privateCard) out.c = f.privateCard;
       delete out.privateBundle;
+      delete out.privateCard;
       return out;
     }
-    return { id:f.id, t:f.t, f:f.f, o:f.o, d:1, n:f.n };
+    // `p` rides along because a kitten draw is keyed by it and would otherwise
+    // arrive with no idea whose hand it was going to.
+    return { id:f.id, t:f.t, f:f.f, o:f.o, p:f.p, d:1, n:f.n };
   });
   v.seat = seat;
   v.roster = NET.roster;

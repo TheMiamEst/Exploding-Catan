@@ -340,7 +340,11 @@ the deck you only ever click. Both are card-sized rather than thumbnail-sized.
 The discard pile is every kitten card anybody has played, face up, newest on
 top. Nothing is written under it — what the card is, it says by being face up,
 and who played it at whom is what the log is for. Scroll the wheel over it to
-dig down towards older cards and back up again.
+dig down towards older cards and back up again: scrolling the way you would
+scroll **down** a page walks from the top card towards the bottom of the pile.
+Worth stating in those terms, because "forward" turned out to mean opposite
+things to the person writing this and the person using it — twice, in both
+directions.
 
 The arrows that used to sit under the pile are gone, and good riddance: the up
 arrow went to older cards and the down arrow to newer ones, so pressing "down"
@@ -441,6 +445,68 @@ question. Favor chains straight on into naming its three resources.
 
 Aiming a card at a seat still works and is quicker. Nothing here takes that
 away.
+
+### Cards land where the cards are
+
+Your own cards fly to your own hand — resources to the resource row, kitten
+cards to the hand beside it. Everybody else's still arrive at their seat card,
+because a number about to change is all you can see of somebody else's hand
+anyway. Watching a card you had just been given land on a counter above the
+board, while the actual card appeared somewhere else entirely, never said
+"this one is yours".
+
+A kitten card you drew turns face up on the way into your hand. Nobody else
+sees which one it was; the identity rides in a `privateCard` field that net.js
+strips for every other seat, the same way a robbery's does.
+
+**A robbery is now face up at both ends of it.** It travels face down so the
+table cannot read what was taken — but the person it was taken *from* is not
+"the table". They were holding the card; they are entitled to see which one
+left. Only they and the thief get the identity, which is exactly the two people
+who would know at a real table.
+
+That redaction had a hole in it, and it was seat-shaped:
+
+```js
+if (!f.privatePid) return f;      // seat 0 is falsy
+```
+
+Every robbery by the player in the **first seat** therefore fell straight
+through the redaction and travelled to the whole table with its private bundle
+intact, readable by anyone who opened devtools. It asks whether the field is
+*there* now, rather than whether it is truthy.
+
+### Nothing gets selected by dragging across the table
+
+Nothing on the table is text. A drag that started on the board used to sweep a
+blue selection across every hex, number and player name it crossed, which looks
+broken and on some browsers eats the drag that was meant to be happening.
+`user-select` is off for the page and back on for the places where words are
+worth selecting: the log, the chat, dialogs and panels.
+
+### One thing at a time
+
+A card played turns over in the middle of the board for a couple of seconds.
+The pile used to take it at the same instant, so the same card was in two
+places at once and the quiet one in the corner was the one you noticed second
+and believed first. **The pile now waits for the reveal to finish.** Entries
+with no reveal of their own pass straight through.
+
+**Bots wait too.** They move faster than anybody can read, and playing the next
+card while the last one is still on screen stacked the reveals two and three
+deep — at which point the queue drops the middle one and the table simply never
+sees it. The driver holds while `showcaseBusy()`.
+
+Two things make that safe rather than a new way to wedge the table:
+
+- `showcaseBusy()` is **capped**. Every reveal ends on a timer, and a timer is
+  exactly what does not fire in a browser tab nobody is looking at — so a
+  backgrounded screen could otherwise have held its own game up for ever. Past
+  the longest dwell in the game plus a wide margin, whatever is on screen stops
+  being a reason to wait for it.
+- `clearShowcase` **releases** whatever was queued. A reveal thrown away by a
+  rewind or a new game was released by nobody, and its card never appeared on
+  the pile at all — a permanent hole, one card wide.
 
 ### Popups for the things that have no card
 

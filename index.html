@@ -17,6 +17,12 @@
     background:var(--bg); color:var(--ink);
     font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;
     display:flex; flex-direction:column; overflow:hidden;
+    /* Nothing on the table is text to be selected. A card is dragged by hand
+       with pointer events, and any drag that started on the board used to
+       sweep a blue selection across every hex, number and player name it
+       crossed - which looks broken, and on some browsers swallows the drag
+       that was meant to be happening. Reading surfaces opt back in below. */
+    user-select:none; -webkit-user-select:none;
     /* Kills the browser's double-tap-to-zoom, which on a fixed full-screen
        layout like this one zooms in on a corner with nothing to scroll back
        out with. Pinch-zooming the page still works, so anyone who needs to
@@ -610,6 +616,11 @@
     opacity:0; transition:opacity .12s;
   }
   #hintslot.on{opacity:1}
+  /* The places where words are worth selecting: the log, the chat, and
+     anything inside a dialog or a side panel. Everywhere else is furniture. */
+  #feed, #chatlog, .modal, .panel, .rank, .sub{
+    user-select:text; -webkit-user-select:text;
+  }
   /* Nothing to say: out of the way entirely, so it can never sit over a
      button on a narrow header even by accident. */
   #hintslot:empty{display:none}
@@ -1395,7 +1406,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29f";
+const GAME_VERSION = "2026-08-29g";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2406,6 +2417,7 @@ function renderIdle(){
   const dk  = document.getElementById("deckWrap");  if (dk) dk.innerHTML = "";
   const dsc = document.getElementById("discardWrap"); if (dsc) dsc.innerHTML = "";
   discardIdx = 0;
+  pileRevealed = 0;
   const dc  = document.getElementById("diceWrap");  if (dc) dc.innerHTML = "";
   const bot = document.getElementById("bottom");
   if (bot){
@@ -3237,11 +3249,26 @@ function entryCardPlayer(e){
   if (e.spent && e.spent.pid !== undefined && e.spent.pid !== null) return e.spent.pid;
   return e.actor;
 }
+/* How far the pile has caught up with the middle of the board.
+
+   A card is turned over in the centre of the screen for a couple of seconds
+   when it is played. It used to land on the pile at the same instant, so the
+   pile was already showing you the answer while the card was still spinning —
+   two copies of the same thing on screen at once, and the corner one was quiet
+   enough to be the one you noticed second and believed first.
+
+   The pile now waits for the reveal to finish. Entries with no reveal of their
+   own pass straight through. */
+let pileRevealed = 0;
+
 function discardStack(){
   if (!S || !S.journal) return [];
   const out = [];
   for (let i = S.journal.length - 1; i >= 0; i--){
-    if (entryCardKey(S.journal[i])) out.push(S.journal[i]);
+    const e = S.journal[i];
+    if (!entryCardKey(e)) continue;
+    if (e.id > pileRevealed) continue;      // still turning over in the middle
+    out.push(e);
   }
   return out;
 }
@@ -3349,14 +3376,12 @@ window.addEventListener("wheel", function(ev){
   const el = ev.target && ev.target.closest && ev.target.closest("#discardWrap");
   if (!el) return;
   ev.preventDefault();
-  /* Pushing the wheel FORWARD, away from you, walks from the top card down
-     towards the bottom of the pile.
-
-     Forward is a negative deltaY - the browser reports pushing the wheel away
-     as scrolling up - which is why reading "forward" as deltaY > 0 got this
-     backwards twice. Pulling the wheel back climbs towards the newest card
-     again. */
-  scrollDiscard(ev.deltaY < 0 ? 1 : -1);
+  /* Scrolling the way you would scroll DOWN a page walks from the top card of
+     the pile towards the bottom of it. Scrolling up climbs back to the newest.
+     That is the whole rule, and it is worth stating in those terms because
+     "forward" turned out to mean opposite things to me and to the person
+     using this, twice, in both directions. */
+  scrollDiscard(ev.deltaY > 0 ? 1 : -1);
 }, { passive: false });
 
 function drawDeck(){
@@ -4990,7 +5015,7 @@ function drawKitten(p){
   c.boughtTurn = S.turnCounter;
   p.cards.push(c);
   touch();
-  flyKitten(p.id);
+  flyKitten(p.id, c);
   if (S.turnRec && p.id === S.cur) S.turnRec.drawn.push(c);
   logMsg(`<b>${p.name}</b> buys a kitten card.`);
   // Only the buyer learns what it was; everyone sees that a card was bought.
@@ -7188,6 +7213,32 @@ function seatKitPoint(pid){
   return centreOf(document.querySelector('.pcard[data-pid="' + pid + '"] .stat.kit')) ||
          seatPoint(pid);
 }
+/* Your own cards fly to your own hand.
+
+   Everybody else's arrive at their seat card, because that is all you can see
+   of somebody else's hand - a number that is about to change. Yours are in
+   front of you, in the bottom bar, and watching a card you have just been
+   given land on a counter above the board while the actual card appears
+   somewhere else entirely never said "this is yours" the way it should.
+
+   Both return null for anybody but the seat at this keyboard, so every caller
+   falls back to the seat card for everybody else. */
+function myResRowPoint(pid){
+  if (!S || pid !== viewSeat()) return null;
+  return centreOf(document.querySelector("#bottom .bcentre .group:not(.hand)"));
+}
+function myHandPoint(pid){
+  if (!S || pid !== viewSeat()) return null;
+  return centreOf(document.querySelector('#bottom .hand[data-hand="' + pid + '"]'));
+}
+/* Where a resource card belongs on this screen, for this player. */
+function resLandPoint(pid){
+  return myResRowPoint(pid) || seatResPoint(pid);
+}
+function kitLandPoint(pid){
+  return myHandPoint(pid) || seatKitPoint(pid);
+}
+
 function boardPoint(x, y){
   const area = document.getElementById("boardArea");
   const pt = area && svgToScreen(x, y);
@@ -7498,7 +7549,12 @@ function flyProduction(sources, paid){
 }
 
 /* A kitten card off the deck and into a hand, back showing the whole way. */
-function flyKitten(pid){ pushFx({ t:"kit", p: pid }); }
+/* Face down on the wire for everybody except the buyer, who is allowed to
+   watch their own card arrive. net.js strips privateCard for everyone else. */
+function flyKitten(pid, card){
+  pushFx({ t:"kit", p: pid,
+           privatePid: pid, privateCard: (card && card.key) || null });
+}
 
 /* Cards leaving one hand for another, or for the bank. `toPid` null means the
    bank, which sits just below the loser's own seat card — the same place their
@@ -7571,7 +7627,7 @@ function checkFlights(){
 
 function playFlight(f){
   if (f.t === "prod")  return playProduction(f.src || []);
-  if (f.t === "kit")   return playKitten(f.p);
+  if (f.t === "kit")   return playKitten(f);
   if (f.t === "cards") return playCardsFx(f);
   if (f.t === "trade") return playTradeFx(f);
 }
@@ -7586,7 +7642,7 @@ function playProduction(src){
     let sent = 0;
     for (const g of src){
       if (sent >= FX_MAX_CARDS) break;
-      const hp = hexPoint(g.h), sp = seatResPoint(g.p);
+      const hp = hexPoint(g.h), sp = resLandPoint(g.p);
       if (!hp || !sp) continue;
       if (!flashed[g.h]){ flashed[g.h] = 1; flashHex(g.h); }
       for (let k = 0; k < g.n && sent < FX_MAX_CARDS; k++, sent++)
@@ -7595,9 +7651,23 @@ function playProduction(src){
   });
 }
 
-function playKitten(pid){
+function playKitten(f){
+  // Older records were just the seat id.
+  const pid = (f && typeof f === "object") ? f.p : f;
+  const key = (f && typeof f === "object") ? f.c : null;
   fxSoon(function(){
-    flyCard(deckPoint(), seatKitPoint(pid), kittenBackHTML(), "kit", 60, 0);
+    const to = kitLandPoint(pid);
+    if (!to) return;
+    // Face up for the person who drew it, into their own hand, because they
+    // are about to be holding it and there is nothing to hide from them. Face
+    // down to everybody else, onto the counter that is about to go up.
+    const mine = key && pid === viewSeat();
+    const art = mine ? cardArt({ key: key, flavor: null }) : null;
+    const inner = mine
+      ? (art ? '<img src="' + art + '" alt="">'
+             : '<span class="fxback">' + esc((KITTEN[key] || {}).name || "") + "</span>")
+      : kittenBackHTML();
+    flyCard(deckPoint(), to, inner, "kit", 60, 0);
   });
 }
 
@@ -7614,11 +7684,20 @@ function benchPoint(pid){
 
 function playCardsFx(f){
   fxSoon(function(){
-    const from = seatResPoint(f.f);
-    const to = (f.o === null || f.o === undefined) ? benchPoint(f.f) : seatResPoint(f.o);
+    const from = resLandPoint(f.f);
+    const to = (f.o === null || f.o === undefined) ? benchPoint(f.f) : resLandPoint(f.o);
     if (!from || !to) return;
     let i = 0;
-    const bundle = f.b || (f.privatePid === viewSeat() ? f.privateBundle : null);
+    /* Face up for both ends of it.
+
+       A robbery travels face down so the table cannot read what was taken —
+       but the person it was taken FROM is not "the table". They held the card;
+       they are entitled to know which one left. Only they and the thief see
+       it, which is exactly the two people who would know at a real table, and
+       net.js hands the identity to those two seats and to nobody else. */
+    const me = viewSeat();
+    const bundle = f.b ||
+      ((f.privatePid === me || f.f === me) ? f.privateBundle : null);
     if (!bundle){
       for (; i < (f.n || 0) && i < FX_MAX_CARDS; i++)
         flyCard(from, to, resBackHTML(), "", 55 * i, i);
@@ -7632,8 +7711,8 @@ function playCardsFx(f){
 
 function playTradeFx(f){
   fxSoon(function(){
-    const pa = seatResPoint(f.a);
-    const pb = (f.b === null || f.b === undefined) ? benchPoint(f.a) : seatResPoint(f.b);
+    const pa = resLandPoint(f.a);
+    const pb = (f.b === null || f.b === undefined) ? benchPoint(f.a) : resLandPoint(f.b);
     if (!pa || !pb) return;
     let i = 0, j = 0;
     for (const r of RES) for (let k = 0; k < (f.g[r] || 0) && i < FX_MAX_CARDS; k++, i++)
@@ -7721,23 +7800,58 @@ const SHOWCASE_WAIT = 2;          // how many may queue behind the one showing
 let showQueue = [];
 let showing = false;
 
+/* Let the pile catch up as far as this entry, and redraw it. */
+function releaseToPile(eid){
+  if (!eid || eid <= pileRevealed) return;
+  pileRevealed = eid;
+  if (S) drawDiscard();
+}
+
+/* Is a card still having its moment? Nothing else should start while one is:
+   see the bot driver, which waits this out rather than stacking the next play
+   on top of it.
+
+   Capped, because the bots now WAIT on this and a wait with no end is a wedged
+   table. Every reveal ends on a timer, and a timer is exactly the thing that
+   does not fire in a browser tab nobody is looking at - so a screen left in
+   the background at the wrong moment could otherwise have held its own game up
+   for ever. Past the longest dwell in the game plus a wide margin, whatever is
+   on screen has stopped being a reason to wait for it. */
+let showcaseSince = 0;
+function showcaseBusy(){
+  if (!showing && !showQueue.length) return false;
+  const cap = IMPLODE_SHOW_MS + SHOWCASE_FADE + 2500;
+  if (showcaseSince && Date.now() - showcaseSince > cap) return false;
+  return true;
+}
+
 function clearShowcase(){
   if (showcaseTimer){ clearTimeout(showcaseTimer); showcaseTimer = null; }
+  /* Whatever was queued is never going to be shown now, so nothing should
+     still be waiting on it. Without this the pile kept a permanent hole in it:
+     a card whose reveal was thrown away - by a rewind, or by a new game - was
+     released by nobody and never appeared on the pile at all. */
+  if (S && S.journal && S.journal.length)
+    pileRevealed = Math.max(pileRevealed, S.journal[S.journal.length - 1].id);
+  showcaseSince = 0;
   showQueue = [];
   showing = false;
   const el = document.getElementById("showcase");
   if (el){ el.hidden = true; el.className = ""; el.innerHTML = ""; }
 }
 
-function showcase(bodyHTML, capHTML, capCls, ms, must){
+function showcase(bodyHTML, capHTML, capCls, ms, must, eid){
   showQueue.push({ body: bodyHTML, cap: capHTML, cls: capCls || "",
-                   ms: ms || SHOWCASE_MS, must: !!must });
+                   ms: ms || SHOWCASE_MS, must: !!must, eid: eid || 0 });
   // Keep the newest — a stale card is worth less than an accurate board. A
   // `must` is never dropped: the Imploding Kitten never reaches a hand, so if
   // its moment is thrown away nobody ever sees the card at all.
   while (showQueue.length > SHOWCASE_WAIT){
     const i = showQueue.findIndex(x => !x.must);
     if (i < 0) break;
+    // Dropped rather than shown, so nothing is left waiting on it: let the
+    // pile have it now or that card would never appear on the pile at all.
+    releaseToPile(showQueue[i].eid);
     showQueue.splice(i, 1);
   }
   if (!showing) runShowcase();
@@ -7746,8 +7860,15 @@ function showcase(bodyHTML, capHTML, capCls, ms, must){
 function runShowcase(){
   const el = document.getElementById("showcase");
   const next = showQueue.shift();
-  if (!el || !next){ showing = false; return; }
+  // No element to draw into: release whatever was waiting on this one rather
+  // than leave it queued behind a reveal that can never happen.
+  if (!el || !next){
+    if (next) releaseToPile(next.eid);
+    showing = false; showcaseSince = 0;
+    return;
+  }
   showing = true;
+  showcaseSince = Date.now();
   if (showcaseTimer) clearTimeout(showcaseTimer);
   el.className = "";
   el.hidden = false;
@@ -7760,8 +7881,10 @@ function runShowcase(){
     showcaseTimer = setTimeout(() => {
       el.hidden = true; el.className = ""; el.innerHTML = "";
       showcaseTimer = null;
+      // Its moment is over: the card may take its place on the pile.
+      releaseToPile(next.eid);
       if (showQueue.length) showcaseTimer = setTimeout(runShowcase, SHOWCASE_GAP);
-      else showing = false;
+      else { showing = false; showcaseSince = 0; }
     }, SHOWCASE_FADE);
   }, dwell);
 }
@@ -7786,11 +7909,21 @@ function checkShowcase(){
   // taken for history and swallowed — which cost the reveal of any card played
   // before anything else had been journalled.
   const newest = S.journal.length ? S.journal[S.journal.length - 1].id : 0;
-  if (lastShowcased < 0 || newest < lastShowcased){ lastShowcased = newest; return; }
+  // Catching up silently: everything already on the record belongs on the pile
+  // too, or a screen joining a game in progress would find it empty.
+  if (lastShowcased < 0 || newest < lastShowcased){
+    lastShowcased = newest;
+    pileRevealed = newest;
+    return;
+  }
   if (!S.journal.length) return;
   for (const e of S.journal){
     if (e.id <= lastShowcased) continue;
     lastShowcased = e.id;
+    // Anything that will not be turned over in the middle is on the pile the
+    // moment it is journalled. showEntry raises this again for the ones that
+    // are, once their moment has finished.
+    if (!e.show) releaseToPile(e.id);
     if (e.show) showEntry(e);
   }
 }
@@ -7865,18 +7998,19 @@ function showEntry(e){
                               .replace(/^[\u23f1\u{1F3C6}]\ufe0f?\s*/u, "");
   if (e.show === "timeout"){
     showcase('<div class="showglyph timeout">\u23f1</div>',
-             tintNames(bare), "seven", 2400);
+             tintNames(bare), "seven", 2400, false, e.id);
     return;
   }
   if (e.show === "winnoped"){
     showcase('<div class="showglyph winnoped">\u{1F3C6}</div>',
-             tintNames(bare), "big", 3600, true);
+             tintNames(bare), "big", 3600, true, e.id);
     return;
   }
   if (e.show === "seven"){
     showcase('<div class="showseven">7</div>',
              tintNames((S.players[e.actor] ? S.players[e.actor].name : "") +
-             " rolls a seven — hands over 7 are cut, and the robber moves"), "seven");
+             " rolls a seven — hands over 7 are cut, and the robber moves"),
+             "seven", 0, false, e.id);
     if (answerable) answerShowcase(e);
     return;
   }
@@ -7890,7 +8024,7 @@ function showEntry(e){
                (iface ? '<img src="' + iface + '" alt="">'
                       : '<span class="kn">Imploding Kitten</span>') +
              "</div>", tintNames(String(e.plain).replace(/\s+/g, " ")),
-             "implode", IMPLODE_SHOW_MS, true);
+             "implode", IMPLODE_SHOW_MS, true, e.id);
     return;
   }
   const def = KITTEN[e.show];
@@ -7903,7 +8037,8 @@ function showEntry(e){
   const face = cardArt({ key: e.show, flavor: (e.card && e.card.flavor) || null });
   showcase('<div class="showcard">' +
              (face ? '<img src="' + face + '" alt="">' : '<span class="kn">' + esc(def.name) + "</span>") +
-           "</div>", tintNames(String(e.plain).replace(/\s+/g, " ")));
+           "</div>", tintNames(String(e.plain).replace(/\s+/g, " ")),
+           "", 0, false, e.id);
   if (answerable) answerShowcase(e);
 }
 
@@ -8659,13 +8794,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29f"></script>
+<script src="ai.js?v=2026-08-29g"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29f"></script>
-<script src="net.js?v=2026-08-29f"></script>
+<script src="firebase-config.js?v=2026-08-29g"></script>
+<script src="net.js?v=2026-08-29g"></script>
 </body>
 </html>
