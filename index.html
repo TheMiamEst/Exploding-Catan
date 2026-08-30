@@ -1456,7 +1456,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29n";
+const GAME_VERSION = "2026-08-29o";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1497,7 +1497,7 @@ const KITTEN = {
   skip:    {name:"Skip", count:5, kind:"target",
     text:"Skip a chosen player's next turn."},
   nope:    {name:"Nope", count:5, kind:"response",
-    text:"Two uses only: cancel an attack aimed at you, or cancel a player's whole turn. A cancelled turn destroys everything they gained that turn. If someone reaches the target points, the next player in turn order holding a Nope must spend it."},
+    text:"Cancels a player's whole turn. Everything that turn drew, built and played is destroyed, and nothing they spent comes back. A Nope can itself be Noped. If someone reaches the target points, the next player in turn order holding a Nope must spend it."},
   explode: {name:"Exploding Kitten", count:5, kind:"target",
     text:"Return a chosen player's entire resource hand to the bank."},
   defuse:  {name:"Defuse", count:5, kind:"response",
@@ -2249,6 +2249,11 @@ function wipeNopedTurn(){
     });
     // A knight moved it, and the knight is being undone.
     S.robber = start.robber;
+    // So does an Alter the Future played this turn: the numbers go back where
+    // they were. A cancelled turn that left two hexes swapped was leaving the
+    // one thing the card exists to do standing after the card itself had been
+    // destroyed.
+    if (start.numbers) hexes.forEach((h, i) => { h.number = start.numbers[i]; });
     // A cancelled Reverse must not leave its direction or bonus turn behind.
     S.dir = start.dir;
     S.extraTurn = start.extra;
@@ -2287,11 +2292,11 @@ function wipeNopedTurn(){
 
   updateLongestRoad();
   updateLargestArmy();
-  announce("🚫 " + pdot(p) + "'s turn is <b>cancelled</b>" +
+  announce("🚫 " + pdot(p) + "'s turn was <b>Noped</b>" +
            (lost.length ? " — lost " + lost.join(", ") : "") +
            (given.length ? "<br><span style='opacity:.85'>everything it took is handed "
                            + "back</span>" : ""), "big", 5200);
-  logMsg(`<span style="color:#d98b4b"><b>${p.name}</b>'s turn is cancelled — `
+  logMsg(`<span style="color:#d98b4b"><b>${p.name}</b>'s turn was Noped — `
        + (lost.length ? "lost " + lost.join(", ") : "nothing to lose")
        + `. Resources already spent are gone too.</span>`);
   if (given.length)
@@ -3438,17 +3443,19 @@ function answerMarks(rec){
      TURN if it cannot. Those are wildly different things to do with the card,
      and the badge is the only thing on screen that says which one you are
      about to do. Badge showing: it takes the card. No badge: it takes a turn. */
+  /* A DEFUSE only.
+
+     The Nope's badge was here to say which of its two uses a drop would take —
+     the card on the pile, or a whole turn. It has only one use now, so the
+     badge had nothing left to tell anybody: a Nope dropped on the pile always
+     takes a turn, and the seats light up to ask whose. A Defuse is still the
+     narrow, easily-missed answer to one particular card, so it keeps its
+     corner. */
   const canD = p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, me);
-  const canN = p.cards.some(c => c.key === "nope"   && fresh(c)) && canNopeFor(e, me);
-  if (!canD && !canN) return "";
-  let marks = "";
-  if (canD) marks += markFace("defuse", "defuse", "Drop your Defuse here to answer this");
-  if (canN) marks += markFace("nope", "nope",
-    e.kind === "roll" ? "Drop your Nope here to throw the dice again"
-                      : "Drop your Nope here to cancel THIS CARD. With no badge showing, " +
-                        "a Nope on the pile cancels a whole turn instead.");
-  return '<div class="evmarks">' + marks + "</div>" +
-         '<span class="disctag">answer</span>';
+  if (!canD) return "";
+  return '<div class="evmarks">' +
+           markFace("defuse", "defuse", "Drop your Defuse here to answer this") +
+         '</div><span class="disctag">answer</span>';
 }
 
 function drawDiscard(){
@@ -8917,7 +8924,7 @@ function cardDestinationHint(c){
   if (c.boughtTurn === S.turnCounter) return def.name + " was bought this turn — it plays next turn.";
   if (def.kind === "vp") return "Feral Kittens are never played — they are points in your hand.";
   if (c.key === "defuse") return "Drop Defuse on the discard pile to turn the card on it around.";
-  if (c.key === "nope") return "Drop Nope on the discard pile: it cancels the card lying there, or asks whose whole turn to cancel if there is nothing to answer.";
+  if (c.key === "nope") return "Drop Nope on the discard pile — it cancels a whole turn, and the seats light up for you to say whose.";
   return "Drop " + def.name + " on the discard pile — it will ask for anything else it needs.";
 }
 
@@ -9036,7 +9043,12 @@ function dropAllowed(info, drop){
   if (drop.kind === "entry"){
     const e = S.journal.find(x => x.id === drop.jid);
     if (!e) return false;
-    if (key === "nope")   return canNopeFor(e, me);
+    // Only the two entries a Nope can answer WITHOUT taking a turn: a roll,
+    // and another Nope. Everything else is somebody's turn, and goes through
+    // the seats.
+    if (key === "nope")
+      return (e.kind === "roll" || e.kind === "defend")
+             ? canNopeFor(e, me) : canNopeTurnNow(me);
     if (key === "defuse") return canDefuseEntry(e, me);
     return false;
   }
@@ -9052,11 +9064,21 @@ function dropAllowed(info, drop){
   if (drop.kind === "pile"){
     const e = drop.jid === null ? null : S.journal.find(x => x.id === drop.jid);
     if (key === "defuse") return !!e && canDefuseEntry(e, me);
-    /* A Nope has two jobs and one gesture. Dropped on the pile it answers the
-       card lying there, if that card can still be answered; if it cannot -
-       nothing played, or the window shut - it goes after a whole turn instead,
-       and the seats light up for you to say whose. */
-    if (key === "nope") return (!!e && canNopeFor(e, me)) || canNopeTurnNow(me);
+    /* A Nope does ONE thing: it cancels somebody's turn.
+
+       It used to have two uses — cancel the card lying on the pile, or cancel
+       a whole turn — and which one you got depended on whether the card
+       underneath happened to still be answerable. That made the same gesture
+       mean two very different things at two different moments, and it did not
+       even do the small one cleanly: cancelling a card rewinds the journal past
+       that card, so everything the player had done SINCE was undone with it and
+       handed back. Nope somebody's Alter the Future and the kitten card they
+       bought afterwards came back to them, paid for twice.
+
+       A Nope that can cancel a winning turn was never going to be worth
+       spending on one card anyway. So: it takes the turn, the seats light up
+       to say whose, and nothing that turn did is handed back. */
+    if (key === "nope") return canNopeTurnNow(me);
     return canPlayToPile(key, me);
   }
   /* A seat card is no longer somewhere you can drop a card. Everything is
@@ -9113,18 +9135,21 @@ function performDrop(info, drop){
 
   if (drop.kind === "pile"){
     if (key === "defuse"){ defuseEntry(drop.jid, ownerId); return; }
-    if (key === "nope"){
-      const e = drop.jid === null ? null : S.journal.find(x => x.id === drop.jid);
-      if (e && canNopeFor(e, ownerId)) nopeEntry(drop.jid, ownerId);
-      else beginSeatPick(ownerId, card, "nopeturn");
-      return;
-    }
+    if (key === "nope"){ beginSeatPick(ownerId, card, "nopeturn"); return; }
     playToPile(idx, ownerId);
     return;
   }
 
   if (drop.kind === "entry"){
-    if (key === "nope") nopeEntry(drop.jid, ownerId);
+    // A Nope on a log line still reaches the two entries that are not a turn:
+    // your own roll, which is thrown again, and somebody else's Nope, which is
+    // taken back. Anything else on the log is part of a turn, and a Nope takes
+    // the whole turn — so it goes through the seats like every other one.
+    if (key === "nope"){
+      const e = S.journal.find(x => x.id === drop.jid);
+      if (e && (e.kind === "roll" || e.kind === "defend")) nopeEntry(drop.jid, ownerId);
+      else beginSeatPick(ownerId, card, "nopeturn");
+    }
     else if (key === "defuse") defuseEntry(drop.jid, ownerId);
     return;
   }
@@ -9136,12 +9161,12 @@ function performDrop(info, drop){
 function nopeWholeTurn(ownerId, pid){
   const victim = S.players[pid], noper = S.players[ownerId];
   spendCard(noper, "nope");
-  logMsg("<b>" + noper.name + "</b> Nopes <b>" + victim.name + "</b>'s turn.");
+  logMsg("<b>" + victim.name + "</b>'s turn was Noped by <b>" + noper.name + "</b>.");
   // Snapshot and turn pointer both taken before cancelTurn tears the turn
   // down, so a counter-Nope can put the whole thing back.
   const turnBack = { cur: S.cur, phase: S.phase, turnCounter: S.turnCounter,
                      rolled: S.rolled ? S.rolled.slice() : null, extraTurn: S.extraTurn };
-  const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " + pdot(victim) + "'s turn",
+  const noteEntry = logAction(pdot(victim) + "'s turn was <b>Noped</b>",
             "defend", { actor: ownerId, snap: snapAll(), nopeable: true, turnBack: turnBack,
                         spent: { pid: ownerId, key: "nope" }, show: "nope" });
   clearImplodeClock();
@@ -9308,13 +9333,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29n"></script>
+<script src="ai.js?v=2026-08-29o"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29n"></script>
-<script src="net.js?v=2026-08-29n"></script>
+<script src="firebase-config.js?v=2026-08-29o"></script>
+<script src="net.js?v=2026-08-29o"></script>
 </body>
 </html>

@@ -865,7 +865,15 @@ function makeAgent(pid){
         }
       }
       if (hasNope && canNopeFor(e, p.id) && nopeJournalDecision(p, e)){
-        nopeEntry(e.id, p.id);
+        /* A Nope cancels a TURN now, and only the two entries that are not
+           part of one are still answered in place: a roll, which is thrown
+           again, and another Nope, which is taken back. Everything else on the
+           journal belongs to somebody's turn, so that is what gets cancelled —
+           the same thing a person dropping the card would do. */
+        if (e.kind === "roll" || e.kind === "defend") nopeEntry(e.id, p.id);
+        else if (typeof nopeWholeTurn === "function" &&
+                 e.actor !== p.id && e.actor === S.cur) nopeWholeTurn(p.id, e.actor);
+        else return false;
         return true;
       }
       return false;

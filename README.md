@@ -397,7 +397,38 @@ than the pile covers.
 
 ### What a Nope does now
 
-Two uses, and they no longer bleed into each other.
+**One use. It cancels a turn.**
+
+It had two for a while — cancel the card on the pile, or cancel a whole turn —
+and which one you got depended on whether the card underneath happened to still
+be answerable. That made the same gesture mean two very different things at two
+different moments. Worse, it did not even do the small one cleanly. Cancelling
+a card rewinds the journal past that card, and *everything after it goes too*:
+Nope somebody's Alter the Future and the kitten card they bought afterwards was
+handed back to them, paid for twice, struck through in the log as though it had
+never happened.
+
+A card that can cancel a winning turn was never going to be worth spending on
+one play anyway. So it takes the turn: drop it on the pile, the seats light up,
+click whose. And nothing that turn did is handed back — everything it drew is
+destroyed, everything it built comes down, an Alter the Future's swap goes back,
+and nothing it spent is refunded. The same rules a cancelled win has always
+used.
+
+Two things a Nope still answers in place, because neither is a turn: **your own
+roll**, which is thrown again, and **another Nope**, which is taken back. Noping
+a Nope stays possible for as long as there are Nopes to go round.
+
+The line, everywhere it appears, is now **"X's turn was Noped"**.
+
+The Nope's badge is off the discard pile with the second use it existed to
+signal. It was there to say which of the two a drop would take; there is only
+one now. A Defuse keeps its badge, because a Defuse still answers one
+particular card.
+
+#### What a Defuse does
+
+Unchanged.
 
 When the card on the pile is one **you** can answer, the pile is marked the way
 the log marks an answerable line: the card that would answer it pinned to the
