@@ -713,6 +713,10 @@ function startTable(){
   closeModal();
   NET.started = true;
   NET.room.child("meta/started").set(true);
+  // Kept on the cached copy too. armHostPresence rewrites the whole meta node
+  // after a reconnect, and a stale `started:false` there would put every guest
+  // back in the lobby of a game that is already running.
+  if (NET.roomMeta) NET.roomMeta.started = true;
   NET.remote = {};
   NET.promptSeat = null;
   if (NET.room) NET.room.child("prompt").remove();
@@ -826,9 +830,9 @@ function startHost(n, name, av){
   for (let i = 0; i < n; i++) NET.roster.push({ seat:i, name: PLAYER_NAMES[i], bot: i !== 0 });
   NET.roster[0] = { seat:0, name: name, bot:false, uid: NET.uid, av: av || "" };
 
-  NET.room.set(clean({ meta: { host: NET.uid, n: n, started: false, at: Date.now() },
-                       seats: NET.roster }));
-  NET.room.onDisconnect().remove();
+  NET.roomMeta = { host: NET.uid, n: n, started: false, at: Date.now() };
+  NET.room.set(clean({ meta: NET.roomMeta, seats: NET.roster }));
+  armHostPresence();
 
   // Somebody asking for a seat.
   NET.room.child("join").on("child_added", snap => {
@@ -905,11 +909,61 @@ function startGuest(code, name, av){
       const all = s.val() || {};
       showRemotePrompt(NET.seat === null ? null : (all[NET.seat] || null));
     });
+    /* A room that has gone is not the same as a host that has gone.
+
+       The host re-creates this node the moment its connection comes back, so a
+       blip removes it and puts it back within a second or so. Waiting that out
+       is the difference between "your host's wifi stuttered" and ending
+       everybody's game. If it is still missing when the grace period is up,
+       the host really has left. */
     NET.room.child("meta").on("value", s => {
-      if (!s.exists() && NET.on) hostGone();
+      if (!NET.on) return;
+      if (s.exists()){
+        if (NET.hostGraceTimer){ clearTimeout(NET.hostGraceTimer); NET.hostGraceTimer = null; }
+        return;
+      }
+      if (NET.hostGraceTimer) return;
+      NET.hostGraceTimer = setTimeout(() => {
+        NET.hostGraceTimer = null;
+        if (NET.on && !NET.dead) hostGone();
+      }, HOST_GRACE_MS);
     });
 
     guestLobby();
+  });
+}
+
+/* Keeping the room alive across a hiccup.
+
+   `NET.room.onDisconnect().remove()` is how the room cleans itself up when the
+   host closes the tab, and it was set once at start-up and never thought about
+   again. Firebase fires an onDisconnect on ANY connection loss: a wifi
+   handover, a laptop sleeping for a moment, the socket being cycled. So a
+   two-second blip on the host's machine deleted the whole room server-side,
+   every guest's meta listener saw it vanish, and they were all shown "the host
+   left" and dropped back to the opening screen — while the host, whose game
+   lives in their own tab and never noticed, carried on playing alone. That is
+   the "game randomly ended" nobody else could see.
+
+   Worse, an onDisconnect is CONSUMED when it fires. After the first blip the
+   room had no clean-up left on it at all, so a host who then really did leave
+   abandoned it in the database for good.
+
+   So it is re-armed every time the connection comes back, and the meta node is
+   written again with it — a blip that deleted the room now repairs it within a
+   second, and the guests wait that long before believing it (see the meta
+   listener in startGuest). */
+function armHostPresence(){
+  if (!NET.db || !NET.room) return;
+  if (NET.presenceRef) NET.presenceRef.off();
+  NET.presenceRef = NET.db.ref(".info/connected");
+  NET.presenceRef.on("value", s => {
+    if (!s.val() || NET.role !== "host" || !NET.room) return;
+    // Back on the wire: put the room's identity back if the disconnect took
+    // it, and re-arm the clean-up for next time.
+    if (NET.roomMeta) NET.room.child("meta").set(clean(NET.roomMeta));
+    if (NET.roster && NET.roster.length) NET.room.child("seats").set(clean(NET.roster));
+    NET.room.onDisconnect().remove();
   });
 }
 
@@ -920,13 +974,21 @@ function hostGone(){
     [{ label:"Close", cls:"primary", fn: () => { teardown(); closeModal(); backToIdle(); } }]);
 }
 
+/* How long a guest gives a vanished room to come back before deciding the
+   host has actually left. Long enough to cover a wifi handover or a sleeping
+   laptop waking up; short enough that a genuinely dead game is not a mystery. */
+const HOST_GRACE_MS = 15000;
+
 function teardown(){
+  if (NET.hostGraceTimer){ clearTimeout(NET.hostGraceTimer); NET.hostGraceTimer = null; }
+  if (NET.presenceRef){ NET.presenceRef.off(); NET.presenceRef = null; }
   if (NET.room){
     NET.room.off();
     if (NET.role === "host") NET.room.remove();
     else NET.room.child("view").off();
   }
   NET.on = false; NET.role = null; NET.started = false; NET.room = null;
+  NET.roomMeta = null;
   NET.seat = null; NET.dead = null; NET.onRoster = null; NET.shownPrompt = null;
   NET.shownKind = null; NET.remote = {}; NET.promptSeat = null;
   if (typeof closeAllPanels === "function") closeAllPanels();

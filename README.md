@@ -145,6 +145,37 @@ reload.
 
 ## How online play actually works
 
+### A host's wifi stutter used to end everybody's game
+
+`NET.room.onDisconnect().remove()` is how a room cleans itself up when the host
+closes the tab. It was set once at start-up and never thought about again, and
+Firebase fires an onDisconnect on **any** connection loss — a wifi handover, a
+laptop sleeping for a moment, a socket being cycled. So a two-second blip on
+the host's machine deleted the whole room server-side, every guest's `meta`
+listener saw it vanish, and they were all shown "the host left" and dropped
+back to the opening screen.
+
+The host saw nothing. Their game lives in their own tab and never noticed. That
+is the shape of it: a game that "randomly ended" for one player and looked
+perfectly fine to everybody else.
+
+Worse, an onDisconnect is **consumed when it fires**. After the first blip the
+room had no clean-up left on it at all, so a host who then genuinely did leave
+abandoned it in the database for good.
+
+Two halves to the fix. The host watches `.info/connected` and, every time the
+connection comes back, rewrites `meta` and `seats` and **re-arms** the
+onDisconnect — so a blip that deleted the room repairs it within a second, and
+the room is still cleaned up when the host really goes. And a guest no longer
+believes a vanished room straight away: it waits `HOST_GRACE_MS` for it to come
+back, and only then says the host has left.
+
+The cached `meta` the host rewrites carries `started` with it. Without that, a
+reconnect mid-game would rewrite `started: false` and put every guest back in
+the lobby of a game that was already running — the fix causing a worse version
+of the bug it fixes.
+
+
 One browser is the **host**. It runs the real game — the same code as the local
 game, bots and all. Every other browser is a terminal: it never decides
 anything. It sends what you did ("I dropped card 2 on log entry 14") and draws
