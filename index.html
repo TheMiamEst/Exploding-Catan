@@ -1463,7 +1463,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29t";
+const GAME_VERSION = "2026-08-29u";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -6494,49 +6494,57 @@ function cancelTurn(actorId, wasWin){
    points that carried them over — hidden Feral Kittens first, then the knights
    propping up Largest Army — until they are actually short of the target. */
 function stripWinningPoints(p, wasWin){
-  /* Only a cancelled WIN costs Feral Kittens, and nothing ever costs knights.
+  /* Noping a win IS Noping the winning points.
 
-     cancelTurn runs this on every Noped turn, win or not. The guard used to
-     let it through whenever the player happened to be sitting on the target
-     score, which meant Noping the turn of somebody who had merely got there
-     quietly burned their whole hand of hidden points — and said so in the log,
-     announcing cards nobody had any business seeing. Cancelling a turn undoes
-     that turn; it is not licence to reach into a hand and destroy what was
-     bought three turns ago.
+     Only a cancelled win reaches past the turn. An ordinary turn-Nope undoes
+     that turn and nothing else — it is not licence to reach into a hand and
+     destroy what was bought three turns ago, and doing so used to announce
+     Feral Kittens nobody had any business seeing.
 
-     Knights are untouched either way. One played on the cancelled turn is
-     already undone by wipeNopedTurn along with everything else that turn did;
-     knights from earlier turns, and the Largest Army resting on them, were
-     never part of what is being cancelled. */
+     A cancelled WIN is different, and the difference is the whole point of the
+     card: the winner comes out of it below the target. Not "denied for now",
+     not "they will need answering again" — under. There is no state in which a
+     Noped win leaves somebody still standing on ten, because if there were,
+     the Nope would have bought a turn rather than denied a win. */
   if (!wasWin) return;
 
-  /* Taking them may not be enough, and that is fine. A player whose points are
-     buildings and bonuses from earlier turns cannot be reduced by a Nope at
-     all — the Nope denies the win itself rather than the score behind it, and
-     they will be back at the target the moment the next thing happens. Say so,
-     rather than either pretending it worked or handing them the game for it. */
-  const held = p.cards.filter(c => c.key === "vp").length;
-  if (totalVP(p) - held >= S.winPoints){
-    logMsg(`<span style="color:#d98b4b"><b>${p.name}</b> is still on ` +
-           `${totalVP(p)} — the Nope denies the win, not the points. They will ` +
-           `need answering again.</span>`);
-    return;
-  }
-
   let ferals = 0;
-  // A cancelled win costs EVERY Feral Kitten in the hand, not just enough of
-  // them to drop back under ten. Taking the minimum left a player parked on
-  // nine with a spare, winning again the moment they laid one road — the Nope
-  // bought a turn rather than denying the win.
-  //
-  // Knights are deliberately NOT taken. One played on the cancelled turn is
-  // already undone by wipeNopedTurn; knights from earlier turns, and the
-  // Largest Army resting on them, were never part of what is being cancelled.
+  // Every Feral Kitten, not just enough of them to clear the target. Taking
+  // the minimum left a player parked on nine with a spare, winning again the
+  // moment they laid one road.
   for (let i = p.cards.length - 1; i >= 0; i--){
     if (p.cards[i].key !== "vp") continue;
     p.cards.splice(i, 1);                     // out of the game, not discarded
     ferals++;
   }
+
+  /* Whatever is still holding them up goes too.
+
+     Rewinding the turn and burning the Feral Kittens is almost always enough,
+     because you only cross the target by gaining a point and you only gain a
+     point on your own turn — which is exactly what the rewind takes back. The
+     exception is a player who crossed it on somebody ELSE's turn, where there
+     is no turn of theirs to undo: Longest Road handed over when another
+     player's road came off the board, say. Knights are what is left to take,
+     and Largest Army with them.
+
+     Knights are safe from every other Nope in the game. This one is the
+     exception because the alternative is a win that a Nope cannot deny, and
+     the card exists to deny wins. */
+  let knights = 0;
+  while (totalVP(p) >= S.winPoints && p.knights > 0){
+    p.knights--; knights++;
+    updateLargestArmy();
+  }
+  if (knights){
+    logMsg(`<span style="color:#d98b4b">The cancelled win costs <b>${p.name}</b> ` +
+           `${knights} knight${knights === 1 ? "" : "s"} as well.</span>`);
+  }
+  // If this ever fires the model above is wrong somewhere, and a silent wrong
+  // answer is worse than a noisy one.
+  if (totalVP(p) >= S.winPoints)
+    console.error("cancelled win left " + p.name + " on " + totalVP(p) +
+                  " with nothing left to take");
   if (ferals){
     const what = ferals === 1 ? "their Feral Kitten" :
                  "all " + ferals + " of their Feral Kittens";
@@ -9373,13 +9381,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29t"></script>
+<script src="ai.js?v=2026-08-29u"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29t"></script>
-<script src="net.js?v=2026-08-29t"></script>
+<script src="firebase-config.js?v=2026-08-29u"></script>
+<script src="net.js?v=2026-08-29u"></script>
 </body>
 </html>

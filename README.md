@@ -1435,6 +1435,28 @@ already been decided.
 
 ---
 
+### Noping a win is Noping the winning points
+
+A cancelled win leaves the winner **under the target**. Not "denied for now",
+not "they will need answering again" — under. One Nope, one denial, and the
+winner has to earn it again from below the line.
+
+That follows from something simple: you only cross the target by gaining a
+point, and you only gain a point on your own turn — which is exactly what the
+cancel rewinds. So the rewind does the work, and the Feral Kittens go with it
+because a hidden point in hand would put them straight back over.
+
+There is a backstop after that which takes knights, and it should never fire.
+Knights are safe from every other Nope in the game; this one is the exception
+because the alternative is a win a Nope cannot deny, and denying wins is what
+the card is for. If even that is not enough the code logs an error rather than
+carrying on quietly, because at that point the model above is wrong somewhere
+and a silent wrong answer is worse than a noisy one.
+
+**The one exception is the Imploding Kitten.** A win on an imploded turn cannot
+be Noped, because nothing about an imploded turn can be. That is the only way a
+game ends with Nopes still in hands.
+
 ### No win lands while somebody else holds a Nope
 
 One question decides it: **is there a Nope at this table that is not the
