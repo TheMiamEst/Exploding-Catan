@@ -338,7 +338,10 @@ Discard on top because that is the one you look at and the one you play onto;
 the deck you only ever click. Both are card-sized rather than thumbnail-sized.
 
 The discard pile is every kitten card anybody has played, face up, newest on
-top. Nothing is written under it — what the card is, it says by being face up,
+top. **It outlives the game**, along with the deck beside it: both used to be
+swept off the moment somebody won, which is the exact moment anybody wants to
+look back through them — a game that ends on a contested win is the one you most
+want to be able to reconstruct. Nothing is written under it — what the card is, it says by being face up,
 and who played it at whom is what the log is for. Scroll the wheel over it to
 walk through it. **Scrolling up — the same gesture you would use to scroll up a
 page — walks towards the bottom of the pile.** Scrolling down comes back to the
@@ -396,18 +399,19 @@ than the pile covers.
 
 Two uses, and they no longer bleed into each other.
 
-When the card on the pile is one **you** can **Defuse**, the pile is marked the
-way the log marks an answerable line: the Defuse pinned to the corner, pulsing,
-plus the word **answer**. It appears only while you are actually holding one,
-so it still tells the rest of the table nothing.
+When the card on the pile is one **you** can answer, the pile is marked the way
+the log marks an answerable line: the card that would answer it pinned to the
+corner, pulsing, plus the word **answer**. It appears only while you are
+actually holding that card, so it still tells the rest of the table nothing.
 
-A **Nope** never puts a badge up. It answers almost anything, so the mark was
-on the pile more often than it was off it — and a prompt that is always on is
-not a prompt. The card lights up in your own hand when it can be played, which
-is the quiet version of the same thing, and the event worth Noping gets a popup
-of its own without needing to name the card. A Defuse is the opposite case:
-narrow, easy to miss, gone the moment the window shuts. That one is worth
-shouting about.
+The **Nope's** badge is the important one, and it is doing a different job here
+than it does in the log. In the log it only ever said "this line is
+answerable". On the pile it answers a much sharper question, because a Nope
+dropped there cancels the **card** lying on the pile if that card can still be
+answered, and goes after somebody's whole **turn** if it cannot. Those are
+wildly different things to do with the card, and the badge is the only thing on
+screen that says which one the drop is about to do. Badge showing: it takes the
+card. No badge: it takes a turn.
 
 **On a card** — dropped on the discard pile, or still on a log line if you
 prefer — it cancels that card. The card is spent, what it was going to do does
@@ -1280,6 +1284,40 @@ the hex is not a choice, and the window went up in front of an answer that had
 already been decided.
 
 ---
+
+### A win can be argued over until the Nopes run out
+
+Three things were wrong with a contested win, and together they produced a game
+where a player reached the target, every Nope at the table was taken off the
+people holding them one at a time, and the win stood anyway.
+
+**A forced Nope could not be answered.** It spent the card by hand and called
+`cancelTurn` directly, journalling only a *notice* — so it was the one card in
+the game nothing could be played back at, and a win denied by one was denied
+for good. It goes through `nopeWholeTurn` now, exactly as a voluntary turn-Nope
+does, which journals a **nopeable** entry. Nope the forced Nope and the win
+comes back; the next player holding one is then made to answer that, and so on.
+
+**Nothing carried the argument on.** Undoing the cancel restored the winning
+position, but nobody asked the question again, so a restored win just sat
+there. `nopeEntry` re-checks victory after undoing any answer. It terminates
+because every round of it spends a card: `forcedNoperFor` eventually finds
+nobody and the win is declared.
+
+**And nobody should be charged for an answer that was never available.** A Nope
+on a win cancels the winner's *turn*. If their points do not come from that
+turn — buildings and bonuses standing since earlier, which a cancel may not
+touch — then cancelling denies nothing. `checkVictory` asks first now, and
+`stripWinningPoints` asks the same question before destroying a single Feral
+Kitten.
+
+That question is answered by **doing it**: `winSurvivesCancel` rewinds the turn,
+takes the Ferals, reads the score, and puts everything back. `snapAll` covers
+every last thing `wipeNopedTurn` touches, and a `quietRun` counter keeps the
+trial out of the log and the feed while it runs. The alternative was to work the
+same sum out on paper — this turn's buildings and knights, and then Longest Road
+and Largest Army recomputed from what is left — which is a second
+implementation of the rules to keep in step with the first.
 
 ### When a bot spends a Nope
 

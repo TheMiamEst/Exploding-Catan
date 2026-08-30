@@ -1431,7 +1431,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-29l";
+const GAME_VERSION = "2026-08-29m";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3401,28 +3401,39 @@ function answerMarks(rec){
   const p = S.players[me];
   if (!p) return "";
   const fresh = c => c.boughtTurn !== S.turnCounter || playableWhenDrawn(c);
-  /* A DEFUSE only.
+  /* The same two badges the log pins to an answerable line.
 
-     The Nope used to put its own badge up here too, and it was too much: a
-     Nope answers almost anything, so the badge was on the pile more often than
-     it was off it, and a prompt that is always on is not a prompt. The card
-     lights up in your own hand when it can be played, which is the quiet
-     version of the same thing and is enough — and the event that would be
-     Noped gets a popup of its own without needing to name the card.
-
-     A Defuse is the opposite case: narrow, easy to miss, and gone the moment
-     the window closes. That one is worth shouting about. */
+     The Nope's badge went away for a while, on the grounds that a Nope answers
+     almost anything and a prompt that is always on is not a prompt. That was
+     true of the log, where the badge only ever said "this line is answerable".
+     It is not true here, because on the pile the badge answers a different and
+     much sharper question: a Nope dropped on the pile cancels the CARD lying
+     there if that card can still be answered, and goes after somebody's whole
+     TURN if it cannot. Those are wildly different things to do with the card,
+     and the badge is the only thing on screen that says which one you are
+     about to do. Badge showing: it takes the card. No badge: it takes a turn. */
   const canD = p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, me);
-  if (!canD) return "";
-  return '<div class="evmarks">' +
-           markFace("defuse", "defuse", "Drop your Defuse here to answer this") +
-         '</div><span class="disctag">answer</span>';
+  const canN = p.cards.some(c => c.key === "nope"   && fresh(c)) && canNopeFor(e, me);
+  if (!canD && !canN) return "";
+  let marks = "";
+  if (canD) marks += markFace("defuse", "defuse", "Drop your Defuse here to answer this");
+  if (canN) marks += markFace("nope", "nope",
+    e.kind === "roll" ? "Drop your Nope here to throw the dice again"
+                      : "Drop your Nope here to cancel THIS CARD. With no badge showing, " +
+                        "a Nope on the pile cancels a whole turn instead.");
+  return '<div class="evmarks">' + marks + "</div>" +
+         '<span class="disctag">answer</span>';
 }
 
 function drawDiscard(){
   const el = document.getElementById("discardWrap");
   if (!el) return;
-  if (!S || S.phase === "over" || S.phase.startsWith("setup")){
+  /* The pile outlives the game. It used to be cleared the moment somebody won,
+     which is the exact moment anybody wants to look back through it — a game
+     that ends on a contested win is the one you most want to be able to
+     reconstruct, and the record of it was being swept off the table before
+     anyone could read it. Setup is different: there is nothing in it yet. */
+  if (!S || S.phase.startsWith("setup")){
     if (el.innerHTML){ el.innerHTML = ""; el.dataset.sig = ""; }
     return;
   }
@@ -3489,7 +3500,9 @@ window.addEventListener("wheel", function(ev){
 
 function drawDeck(){
   const el = document.getElementById("deckWrap");
-  if (S.phase === "over" || S.phase.startsWith("setup")){ el.innerHTML = ""; return; }
+  if (S.phase.startsWith("setup")){ el.innerHTML = ""; return; }
+  // Left standing after the game is over, so the pile beside it keeps its
+  // place on screen rather than jumping into the corner alone.
   const buyable = canBuyKitten() && myTurnNow();
   const back = art("card", "back");
   el.innerHTML = `
@@ -3650,7 +3663,13 @@ function drawBottom(){
    view rather than deleted, so the list can be scrolled back through. The `ms`
    argument is accepted for compatibility with the old toast calls and ignored.
 */
+/* Some things are worked out by DOING them and then putting the board back —
+   see winSurvivesCancel. Nothing that happens inside one of those may reach
+   the log, the feed or the screen: it did not happen. */
+let quietRun = 0;
+
 function announce(html, kind, entry){
+  if (quietRun) return;
   const box = document.getElementById("feed");
   if (!box) return;
   const el = document.createElement("div");
@@ -4022,6 +4041,7 @@ function mirrorClocks(){
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
 
 function logMsg(msg){
+  if (quietRun) return;
   S.log.push(msg);
   if (S.log.length > 500) S.log.shift();
 }
@@ -6024,6 +6044,21 @@ function nopeEntry(id, noperId){
   // dialog went with the rewind, so ask again.
   if (S.seven) stepSeven();
 
+  /* Undoing a Nope can put a WIN back on the table.
+
+     Cancelling somebody's winning turn is journalled as a "defend" entry like
+     any other answer, so Noping that entry rewinds the cancel and the winning
+     position returns — but nothing was asking the question again, so the
+     restored win simply sat there unclaimed until something else happened to
+     trigger a check. Asking here is what carries the argument on: the win comes
+     back, the next player holding a Nope is made to answer it, that answer can
+     itself be answered, and so on until either somebody runs out of cards or
+     nobody is left who can deny it. Which is the whole point of the card.
+
+     It terminates because every round of it spends one: forcedNoperFor
+     eventually finds nobody, and the win is declared. */
+  if (e.kind === "defend") checkVictory();
+
   render();
   botTick();
   return true;
@@ -6374,6 +6409,19 @@ function stripWinningPoints(p, wasWin){
      never part of what is being cancelled. */
   if (!wasWin) return;
 
+  /* Would taking them help? If the score still clears the target without a
+     single Feral Kitten in the hand, then destroying them achieves nothing and
+     they are left alone. checkVictory asks the same question before it demands
+     a Nope, so this is the backstop for the voluntary case — somebody choosing
+     to Nope a turn that happens to be a winning one. */
+  const held = p.cards.filter(c => c.key === "vp").length;
+  if (totalVP(p) - held >= S.winPoints){
+    logMsg(`<span style="color:#d98b4b"><b>${p.name}</b> is still on ` +
+           `${totalVP(p)} without them — nothing a Nope can take.</span>`);
+    S.unstoppable = p.id;
+    return;
+  }
+
   let ferals = 0;
   // A cancelled win costs EVERY Feral Kitten in the hand, not just enough of
   // them to drop back under ten. Taking the minimum left a player parked on
@@ -6388,20 +6436,46 @@ function stripWinningPoints(p, wasWin){
     p.cards.splice(i, 1);                     // out of the game, not discarded
     ferals++;
   }
-  if (totalVP(p) >= S.winPoints){
-    // Their 10 points are buildings and Longest Road from earlier turns —
-    // there is nothing a Nope is allowed to destroy. Let it stand rather
-    // than leave them parked on 10 forever.
-    logMsg(`<span style="color:#d98b4b"><b>${p.name}</b> is still on ` +
-           `${totalVP(p)} — nothing left that a Nope can take.</span>`);
-    S.unstoppable = p.id;
-  }
   if (ferals){
     const what = ferals === 1 ? "their Feral Kitten" :
                  "all " + ferals + " of their Feral Kittens";
     logMsg(`<span style="color:#d98b4b">The cancelled win costs <b>${p.name}</b> ${what}.</span>`);
     announce(pdot(p) + " loses " + what + " to the cancelled win", "big", 5600);
   }
+}
+
+/* Would a cancelled turn actually take this player back under the target?
+
+   Worked out by doing it: rewind the turn, take the Feral Kittens, read the
+   score, then put everything back. snapAll covers every last thing
+   wipeNopedTurn touches — the board's owners, the bonuses, the hands, the turn
+   record — so the trial leaves nothing behind, and quietRun keeps it off the
+   log while it runs.
+
+   The alternative was to work the same sum out on paper, and that sum is not
+   simple: a cancelled turn takes back this turn's buildings and knights, and
+   then Longest Road and Largest Army have to be recomputed from what is left.
+   Doing it for real and asking the board is exact, where the paper version
+   would be a second implementation of the rules to keep in step with the
+   first. */
+function winSurvivesCancel(p){
+  const before = snapAll();
+  const curBefore = S.cur, phaseBefore = S.phase, winBefore = S.winner;
+  let survives;
+  quietRun++;
+  try {
+    if (p.id === S.cur) wipeNopedTurn();
+    const ferals = p.cards.filter(c => c.key === "vp").length;
+    survives = totalVP(p) - ferals >= S.winPoints;
+  } catch (err){
+    console.error("win trial failed:", err);
+    survives = false;          // if in doubt, let the table have its answer
+  } finally {
+    quietRun--;
+    restoreAll(before);
+    S.cur = curBefore; S.phase = phaseBefore; S.winner = winBefore;
+  }
+  return survives;
 }
 
 /* ── Forced Nope on a win ────────────────────────────────────────────────
@@ -6421,8 +6495,6 @@ function forcedNoperFor(winnerId){
 function forcedWinNope(winner, pid){
   promptFor(pid);
   const p = S.players[pid];
-  const i = p.cards.findIndex(c => c.key === "nope");
-  S.discard.push(p.cards.splice(i, 1)[0]);
   logMsg(`<b>${winner.name}</b> reaches ${S.winPoints} VP — <b>${p.name}</b> is forced to Nope it.`);
   // The biggest moment the game has, and it used to be a line in the log.
   // A notice, so that saying it cannot disturb the rewind that follows.
@@ -6430,16 +6502,24 @@ function forcedWinNope(winner, pid){
             " is <b>forced to Nope</b> it", "big",
             { actor: winner.id, target: pid, nopeable: false, notice: true,
               show: "winnoped" });
+  /* Through nopeWholeTurn, which is what a voluntary turn-Nope goes through:
+     it spends the card, journals a NOPEABLE entry, and cancels the turn. That
+     entry is the whole point. This used to spend the card by hand and call
+     cancelTurn directly, leaving nothing on the journal anybody could answer —
+     so a forced Nope was the one card in the game that could not be Noped
+     back, and a win denied by one was denied for good. It can be answered now,
+     and the answer can be answered, for as long as there are Nopes to go
+     round. */
   // Only the player being forced gets a prompt. Everyone else just sees it
   // happen — being asked to confirm somebody else's obligation is noise.
-  if (isBot(pid)){ cancelTurn(winner.id, true); return; }
+  if (isBot(pid)){ nopeWholeTurn(pid, winner.id); return; }
   openModal("Forced Nope", `
     <div class="warnbox"><b>${winner.name}</b> just reached ${S.winPoints} victory points.
     <b>${p.name}</b> is the next player in turn order holding a Nope, so they must
     spend it — no choice. ${winner.name}'s turn is cancelled and everything they
     gained this turn is destroyed, including whatever took them to the target.</div>`,
     [{ label:`Cancel ${winner.name}'s turn`, cls:"warn",
-       fn: () => { closeModal(); cancelTurn(winner.id, true); } }]);
+       fn: () => { closeModal(); nopeWholeTurn(pid, winner.id); } }]);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -6685,6 +6765,24 @@ function checkVictory(){
   if (implodeActive() && claimant.id === S.cur){
     logMsg(`<b>${claimant.name}</b> wins on an imploded turn — no Nope can touch it.`);
     announce("\ud83d\udca5 " + pdot(claimant) + " wins on an <b>imploded turn</b> — un-Nopeable", "big");
+    declareWinner(claimant.id);
+    return;
+  }
+  /* Nothing to answer with.
+
+     A Nope on a win cancels the winner's turn. If their points do not come
+     from that turn — buildings and bonuses standing since earlier, which a
+     cancel may not touch — then cancelling it denies nothing, and the card
+     would be spent for no reason at all. That is exactly what was happening:
+     a player at the target off the back of earlier turns had every Nope at the
+     table taken off it, one at a time, and won anyway. Asked first now, and
+     nobody is charged for an answer that was never available. */
+  if (winSurvivesCancel(claimant)){
+    logMsg(`<span style="color:#d98b4b"><b>${claimant.name}</b> is on ` +
+           `${totalVP(claimant)} from earlier turns — there is nothing a Nope ` +
+           `could take back.</span>`);
+    announce(pdot(claimant) + " reached " + S.winPoints +
+             " on points no Nope can reach", "big");
     declareWinner(claimant.id);
     return;
   }
@@ -9144,13 +9242,13 @@ window.addEventListener("resize", function(){ if (S) render(); });
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-29l"></script>
+<script src="ai.js?v=2026-08-29m"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-29l"></script>
-<script src="net.js?v=2026-08-29l"></script>
+<script src="firebase-config.js?v=2026-08-29m"></script>
+<script src="net.js?v=2026-08-29m"></script>
 </body>
 </html>
