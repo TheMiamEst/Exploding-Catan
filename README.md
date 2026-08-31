@@ -1453,26 +1453,51 @@ at eleven and moved on. The case it was covering is handled properly now (see
 below), and the rule is the whole rule: **a cancelled win costs the turn and
 every Feral Kitten, and nothing else.**
 
-### Where the assertion belongs
+### Two assertions, and why both stay
 
-There used to be a check complaining whenever a cancelled win left somebody
-still standing on the target. It has gone, because it was not measuring an
-outcome.
+**A cancelled win always leaves the winner under the target.** That is not a
+hope, it is the rule following from the shape of the game: you can only win on
+your own turn, so you were under the target when that turn began, so cancelling
+the turn puts you back under it. The single crossing that happens on somebody
+else's turn — a settlement cutting the road that was holding Longest Road
+together — is answered the same way, by taking the turn that gave it away.
 
-Cancelling a turn **recomputes Longest Road**, and that can hand it to a third
-player who was not the one being denied — so the instant a cancel finishes is
-exactly the instant somebody new may have crossed. That is not a failure.
-`advancePlayer` sweeps for it, and the sweep demands the next Nope; the table
-goes on denying whoever is over the line until the Nopes run out. A tripwire
-that fires on a state the very next line resolves is noise, and noise is how a
-real one gets ignored.
+So a check on it can only fire when the code is wrong. It was briefly removed,
+on the reasoning that the state it caught got resolved a moment later by
+something else. That reasoning was bad: resolved-by-something-else is not the
+same as right, and the check was in fact sitting on a live bug (below). It is
+back, and it now prints the winner's whole breakdown so the next one is
+diagnosable at a glance.
 
-The invariant worth asserting is the one that cannot be recovered from, and it
-is asserted where it can actually be broken — in `declareWinner`. Everything
-else about a Nope is recoverable: a cancel that fails to reduce somebody comes
-back round, and they are asked to survive another one. A win **declared** while
-a Nope is still sitting in somebody's hand is not recoverable — the game is
-over and the card was never played. So that is what shouts.
+**No win is declared while somebody else still holds a Nope.** Asserted in
+`declareWinner`, because that is where the unrecoverable thing happens — the
+game is over and the card was never played. An imploded turn is the one
+legitimate exception.
+
+### `turnOpenSnap` is not `turnStartSnap`
+
+Two questions that give the same answer on almost every turn, and different
+answers on exactly the one that matters.
+
+`turnStartSnap` answers *how far back may a cancel reach into what this turn
+did to other people* — and an Imploding Kitten says in as many words that its
+haul is never handed back, so the mark begins again after it.
+
+`turnOpenSnap` answers *where did the turn open*. That is what the turn record
+covers: the record is filled in from the first build of the turn whether a
+Kitten lands later or not.
+
+The bonus-card restore was hung off the first of those, and should always have
+been the second. On a turn carrying an Imploding Kitten the buildings came off
+from the record — the whole turn's worth — while Longest Road was judged from
+the middle of the turn; and on a turn where the Kitten came *last*,
+`turnStartSnap` is null and the restore did not happen at all. Which put the
+sticky-incumbent bug straight back for that one case: Blue and White both on
+7-road chains, Orange settles in the middle of Blue's, White takes Longest Road
+and crosses to 11 on Orange's turn, the Nope pulls Orange's settlement off — and
+White keeps the bonus on the restored 7-7 tie, still on 11, and wins with the
+Nope spent. A Kitten cannot move either bonus, so reading straight past it is
+both safe and the only reading that matches what has just been undone.
 
 ### A Nope cancels the turn that is being played
 

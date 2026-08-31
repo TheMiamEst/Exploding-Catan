@@ -2215,6 +2215,24 @@ function turnStartSnap(){
   return snap;
 }
 
+/* The top of the turn, with no line drawn under anything.
+
+   turnStartSnap answers "how far back may a cancel reach into what this turn
+   did to OTHER PEOPLE" — and an Imploding Kitten says in as many words that
+   its haul is not handed back, so the mark moves past it. This answers a
+   different question: where did the turn OPEN. It is what the turn record
+   covers, because the record is filled in from the first build of the turn
+   whether a Kitten lands later or not, and so it is the picture anything
+   rewound from that record has to be judged against. */
+function turnOpenSnap(){
+  for (const e of S.journal){
+    if (e.turn !== S.turnCounter) continue;
+    if (e.notice) continue;
+    if (e.snap) return e.snap;
+  }
+  return null;
+}
+
 /* Seats whose resources this turn is NOT responsible for: somebody else threw
    a card during it. An Attack aimed at Green by Blue while Red is playing is
    Blue's doing and survives Red's turn being cancelled, so neither of them is
@@ -2330,10 +2348,25 @@ function wipeNopedTurn(){
      and the bonus stays where it was before the road that has just been
      destroyed. Recomputing afterwards is still necessary - the turn may have
      broken somebody else's road with a settlement, and that settlement is
-     coming down too. */
-  if (start){
-    S.longestRoad = Object.assign({}, start.lr);
-    S.largestArmy = Object.assign({}, start.la);
+     coming down too.
+
+     turnOpenSnap, NOT the `start` used above. They are the same picture on
+     almost every turn and they differ on exactly the one that matters: a turn
+     carrying an Imploding Kitten. `start` deliberately begins again after it,
+     because the Kitten's haul is immune and must not be handed back. But the
+     buildings come off this turn from `rec`, which covers the whole turn -
+     Kitten or no Kitten - so hanging the bonus restore off `start` rewound the
+     board to the top of the turn while judging Longest Road from the middle of
+     it. On a turn where the Kitten came last, `start` is null and the restore
+     did not happen at all.
+
+     A Kitten cannot move either bonus - it takes resources and nothing else -
+     so reading straight past it is safe, and it is the only reading that
+     matches what `rec` has just undone. */
+  const open = turnOpenSnap();
+  if (open){
+    S.longestRoad = Object.assign({}, open.lr);
+    S.largestArmy = Object.assign({}, open.la);
   }
   updateLongestRoad();
   updateLargestArmy();
@@ -6587,15 +6620,27 @@ function stripWinningPoints(p, wasWin){
      whole rule: a cancelled win costs the turn and every Feral Kitten, and
      nothing else.
 
-     There was a check here too, complaining whenever a cancelled win left
-     somebody still on the target. It has gone, because it was not measuring an
-     outcome. Cancelling a turn RECOMPUTES Longest Road, and that can hand it to
-     a third player who was not the one being denied — so the moment a cancel
-     finishes is exactly the moment somebody new may have crossed. That is not a
-     failure; advancePlayer sweeps for it, and the sweep demands the next Nope.
-     A tripwire that fires on a state the very next line resolves is noise, and
-     noise is how a real one gets ignored. The real invariant is asserted where
-     it can actually be broken — in declareWinner. */
+     The check below is not defensive programming, it is the rule written down.
+     You can only win on your own turn, so you were under the target when that
+     turn began, so cancelling the turn puts you back under it. The one crossing
+     that happens on somebody else's turn — a settlement cutting the road that
+     was holding Longest Road together — is answered the same way, by taking the
+     turn that gave it away. Either way the winner comes out under.
+
+     So it can only fire if the code is wrong. It has: hanging the bonus restore
+     off turnStartSnap instead of turnOpenSnap meant a turn carrying an Imploding
+     Kitten rewound its buildings but not its Longest Road, and the winner stayed
+     on eleven. This check was removed once, on the grounds that the state it
+     caught resolved itself a moment later. It resolved because something else
+     caught it, which is not the same thing as it being right. */
+  if (totalVP(p) >= S.winPoints)
+    console.error("cancelled win left " + p.name + " on " + totalVP(p) +
+                  " (" + p.settlements + " settlements, " + p.cities + " cities, " +
+                  vpCards(p) + " Feral" +
+                  (S.longestRoad.owner === p.id ? ", Longest Road" : "") +
+                  (S.largestArmy.owner === p.id ? ", Largest Army" : "") +
+                  ") on " + (p.id === S.cur ? "their own" : S.players[S.cur].name + "'s") +
+                  " turn — the cancel did not take them back under the target");
   if (ferals){
     const what = ferals === 1 ? "their Feral Kitten" :
                  "all " + ferals + " of their Feral Kittens";
