@@ -1015,6 +1015,15 @@
   }
   .showglyph.timeout{background:#2a2f3a; border:3px solid #7f8ba0; color:#e7ebf1}
   .showglyph.winnoped{background:#3a2b1c; border:3px solid var(--accent); color:#ffd77a}
+  /* The win itself and the denied win are the same trophy — so they must not
+     look the same. A denial is the dark disc with a gold rim; the win is that
+     disc filled in, lit, and a size up. Told apart across a room. */
+  .showglyph.win{
+    background:radial-gradient(circle at 35% 30%, #ffe9a8, var(--accent) 62%, #b8801f);
+    border:3px solid #fff3cf; color:#3a2708;
+    width:clamp(104px, 16vh, 148px); font-size:clamp(48px, 7.5vh, 72px);
+    box-shadow:0 26px 64px #000d, 0 0 0 10px #ffd77a22, 0 0 90px #ffd77a55;
+  }
 
   /* The answer prompt: the card you hold, with the word on it. Blue like every
      other "you may respond to this" thing on the screen. */
@@ -1463,7 +1472,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-30a";
+const GAME_VERSION = "2026-08-31a";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -5725,6 +5734,19 @@ function logAction(html, kind, opts){
     // Undoing this must not also end its actor's turn: it was defensive, and
     // played out of turn. Set by the Defuse spent on a seven.
     turnSafe: !!opts.turnSafe,
+    /* Whose win this entry took off the table, if it took one.
+
+       Only nopeWholeTurn sets it, and only when the turn it cancelled was a
+       winning one. A cancelled win is the single entry a bot answers without
+       weighing anything: it is the game, and holding a Nope through it is
+       never right. Without a mark on the entry there is nothing to recognise
+       it by — by the time the answer is being considered the winner is back
+       under the target, so every "are they about to win" test says no.
+
+       Host-side only. It is not in the published projection because nothing on
+       a terminal reads it: bots run on the host, and a person can see perfectly
+       well that their own win has just been taken away. */
+    wonBy: opts.wonBy === undefined ? null : opts.wonBy,
     /* Nothing happened; this entry only says that something did.
        A notice exists to put a moment on screen for everybody, including the
        screens that are only watching. It must be invisible to turnStartSnap,
@@ -6902,9 +6924,31 @@ function declareWinner(pid){
   S.revealed = true;              // every hand is face up once the game is done
   clearImplodeClock();
   logMsg(`🏆 <b>${p.name}</b> wins with ${totalVP(p)} victory points!`);
-  announce("🏆 " + pdot(p) + " wins with <b>" + totalVP(p) + "</b> victory points", "big");
+  /* Journalled rather than announced, so it reaches every screen.
+
+     announce() draws on the screen it is called from, and declareWinner only
+     ever runs on the host — which is why the biggest moment in the game was
+     the one moment a guest never saw. An entry carrying a `show` is replayed
+     out of render() wherever the state lands, the same way every card reveal
+     is. A notice: it says something and does nothing, so turnStartSnap steps
+     over it rather than reading it as a line drawn under the turn. */
+  logAction("🏆 " + pdot(p) + " wins with <b>" + totalVP(p) + "</b> victory points",
+            "big", { actor: pid, nopeable: false, notice: true, show: "win" });
   render();
-  showStandings();
+  // The trophy first, the table of numbers second. Opening the standings here
+  // put a dialog over the top of the reveal on the winner's own screen, which
+  // is the one screen that most wanted to watch it.
+  afterShowcase(() => { if (S && S.phase === "over" && S.winner !== null) showStandings(); });
+}
+
+/* Run something once nothing is being turned over in the middle of the board.
+
+   Capped, because a showcase that never finishes must not mean a dialog that
+   never opens — ten seconds and it goes up regardless. */
+function afterShowcase(fn, tries){
+  tries = tries === undefined ? 40 : tries;
+  if (tries <= 0 || typeof showcaseBusy !== "function" || !showcaseBusy()){ fn(); return; }
+  setTimeout(() => afterShowcase(fn, tries - 1), 250);
 }
 
 /* The final table, rebuilt on demand so it can be reopened after closing. */
@@ -8535,6 +8579,15 @@ function showEntry(e){
              tintNames(bare), "big", 3600, true, e.id);
     return;
   }
+  // The game ending had less of a moment than the game nearly ending: a win
+  // taken away got the whole middle of the board, and the win itself got a
+  // line in the log and a dialog over the top of everything. Longest dwell in
+  // the game, and never dropped from the queue.
+  if (e.show === "win"){
+    showcase('<div class="showglyph win">\u{1F3C6}</div>',
+             tintNames(bare), "big", 4600, true, e.id);
+    return;
+  }
   if (e.show === "seven"){
     showcase('<div class="showseven">7</div>',
              tintNames((S.players[e.actor] ? S.players[e.actor].name : "") +
@@ -9195,6 +9248,8 @@ function nopeWholeTurn(ownerId, pid){
      what happened. Read before cancelTurn, which moves the turn on. */
   const playing = cur();
   const sameTurn = !!playing && playing.id === pid;
+  // Read before the cancel, which is what takes them back under the target.
+  const wasWin = totalVP(victim) >= S.winPoints;
   spendCard(noper, "nope");
   logMsg(sameTurn
     ? "<b>" + victim.name + "</b>'s turn was Noped by <b>" + noper.name + "</b>."
@@ -9209,9 +9264,10 @@ function nopeWholeTurn(ownerId, pid){
                      : pdot(victim) + "'s win is <b>Noped</b> — " + pdot(playing) +
                        "'s turn is cancelled with it",
             "defend", { actor: ownerId, snap: snapAll(), nopeable: true, turnBack: turnBack,
-                        spent: { pid: ownerId, key: "nope" }, show: "nope" });
+                        spent: { pid: ownerId, key: "nope" }, show: "nope",
+                        wonBy: wasWin ? pid : null });
   clearImplodeClock();
-  cancelTurn(pid, totalVP(victim) >= S.winPoints); // cancelTurn ends the turn itself
+  cancelTurn(pid, wasWin);                    // cancelTurn ends the turn itself
   noteEntry.turn = S.turnCounter;             // it belongs to the turn it made
 }
 
@@ -9420,13 +9476,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-30a"></script>
+<script src="ai.js?v=2026-08-31a"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-30a"></script>
-<script src="net.js?v=2026-08-30a"></script>
+<script src="firebase-config.js?v=2026-08-31a"></script>
+<script src="net.js?v=2026-08-31a"></script>
 </body>
 </html>

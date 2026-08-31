@@ -846,6 +846,26 @@ function makeAgent(pid){
       const hasDefuse = p.cards.some(c => c.key === "defuse");
       if (!hasNope && !hasDefuse) return false;
 
+      /* Our win has just been taken off us. Answer it, every time, ahead of
+         everything else.
+
+         Nothing below would ever have found this. The two reasons a bot spends
+         a Nope both look at the score, and the cancel has already put us back
+         under the target - so "is anybody about to win" says no, and "does
+         this hand hold the win" says no, and the bot sat on a Nope while the
+         game it had won was handed back to the table. There is no judgement to
+         make here: a Nope kept through your own cancelled win is a Nope that
+         will never be worth more than it was at that moment.
+
+         openEntries rather than openEntry, because being cancelled hands the
+         turn on and whoever picks it up may have journalled something newer by
+         the time this runs. The entry is still in reach; it just is not the
+         newest any more. */
+      if (hasNope && typeof openEntries === "function"){
+        const mine = openEntries().find(x => x.wonBy === p.id && canNopeFor(x, p.id));
+        if (mine){ nopeEntry(mine.id, p.id); return true; }
+      }
+
       const e = openEntry();
       if (!e) return false;
 

@@ -1476,6 +1476,43 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
+### A bot always answers the Nope that took its win
+
+Every time, ahead of everything else, without weighing anything.
+
+A bot spends a Nope for one of two reasons: somebody has visibly reached the
+target, or this hand is the win and the card would take it away. Neither of
+them can see a cancelled win. By the time the answer is being considered the
+cancel has already put the bot back under the target, so "is anybody about to
+win" says no and "does this hand hold the win" says no — and the bot sat on a
+Nope while the game it had just won was handed back to the table.
+
+The entry now carries a mark saying whose win it took, which is the only thing
+that identifies it after the fact. A Nope kept through your own cancelled win
+is a Nope that will never be worth more than it was at that moment, so there is
+no judgement to make.
+
+It is looked for across every answerable entry rather than only the newest:
+being cancelled hands the turn on, and whoever picks it up may have journalled
+something newer by the time the bot gets to think about it.
+
+### The win gets a moment of its own
+
+A win taken away had the whole middle of the board — a trophy, held for three
+and a half seconds, on every screen. The win itself had a line in the log and a
+dialog straight over the top of everything.
+
+Both are the same trophy, so they had to stop looking the same: a denial is the
+dark disc with a gold rim, a win is that disc filled in, lit, and a size up.
+The longest dwell in the game, and never dropped from the queue.
+
+It is journalled rather than announced, which is the difference between the
+host seeing it and everybody seeing it — `announce()` draws on the screen it is
+called from, and `declareWinner` only ever runs on the host, so the biggest
+moment in the game was the one moment a guest never saw. The final standings
+now wait for the trophy to clear before opening, capped at ten seconds so a
+showcase that never finishes cannot mean a dialog that never opens.
+
 ### A rewind judges the bonus cards from where the turn started
 
 Longest Road and Largest Army are sticky on purpose — the holder keeps them on
