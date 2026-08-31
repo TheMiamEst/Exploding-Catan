@@ -6587,12 +6587,15 @@ function stripWinningPoints(p, wasWin){
      whole rule: a cancelled win costs the turn and every Feral Kitten, and
      nothing else.
 
-     The check below stays. */
-  // If this ever fires the model above is wrong somewhere, and a silent wrong
-  // answer is worse than a noisy one.
-  if (totalVP(p) >= S.winPoints)
-    console.error("cancelled win left " + p.name + " on " + totalVP(p) +
-                  " with nothing left to take");
+     There was a check here too, complaining whenever a cancelled win left
+     somebody still on the target. It has gone, because it was not measuring an
+     outcome. Cancelling a turn RECOMPUTES Longest Road, and that can hand it to
+     a third player who was not the one being denied — so the moment a cancel
+     finishes is exactly the moment somebody new may have crossed. That is not a
+     failure; advancePlayer sweeps for it, and the sweep demands the next Nope.
+     A tripwire that fires on a state the very next line resolves is noise, and
+     noise is how a real one gets ignored. The real invariant is asserted where
+     it can actually be broken — in declareWinner. */
   if (ferals){
     const what = ferals === 1 ? "their Feral Kitten" :
                  "all " + ferals + " of their Feral Kittens";
@@ -6917,6 +6920,23 @@ function checkVictory(){
 function declareWinner(pid){
   clearGameLive();              // finished, not lost
   const p = S.players[pid];
+  /* The one invariant worth asserting, in the one place it can be broken.
+
+     Everything else about a Nope is recoverable: a cancel that does not reduce
+     somebody is picked up by the next sweep, and they are asked to survive
+     another one. A win DECLARED while a Nope is still sitting in somebody's
+     hand is not recoverable — the game is over and the card was never played.
+     That is the bug that has been reported three times, so it shouts here
+     rather than being reasoned about anywhere else.
+
+     An imploded turn is the one legitimate exception: nothing about it can be
+     Noped, the win included. */
+  if (!(implodeActive() && pid === S.cur)){
+    const held = S.players.filter(q => q.id !== pid && q.cards.some(c => c.key === "nope"));
+    if (held.length)
+      console.error("win declared for " + p.name + " while " +
+                    held.map(q => q.name).join(", ") + " still held a Nope");
+  }
   S.winner = pid;
   S.phase = "over";
   S.select = null;

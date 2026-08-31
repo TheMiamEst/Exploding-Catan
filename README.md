@@ -1453,9 +1453,26 @@ at eleven and moved on. The case it was covering is handled properly now (see
 below), and the rule is the whole rule: **a cancelled win costs the turn and
 every Feral Kitten, and nothing else.**
 
-The error log stays. If a cancelled win ever leaves somebody standing on the
-target, the model above is wrong somewhere, and a silent wrong answer is worse
-than a noisy one.
+### Where the assertion belongs
+
+There used to be a check complaining whenever a cancelled win left somebody
+still standing on the target. It has gone, because it was not measuring an
+outcome.
+
+Cancelling a turn **recomputes Longest Road**, and that can hand it to a third
+player who was not the one being denied — so the instant a cancel finishes is
+exactly the instant somebody new may have crossed. That is not a failure.
+`advancePlayer` sweeps for it, and the sweep demands the next Nope; the table
+goes on denying whoever is over the line until the Nopes run out. A tripwire
+that fires on a state the very next line resolves is noise, and noise is how a
+real one gets ignored.
+
+The invariant worth asserting is the one that cannot be recovered from, and it
+is asserted where it can actually be broken — in `declareWinner`. Everything
+else about a Nope is recoverable: a cancel that fails to reduce somebody comes
+back round, and they are asked to survive another one. A win **declared** while
+a Nope is still sitting in somebody's hand is not recoverable — the game is
+over and the card was never played. So that is what shouts.
 
 ### A Nope cancels the turn that is being played
 
