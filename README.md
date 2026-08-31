@@ -1441,17 +1441,61 @@ A cancelled win leaves the winner **under the target**. Not "denied for now",
 not "they will need answering again" — under. One Nope, one denial, and the
 winner has to earn it again from below the line.
 
-That follows from something simple: you only cross the target by gaining a
-point, and you only gain a point on your own turn — which is exactly what the
-cancel rewinds. So the rewind does the work, and the Feral Kittens go with it
-because a hidden point in hand would put them straight back over.
+That follows from something simple: crossing the target always takes a turn,
+and cancelling that turn takes it back. The Feral Kittens go with it because a
+hidden point in hand would put them straight back over.
 
-There is a backstop after that which takes knights, and it should never fire.
-Knights are safe from every other Nope in the game; this one is the exception
-because the alternative is a win a Nope cannot deny, and denying wins is what
-the card is for. If even that is not enough the code logs an error rather than
-carrying on quietly, because at that point the model above is wrong somewhere
-and a silent wrong answer is worse than a noisy one.
+Knights do not. There was a backstop here that stripped them when the rewind
+had not been enough; it fired about once in fifty games and achieved nothing
+the one time it did — a player propped up by buildings and Longest Road loses
+no points at all when their knights go, so it took the cards, left the score
+at eleven and moved on. The case it was covering is handled properly now (see
+below), and the rule is the whole rule: **a cancelled win costs the turn and
+every Feral Kitten, and nothing else.**
+
+The error log stays. If a cancelled win ever leaves somebody standing on the
+target, the model above is wrong somewhere, and a silent wrong answer is worse
+than a noisy one.
+
+### A Nope cancels the turn that is being played
+
+Always that turn — not the winner's turn, when those are different.
+
+You can cross the target on somebody else's turn. Their settlement cuts the
+road that was holding Longest Road together, the bonus falls to you, and you
+are on ten without having done a thing. The cancel used to rewind *the
+winner's* turn, which in that situation meant rewinding nothing: "there is no
+turn of theirs to undo" was true, and the wrong conclusion. The winner stayed
+exactly where they stood, so the next Nope was demanded, and the next, until
+the table had none left and the win landed anyway — every card at the table
+spent to delay it by one check each. Which is the complaint this whole rule was
+written to answer, arriving by a different road.
+
+The turn being played is the turn that caused it, so that is the turn that
+comes off. Undoing it puts the cut road back together and Longest Road with it,
+and the winner drops back under the target for the same reason anybody does:
+the thing that gave them the points has been un-done.
+
+### A rewind judges the bonus cards from where the turn started
+
+Longest Road and Largest Army are sticky on purpose — the holder keeps them on
+a tie, and a challenger has to strictly beat them. That is right while a game
+is being played and wrong immediately after a rewind, because the holder it
+protects may be the player whose turn is being cancelled. It defends the very
+thing the Nope is taking away.
+
+Which is how a Noped win still won. Red held Longest Road at 10. White built a
+road to 11, took it, and hit the target. The Nope pulled the road back off the
+board, leaving both on 10 — and the recompute, seeing White as the incumbent,
+gave the tie to White. White kept the two points, kept ten, and won on the next
+check with the Nope already spent.
+
+The rewind now puts the bonus holders back where the turn found them before
+recomputing, so the tie is judged from where the turn started. Red is the
+incumbent again, White's 10 does not beat it, and the bonus stays where it was
+before the road that has just been destroyed. The recompute still runs
+afterwards, because the turn may have broken somebody else's road with a
+settlement, and that settlement is coming down too.
 
 **The one exception is the Imploding Kitten.** A win on an imploded turn cannot
 be Noped, because nothing about an imploded turn can be. That is the only way a
