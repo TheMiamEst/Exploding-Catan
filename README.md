@@ -1518,6 +1518,29 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
+### An imploded turn is untouchable
+
+Nothing reaches an imploded turn. Not a Nope, not an Exploding Kitten, not an
+Attack, not anything. The only thing that ends it is its own twenty seconds.
+
+The Nope had been blocked in three separate places — the turn cancel, the seat
+pick, the journal — and every one of them was written as though the Nope were
+the only card that could reach across a turn. It is not. `OFF_TURN` holds three
+cards, and the other two are the Exploding Kitten and the Attack. Neither goes
+anywhere near those three checks: both come through `canPlayToPile`, and
+`canPlayToPile` had never heard of the Imploding Kitten. So the one turn in the
+game that is supposed to be untouchable could be ended by throwing a bomb at it.
+
+The rule now sits at the gate every off-turn play has to pass, rather than card
+by card: while the implode is running, the player having the turn is the only
+player who may do anything. Their own cards are unaffected — it is their turn.
+
+Two other places needed it. The hand no longer lights those cards up as
+playable, so the refusal is silent rather than a card that offers itself and
+then declines; and a targeted pick that was already in the air when the Kitten
+landed is dropped, because letting it complete would be the same interruption
+arriving by a slower route.
+
 ### A Nope you could not play
 
 An Exploding Kitten, an Attack and a Nope are all playable **off-turn** — that

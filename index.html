@@ -1472,7 +1472,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-31c";
+const GAME_VERSION = "2026-08-31d";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3671,9 +3671,12 @@ function drawBottom(){
       // looked like a win you had to wait for.
       const locked = c.boughtTurn === S.turnCounter && !isVP && !playableWhenDrawn(c);
       const reaction = def.kind === "response";
+      // Nothing is playable into an imploded turn but the turn's own cards, so
+      // nothing lights up as though it were. The refusal is silent: a card
+      // that does not offer itself needs no explanation.
       const offTurn  = OFF_TURN.has(c.key) && !locked && !isVP && !S.pending &&
                         S.phase !== "over" && !S.phase.startsWith("setup") &&
-                        S.cur !== p.id;
+                        S.cur !== p.id && !implodeActive();
       const playable = (myTurn && !locked && !isVP && !S.pending &&
                         (def.kind !== "response" || c.key === "nope") &&
                         (S.phase === "main" || S.phase === "roll")) || offTurn;
@@ -5457,6 +5460,20 @@ function canPlayToPile(key, me){
   // Your own turn: anything. Somebody else's: only the two cards the rules
   // already let you interrupt with.
   if (me === S.cur) return true;
+  /* Nothing interrupts an imploded turn. Not one thing.
+
+     The Nope was blocked in three separate places — the turn cancel, the seat
+     pick, the journal — and each of those was written as though the Nope were
+     the only card that could reach across a turn. It is not: Exploding Kitten
+     and Attack are OFF_TURN too, and neither of them goes anywhere near those
+     three checks. They come through here, and here had no idea the Imploding
+     Kitten existed. So the one turn in the game that is supposed to be
+     untouchable could be ended by throwing a bomb at it.
+
+     The rule is the whole rule and it belongs at the gate every off-turn play
+     has to pass, rather than card by card: while the implode is running, the
+     player having the turn is the only player who may do anything. */
+  if (implodeActive()) return false;
   return OFF_TURN.has(key);
 }
 
@@ -5526,6 +5543,12 @@ function seatPickable(pid){
   if (!s || s.kind !== "seat") return false;
   if (pid === s.actor) return false;
   if (S.phase === "over" || S.phase.startsWith("setup")) return false;
+  /* A pick that was already in the air when the Imploding Kitten landed. The
+     play itself is refused at canPlayToPile now, but a card thrown a moment
+     earlier is still waiting to be aimed, and letting it land would be the
+     same interruption arriving by a slower route. The player having the turn
+     is exempt: these are their own cards, on their own turn. */
+  if (implodeActive() && s.actor !== S.cur) return false;
   // Cancelling a turn can only be aimed at the person having one.
   if (s.purpose === "nopeturn") return pid === S.cur && !implodeActive();
   return true;
@@ -9593,13 +9616,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-31c"></script>
+<script src="ai.js?v=2026-08-31d"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-31c"></script>
-<script src="net.js?v=2026-08-31c"></script>
+<script src="firebase-config.js?v=2026-08-31d"></script>
+<script src="net.js?v=2026-08-31d"></script>
 </body>
 </html>
