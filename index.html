@@ -1472,7 +1472,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-31d";
+const GAME_VERSION = "2026-08-31e";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -6321,6 +6321,15 @@ function restoreTurnPointer(t){
   S.extraTurn = t.extraTurn;
   S.select = null;
   S.armed = null;
+  /* A turn handed back gets a fresh clock rather than none.
+
+     advancePlayer stops the clock, and a counter-Nope rewinds past that — so
+     without this the player picks their turn up with no clock at all and the
+     table waits on them for as long as they like. The snapshots carry the
+     board and not the clock, so there is nothing to put back; a full twenty
+     seconds from the moment they get it is both the simplest answer and the
+     fairest, since the argument that just happened was not their time. */
+  if (t.rolled) startTurnTimer();
 }
 
 /* A Noped player's turn is over immediately. Anything half-finished — a
@@ -6762,14 +6771,47 @@ function forcedWinNope(winner, pid){
    ══════════════════════════════════════════════════════════════════════ */
 
 let turnTimerHandle = null;
+/* When the last tick ran, so the next one can tell how much time really
+   passed. Declared here beside the handle rather than beside the tick that
+   uses it: a `let` referenced above its own declaration is a trap this file
+   has fallen into twice. */
+let turnTickAt = 0;
+const TURN_TICK_MS = 250;
+/* A tick arriving much later than it was scheduled did not happen at the
+   table: the tab was backgrounded, throttled to a crawl, or asleep. Browsers
+   cut background timers to about one a second and suspend them entirely on
+   mobile, so the excess is given back rather than spent. */
+const TURN_TICK_SLACK = 600;
 function timerEnabled(){ return !!(S && S.turnSeconds); }
 function startTurnTimer(){
   if (!timerEnabled()) return;
   S.turnTimerRemaining = S.turnSeconds;
   S.turnTimerPaused = false;
   S.turnTimerPauseReason = null;
+  turnTickAt = Date.now();
   S.turnTimerUntil = Date.now() + S.turnSeconds * 1000;
   scheduleTurnTimer();
+}
+
+/* A turn begins with no clock. It starts again when the dice are thrown.
+
+   doEndTurn cleared this and advancePlayer did not, which was fine for as long
+   as doEndTurn was the only way to reach advancePlayer. cancelTurn calls it
+   directly — so a Noped turn handed its live deadline straight to whoever was
+   next, already expired, and their first tick ran it out. Played out, the log
+   read: "Red's turn was Noped by Blue", then "Blue's turn timer expires", and
+   Blue never got a turn at all.
+
+   Clearing it in advancePlayer covers every route in, including the ones that
+   have not been written yet. */
+function stopTurnTimer(){
+  if (turnTimerHandle){ clearTimeout(turnTimerHandle); turnTimerHandle = null; }
+  turnTickAt = 0;
+  if (!S) return;
+  S.turnTimerUntil = 0;
+  S.turnTimerRemaining = 0;
+  S.turnTimerPaused = false;
+  S.turnTimerPauseReason = null;
 }
 function pauseTurnTimer(reason){
   if (!timerEnabled() || S.turnTimerPaused) return;
@@ -6805,35 +6847,85 @@ function scheduleTurnTimer(){
   if (!timerEnabled() || S.turnTimerPaused || S.phase === "over") return;
   turnTimerHandle = setTimeout(turnTimerTick, 250);
 }
+/* Is the clock allowed to be counting right now?
+
+   Not in the background, and only during a turn somebody is actually playing.
+   Everything that is not "the game is waiting for the player whose turn it is"
+   holds it: a tab nobody is looking at, an answer owed, a dialog open anywhere
+   at the table, an Imploding Kitten still landing, or somebody sitting on the
+   target while the table decides what to do about it.
+
+   HELD, not paused. A pause is a piece of state something has to remember to
+   undo, and the ones that get forgotten are exactly the ones on the rare paths
+   — a win being argued over being the obvious one. This is asked fresh every
+   tick and needs no clean-up: when the reason goes, the clock carries on. */
+function turnClockHeld(){
+  if (!S) return true;
+  if (typeof document !== "undefined" && document.hidden) return true;
+  if (S.winner !== null || S.phase === "over") return true;
+  if (S.phase !== "main" && S.phase !== "roll") return true;
+  if (S.pending || S.select || S.seven) return true;
+  if (typeof implodeActive === "function" && implodeActive()) return true;
+  if (typeof implodeRevealing === "function" && implodeRevealing()) return true;
+  if (typeof humanPromptOpen === "function" && humanPromptOpen()) return true;
+  /* Somebody has reached the target and it has not been settled. What follows
+     is a Nope, an answer to it, and possibly several more — none of which is
+     the current player's time to spend. */
+  if (S.players.some(q => totalVP(q) >= S.winPoints)) return true;
+  return false;
+}
+
 function turnTimerTick(){
   turnTimerHandle = null;
+  const now = Date.now();
+  const since = turnTickAt ? now - turnTickAt : TURN_TICK_MS;
+  turnTickAt = now;
+
   if (window.NET && NET.isGuest && NET.isGuest()){
     paintTurnTimer();
     scheduleTurnTimer();
     return;
   }
   if (!timerEnabled() || S.phase === "over") return;
-  if (S.seven || S.turnTimerPaused){ scheduleTurnTimer(); return; }
-  if (S.turnTimerUntil > Date.now()){
+  if (S.turnTimerPaused){ scheduleTurnTimer(); return; }
+  /* No clock is running, so there is nothing to count and nothing to expire.
+
+     A deadline of zero means "not started yet" — the clock does not begin
+     until the dice are thrown — and the test below is `until > now`, which a
+     zero fails. So any stray tick arriving between one turn ending and the
+     next player rolling read the absence of a clock as a clock that had run
+     out, and ended a turn that had not begun. It restarts from
+     startTurnTimer, which schedules its own tick, so stopping here loses
+     nothing. */
+  if (!S.turnTimerUntil) return;
+
+  // Time that passed while this screen was not running is handed back.
+  if (S.turnTimerUntil && since > TURN_TICK_SLACK)
+    S.turnTimerUntil += since - TURN_TICK_MS;
+
+  /* Held: the deadline slides along in front of the hold, so however long it
+     lasts the player still gets every second they were owed. */
+  if (turnClockHeld()){
+    if (S.turnTimerUntil) S.turnTimerUntil += since;
+    paintTurnTimer();
+    scheduleTurnTimer();
+    return;
+  }
+
+  if (S.turnTimerUntil > now){
     paintTurnTimer();
     scheduleTurnTimer();
     return;
   }
   S.turnTimerRemaining = 0;
   S.turnTimerUntil = 0;
-  if (!S.pending && !S.select && (S.phase === "main" || S.phase === "roll")){
-    logMsg("⏱ " + pdot(cur()) + "'s turn timer expires.");
-    // Journalled rather than announced, so it turns over on every screen the
-    // way a played card does. Nobody should have to be reading the log to
-    // notice that a turn ended without anybody doing anything.
-    logAction("⏱ " + pdot(cur()) + " runs out of time — their turn ends", "attack",
-              { actor: S.cur, nopeable: false, notice: true, show: "timeout" });
-    doEndTurn();
-  } else {
-    S.turnTimerPaused = true;
-    S.turnTimerPauseReason = "choice";
-    render();
-  }
+  logMsg("⏱ " + pdot(cur()) + "'s turn timer expires.");
+  // Journalled rather than announced, so it turns over on every screen the
+  // way a played card does. Nobody should have to be reading the log to
+  // notice that a turn ended without anybody doing anything.
+  logAction("⏱ " + pdot(cur()) + " runs out of time — their turn ends", "attack",
+            { actor: S.cur, nopeable: false, notice: true, show: "timeout" });
+  doEndTurn();
 }
 /* Asked in one place, so the drawing and the repainting below can never
    disagree about whether there is a clock on screen. */
@@ -6915,14 +7007,7 @@ function doEndTurn(){
      come back to counters reading low until the backlog caught up. The worst
      this can do is snap a number into place a moment early. */
   clearArrivals();
-  if (timerEnabled()){
-    if (turnTimerHandle) clearTimeout(turnTimerHandle);
-    turnTimerHandle = null;
-    S.turnTimerUntil = 0;
-    S.turnTimerRemaining = 0;
-    S.turnTimerPaused = false;
-    S.turnTimerPauseReason = null;
-  }
+  stopTurnTimer();
   const ended = S.turnCounter;
   if (S.extraTurn){
     S.extraTurn = false;
@@ -6943,6 +7028,9 @@ function doEndTurn(){
 }
 
 function advancePlayer(){
+  // Whatever route got here — a turn ended, or a turn was cancelled — the turn
+  // that was running is over, and its clock with it. See stopTurnTimer.
+  stopTurnTimer();
   const n = S.players.length;
   let guard = 0;
   do {
@@ -9616,13 +9704,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-31d"></script>
+<script src="ai.js?v=2026-08-31e"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-31d"></script>
-<script src="net.js?v=2026-08-31d"></script>
+<script src="firebase-config.js?v=2026-08-31e"></script>
+<script src="net.js?v=2026-08-31e"></script>
 </body>
 </html>

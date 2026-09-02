@@ -1518,6 +1518,53 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
+### The clock belongs to the turn, not to the wall
+
+Blue Nopes Red's turn. Blue's own turn then ends instantly, and play jumps to
+Orange. The log reads:
+
+```
+Red's turn was Noped by Blue.
+Red's turn was Noped - nothing to lose.
+Blue's turn timer expires.
+```
+
+`doEndTurn` cleared the clock and `advancePlayer` did not, which was fine for
+as long as `doEndTurn` was the only way to reach `advancePlayer`. `cancelTurn`
+calls it directly, so a Noped turn handed its live deadline straight to whoever
+was next — already expired — and their first tick ran it out. Clearing it in
+`advancePlayer` covers every route in, including ones not written yet.
+
+A second bug sat underneath it: a deadline of **zero** means *not started*, the
+clock does not begin until the dice are thrown — but the expiry test is
+`until > now`, which a zero fails. Any stray tick between one turn ending and
+the next player rolling read the absence of a clock as a clock that had run out.
+
+### Held, not paused
+
+The clock counts only while the game is waiting for the player whose turn it
+is, on a screen somebody is looking at. Everything else holds it: a hidden tab,
+an answer owed, a dialog open anywhere at the table, an Imploding Kitten still
+landing, or somebody sitting on the target while the table decides what to do
+about it.
+
+**Held, not paused.** A pause is state something has to remember to undo, and
+the ones that get forgotten are exactly the ones on the rare paths — a win
+being argued over being the obvious one. The hold is asked fresh every tick and
+needs no clean-up: the deadline slides along in front of it, so however long it
+lasts the player still gets every second they were owed, and when the reason
+goes the clock simply carries on.
+
+Backgrounded tabs are the same question asked differently. Browsers cut
+background timers to about one a second and suspend them outright on mobile, so
+a tick arriving much later than it was scheduled did not happen at the table.
+The excess is handed back rather than spent — a turn cannot run out while
+nobody is looking at it.
+
+A turn handed back by a counter-Nope gets a fresh clock rather than none, since
+`advancePlayer` stopped the old one and the snapshots carry the board rather
+than the clock.
+
 ### An imploded turn is untouchable
 
 Nothing reaches an imploded turn. Not a Nope, not an Exploding Kitten, not an
