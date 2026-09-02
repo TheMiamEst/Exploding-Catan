@@ -1472,7 +1472,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-31e";
+const GAME_VERSION = "2026-09-02a";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3468,9 +3468,31 @@ function discardStack(){
   return out;
 }
 
-function discardShown(){
-  const st = discardStack();
-  if (!st.length) return null;
+/* What a card DROPPED on the pile answers — which is not the same question as
+   what the pile is drawing.
+
+   A card still turning over in the middle of the board is deliberately kept
+   off the pile until its reveal finishes. That is a drawing rule, and it was
+   being used to decide what a dropped card answers as well. So for the two or
+   three seconds a card is on screen — exactly the seconds you are looking at
+   it and reaching for an answer — the pile was still offering the card
+   underneath, and:
+
+     · a Defuse dropped on an Exploding Kitten aimed at you was refused
+       outright, because the pile was showing something you had no business
+       Defusing;
+     · a Nope on the Defuse that had just bounced that Kitten back at you was
+       refused on your own turn, and on somebody else's turn it quietly became
+       a turn-cancel instead — the card spent, the turn taken, and your hand
+       still gone.
+
+   The whole pile answers, including whatever has not finished arriving. The
+   drawing rule is untouched: the pile still shows a card only once its moment
+   is over. */
+function discardDropRec(){
+  if (!S || !S.pile || !S.pile.length) return null;
+  const st = [];
+  for (let i = S.pile.length - 1; i >= 0; i--) st.push(S.pile[i]);
   const i = Math.max(0, Math.min(discardIdx, st.length - 1));
   return st[i];
 }
@@ -9294,7 +9316,10 @@ function dropTargetAt(x, y){
   // Ahead of the log, because the pile is the one that is always on screen.
   const pileEl = el.closest("#discardWrap");
   if (pileEl){
-    const shown = discardShown();
+    // discardDropRec, not discardShown: a card still turning over in the
+    // middle is the one being answered, even though the pile has not been
+    // given it yet.
+    const shown = discardDropRec();
     // A pile record carries the journal id it came from, not an id of its own.
     return { kind:"pile", jid: shown ? shown.jid : null,
              el: pileEl.querySelector(".discpile") || pileEl };
@@ -9411,7 +9436,9 @@ function markDropTargets(){
   const me = dragCard.ownerId;
   const pile = document.querySelector("#discardWrap .discpile");
   if (pile){
-    const shown = discardShown();
+    // The same record dropTargetAt will hand to performDrop, so the outline
+    // and the drop can never disagree about what is being answered.
+    const shown = discardDropRec();
     if (dropAllowed(dragCard, { kind:"pile", jid: shown ? shown.jid : null, el: pile }))
       pile.classList.add("droppable");
   }
@@ -9704,13 +9731,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-31e"></script>
+<script src="ai.js?v=2026-09-02a"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-31e"></script>
-<script src="net.js?v=2026-08-31e"></script>
+<script src="firebase-config.js?v=2026-09-02a"></script>
+<script src="net.js?v=2026-09-02a"></script>
 </body>
 </html>

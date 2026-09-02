@@ -1518,6 +1518,36 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
+### What the pile SHOWS and what the pile ANSWERS
+
+A card still turning over in the middle of the board is deliberately kept off
+the discard pile until its reveal finishes — cards appear on the pile once
+their moment is over, which is how it was asked for and how it should stay.
+
+That is a rule about drawing. It was also, by accident, the rule deciding what
+a card dropped on the pile answers: both `dropTargetAt` and `markDropTargets`
+asked the pile what it was currently showing. So for the two or three seconds a
+card is on screen — exactly the seconds you are looking at it and reaching for
+an answer — the pile was still offering the card underneath it.
+
+Three things broke in that window, all of them at the only moment they matter:
+
+* **A Defuse could not answer the Exploding Kitten being shown to you.** The
+  pile was offering the card beneath, which you had no business Defusing, so
+  the drop was refused outright.
+* **A Nope on the Defuse that had just bounced that Kitten back at you** was
+  refused on your own turn.
+* **On somebody else's turn the same Nope quietly became a turn-cancel.** The
+  drop fell through to "cancel whoever is playing", the card was spent, a turn
+  was taken — and your hand was still gone. Which is the report: *exploded
+  someone, they defused it, I played a nope, and I still left with my hand
+  exploded.*
+
+`discardDropRec` answers the second question separately. The drop reads the
+whole pile including whatever has not finished arriving; the pile still draws
+only what has. `markDropTargets` uses the same record, so the outline and the
+drop can never disagree about what is being answered.
+
 ### The clock belongs to the turn, not to the wall
 
 Blue Nopes Red's turn. Blue's own turn then ends instantly, and play jumps to
