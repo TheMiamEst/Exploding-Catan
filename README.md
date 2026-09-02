@@ -1518,6 +1518,35 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
+### Nobody but the host ever saw a card move
+
+The host publishes in two halves. The log, the feed, the chat and the emotes
+are identical for every seat, so they go out once in `pub` and are merged back
+in on arrival; everything that differs per seat goes out through `viewFor`.
+
+`fx` — the list of cards in flight — was deleted from the blob alongside those
+four, as though it were the same kind of thing. But it was never added to `pub`,
+so it went out nowhere at all. Every seat's view carried an empty flight list,
+and `viewFor`'s careful per-seat redaction of it had been running against
+`undefined` since the day it was written.
+
+It cannot join the shared half either. A robbery names the card it took, and
+that must reach exactly two people: the thief and the person robbed. Everyone
+else is entitled to a count and a row of backs, and to nothing more — the
+private fields are stripped rather than hidden, so there is nothing to read in
+devtools. That decision can only be made per seat, so `fx` stays in the blob
+and goes out redacted with the rest of it.
+
+What survived was everything a screen can animate on its own: your own cards
+arriving in your own hand, off your own state. What was missing was everything
+that needed the host to say it happened — kitten cards off the deck, resources
+flying to somebody else's seat, trades crossing between two players. Which is
+exactly the shape of the report: *own resource animations, yes; dev cards and
+other people's, no.*
+
+Eight flights of a few short keys each, six times over, is nothing next to
+being able to see the game.
+
 ### A bot always answers the Nope that took its win
 
 Every time, ahead of everything else, without weighing anything.

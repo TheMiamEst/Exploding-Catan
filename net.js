@@ -256,10 +256,11 @@ function serializeGame(){
     // action, so the same emote arrives over and over.
     chat: (S.chat || []).slice(-CHAT_KEEP),
     emotes: (S.emotes || []).slice(-EMOTE_KEEP),
-    // Cards in flight. The same for every seat — a robbery travels face down
-    // for everybody, including the two people who can see it in their own
-    // hands — so it rides in the shared half too. Without this, only the
-    // browser running the game ever watched anything move.
+    /* Cards in flight. NOT the same for every seat, which is why they go out
+       through viewFor with everything else that is redacted rather than in the
+       shared half: a robbery names the card it took, and only the thief and
+       the person robbed may see which one it was. Everybody else gets a count
+       and a row of backs. */
     fx: (S.fx || []).slice(-FX_KEEP),
     msgId: S.msgId || 0
   };
@@ -429,7 +430,21 @@ function publish(){
   delete blob.feed;
   delete blob.chat;
   delete blob.emotes;
-  delete blob.fx;
+  /* fx is NOT deleted here, and deleting it was why nobody but the host ever
+     saw a card move.
+
+     The four above are identical for every seat, so they go out once in `pub`
+     and are merged back in on arrival. fx was deleted alongside them as though
+     it were the same kind of thing — but it was never added to `pub`, so it
+     went out nowhere at all. Every seat's view carried an empty flight list,
+     and viewFor's careful per-seat redaction of it had been running against
+     `undefined` the whole time.
+
+     It cannot join them in `pub` either: a robbery names the card it took, and
+     that must reach exactly two people. So it stays in the blob and goes out
+     redacted per seat, which is the only place that decision can be made.
+     Eight flights of a few short keys each, six times over, is nothing next to
+     being able to see the game. */
 
   const out = {};
   for (let s = 0; s < blob.n; s++) out[s] = clean(viewFor(blob, s));
