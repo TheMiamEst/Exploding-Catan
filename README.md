@@ -1518,6 +1518,37 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
+### A Nope you could not play
+
+An Exploding Kitten, an Attack and a Nope are all playable **off-turn** — that
+is what `OFF_TURN` is for. So all three can be thrown at you while *you* are the
+one having a turn.
+
+And then a Nope had nowhere to go. Both gestures that answer a card — dropping
+it on the discard pile, dropping it on the log line — routed through
+`canNopeTurnNow`, which asks whether there is somebody else's turn to cancel.
+On your own turn there is not, so both refused. The entry was answerable the
+whole time (`canNopeFor` said yes); there was simply no way to say so. The one
+thing still reachable was Noping your own roll, which is the only entry that
+never went through a turn, and that is what people actually resorted to.
+
+**When you Nope somebody else, you end their turn. When you Nope something
+aimed at you and there is no turn to end, you cancel the card.** The second
+half is not new machinery — `nopeEntry` has done exactly that since it was
+written, *"the card is cancelled, the turn is not"*. It was only ever reachable
+for a roll and for another Nope.
+
+So `nopeCancelsCard` now decides which of the two a Nope means, and the pile,
+the log line and the bots all ask it. Taking a turn stays the answer whenever
+there is a turn to take, because taking Blue's turn cancels the Exploding
+Kitten Blue threw at you along with everything else Blue did — the bigger
+answer is still on the table, and it is still what the gesture means.
+
+The bots had the identical hole. Their routing tested `e.actor === S.cur`,
+which is false for an attack thrown at them during their own turn, so the
+branch fell through to "do nothing": a bot holding a Nope, wanting to spend it,
+allowed to spend it, with nowhere to put it. They ask the same question now.
+
 ### Nobody but the host ever saw a card move
 
 The host publishes in two halves. The log, the feed, the chat and the emotes

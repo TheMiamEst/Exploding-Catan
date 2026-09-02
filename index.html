@@ -1472,7 +1472,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-08-31b";
+const GAME_VERSION = "2026-08-31c";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -5403,6 +5403,47 @@ function canNopeTurnNow(me){
   return S.cur !== me && !implodeActive();
 }
 
+/* Did this land on YOU? The same question a Defuse asks, without the parts
+   that are particular to answering with a Defuse. */
+function aimedAtMe(e, me){
+  if (!e) return false;
+  if (isRobberEntry(e)) return e.actor !== me && settledOnRobbedHex(e, me);
+  if (!e.card) return false;                    // a reaction, aimed at nobody
+  if (e.actor === me) return false;             // your own card
+  return TARGETED.has(e.card.key) && e.target === me;
+}
+
+/* Does a Nope answer this entry by cancelling the CARD rather than by taking
+   somebody's turn?
+
+   A Nope takes a turn. That is the whole card, and it works perfectly well
+   while somebody else is having one: taking Blue's turn cancels the Exploding
+   Kitten Blue threw at you along with everything else Blue did that turn.
+
+   It falls apart on your OWN turn. A Nope, an Attack and an Exploding Kitten
+   are all playable off-turn — that is what OFF_TURN is — so all three can land
+   on you while you are the one playing. And then there is no opponent's turn
+   to end: canNopeTurnNow says no, and both gestures that would answer the card
+   refuse it. The entry was answerable the whole time (canNopeFor said yes);
+   there was simply nowhere to drop the card and say so. The only thing left
+   was Noping your own roll, which is the one entry that never went through a
+   turn — and that is exactly what people resorted to.
+
+   So when there is no turn to take, the Nope does the smaller thing it has
+   always been able to do: it cancels the card and the turn carries on.
+   nopeEntry has had that path since it was written — "the card is cancelled,
+   the turn is not" — it was only ever reachable for a roll and for a Nope. */
+function nopeCancelsCard(e, me){
+  if (!e || !canNopeFor(e, me)) return false;
+  // A roll is thrown again, a Nope or a Defuse is taken back. Neither belongs
+  // to a turn you could take instead, so both have always come through here.
+  if (e.kind === "roll" || e.kind === "defend") return true;
+  // There IS a turn to take, and taking it cancels this card too. The bigger
+  // answer is on the table, so it stays what the gesture means.
+  if (canNopeTurnNow(me)) return false;
+  return aimedAtMe(e, me);
+}
+
 /* May this card be played to the pile at all, by this player, right now? */
 function canPlayToPile(key, me){
   if (!S || S.phase === "over" || S.phase.startsWith("setup")) return false;
@@ -9189,12 +9230,9 @@ function dropAllowed(info, drop){
   if (drop.kind === "entry"){
     const e = S.journal.find(x => x.id === drop.jid);
     if (!e) return false;
-    // Only the two entries a Nope can answer WITHOUT taking a turn: a roll,
-    // and another Nope. Everything else is somebody's turn, and goes through
-    // the seats.
-    if (key === "nope")
-      return (e.kind === "roll" || e.kind === "defend")
-             ? canNopeFor(e, me) : canNopeTurnNow(me);
+    // Either the card itself — a roll, another Nope, or an attack that landed
+    // on you with no turn of theirs to take — or the turn it belongs to.
+    if (key === "nope") return nopeCancelsCard(e, me) || canNopeTurnNow(me);
     if (key === "defuse") return canDefuseEntry(e, me);
     return false;
   }
@@ -9223,8 +9261,13 @@ function dropAllowed(info, drop){
 
        A Nope that can cancel a winning turn was never going to be worth
        spending on one card anyway. So: it takes the turn, the seats light up
-       to say whose, and nothing that turn did is handed back. */
-    if (key === "nope") return canNopeTurnNow(me);
+       to say whose, and nothing that turn did is handed back.
+
+       The exception is an attack that landed on YOU while there is no turn to
+       take, which is what happens whenever one is thrown at you during your
+       own — see nopeCancelsCard. Then the pile answers the card it is showing,
+       exactly as it does for a Defuse. */
+    if (key === "nope") return nopeCancelsCard(e, me) || canNopeTurnNow(me);
     return canPlayToPile(key, me);
   }
   /* A seat card is no longer somewhere you can drop a card. Everything is
@@ -9281,19 +9324,28 @@ function performDrop(info, drop){
 
   if (drop.kind === "pile"){
     if (key === "defuse"){ defuseEntry(drop.jid, ownerId); return; }
-    if (key === "nope"){ beginSeatPick(ownerId, card, "nopeturn"); return; }
+    if (key === "nope"){
+      // The card the pile is showing, when that is something aimed at you and
+      // there is no turn to take instead. Otherwise the seats decide.
+      const e = drop.jid === null || drop.jid === undefined
+                ? null : S.journal.find(x => x.id === drop.jid);
+      if (nopeCancelsCard(e, ownerId)) nopeEntry(drop.jid, ownerId);
+      else beginSeatPick(ownerId, card, "nopeturn");
+      return;
+    }
     playToPile(idx, ownerId);
     return;
   }
 
   if (drop.kind === "entry"){
-    // A Nope on a log line still reaches the two entries that are not a turn:
-    // your own roll, which is thrown again, and somebody else's Nope, which is
-    // taken back. Anything else on the log is part of a turn, and a Nope takes
+    // A Nope on a log line reaches the entries that are not a turn: your own
+    // roll, which is thrown again; somebody else's Nope, which is taken back;
+    // and an attack that landed on you with no turn of theirs to take, which
+    // is simply cancelled. Anything else belongs to a turn, and the Nope takes
     // the whole turn — so it goes through the seats like every other one.
     if (key === "nope"){
       const e = S.journal.find(x => x.id === drop.jid);
-      if (e && (e.kind === "roll" || e.kind === "defend")) nopeEntry(drop.jid, ownerId);
+      if (nopeCancelsCard(e, ownerId)) nopeEntry(drop.jid, ownerId);
       else beginSeatPick(ownerId, card, "nopeturn");
     }
     else if (key === "defuse") defuseEntry(drop.jid, ownerId);
@@ -9541,13 +9593,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-08-31b"></script>
+<script src="ai.js?v=2026-08-31c"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-08-31b"></script>
-<script src="net.js?v=2026-08-31b"></script>
+<script src="firebase-config.js?v=2026-08-31c"></script>
+<script src="net.js?v=2026-08-31c"></script>
 </body>
 </html>

@@ -885,12 +885,16 @@ function makeAgent(pid){
         }
       }
       if (hasNope && canNopeFor(e, p.id) && nopeJournalDecision(p, e)){
-        /* A Nope cancels a TURN now, and only the two entries that are not
-           part of one are still answered in place: a roll, which is thrown
-           again, and another Nope, which is taken back. Everything else on the
-           journal belongs to somebody's turn, so that is what gets cancelled —
-           the same thing a person dropping the card would do. */
-        if (e.kind === "roll" || e.kind === "defend") nopeEntry(e.id, p.id);
+        /* Routed exactly the way a person's drop is routed, by asking the same
+           question they ask: does this Nope cancel the card, or the turn?
+
+           The card, for a roll (thrown again), for another Nope (taken back),
+           and for an attack that landed on this bot while there is no turn of
+           anybody else's to take — which is what an Exploding Kitten thrown at
+           you during your own turn is. That last one used to fall through to
+           `return false`: the bot held a Nope, wanted to spend it, was allowed
+           to spend it, and had nowhere to put it. Same hole people had. */
+        if (nopeCancelsCard(e, p.id)) nopeEntry(e.id, p.id);
         else if (typeof nopeWholeTurn === "function" &&
                  e.actor !== p.id && e.actor === S.cur) nopeWholeTurn(p.id, e.actor);
         else return false;
