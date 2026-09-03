@@ -1472,7 +1472,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-09-02c";
+const GAME_VERSION = "2026-09-02d";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -3392,10 +3392,22 @@ function placeDeck(){
    A Nope and a Defuse are journalled as what they ANSWERED rather than as a
    card play, so they carry `spent` instead of `card`. They are still cards
    somebody played and they still belong on the pile. */
+/* Which card this entry actually put on the pile.
+
+   `spent` first, because when somebody answered with a card, THAT is the card
+   they played. What it answered is already on the pile, and pileCancel has
+   just drawn a line through it.
+
+   The two only disagree on one entry in the game, and it is the reason for the
+   order: a Defused Alter the Future keeps the Alter on `card`, which is what
+   lets a third player whose hexes are being swapped still answer the new swap.
+   Read card-first, the pile took that as a second Alter being played — so a
+   Defused Alter showed as a cancelled Alter with a fresh Alter sitting on top
+   of it, when what happened was a Defuse. */
 function entryCardKey(e){
   if (!e) return null;
-  if (e.card && e.card.key && e.card.key !== "hidden") return e.card.key;
   if (e.spent && e.spent.key) return e.spent.key;
+  if (e.card && e.card.key && e.card.key !== "hidden") return e.card.key;
   return null;
 }
 function entryCardPlayer(e){
@@ -3422,10 +3434,14 @@ function pileAdd(e, card){
   if (!S.pile) S.pile = [];
   const key = card ? card.key : entryCardKey(e);
   if (!key || key === "hidden") return;
+  // Flavour belongs to whichever card is going on the pile. A Defused Alter
+  // still carries the Alter on `card`, and reading the flavour from there
+  // would label the Defuse with the Alter's.
+  const ownFlavor = !card && e.card && e.card.key === key;
   S.pile.push({
     jid: e.id,
     key: key,
-    flavor: (card && card.flavor) || (e.card && e.card.flavor) || null,
+    flavor: (card && card.flavor) || (ownFlavor ? e.card.flavor : null) || null,
     by: entryCardPlayer(e),
     at: (e.target === undefined || e.target === null) ? null : e.target,
     dead: false
@@ -9754,13 +9770,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-09-02c"></script>
+<script src="ai.js?v=2026-09-02d"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-09-02c"></script>
-<script src="net.js?v=2026-09-02c"></script>
+<script src="firebase-config.js?v=2026-09-02d"></script>
+<script src="net.js?v=2026-09-02d"></script>
 </body>
 </html>

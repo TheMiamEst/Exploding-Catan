@@ -1558,6 +1558,23 @@ forever. The host turns a request down by ignoring it, so after a few seconds
 the guest says what it can see for itself: the table is full, or the game has
 already started and you are not in it.
 
+### The pile shows the card that was played
+
+When somebody answers with a card, that card is what they played — and the
+thing it answered is already sitting on the pile with a line drawn through it.
+
+`entryCardKey` read `card` before `spent`, and those two disagree on exactly
+one entry in the game. A Defused Alter the Future keeps the Alter on `card`,
+which is what lets a third player whose hexes are being swapped still answer
+the new swap. The pile read that as a second Alter being played, so a Defused
+Alter showed as **a cancelled Alter with a fresh Alter on top of it** — instead
+of a cancelled Alter under the Defuse that actually happened.
+
+`spent` first. Flavour follows the card that is really going down, so the
+Defuse is not labelled with the Alter's. Nothing else moved: the Defuse entry
+still carries the Alter, so the answer chain is untouched — a third player on
+those hexes can still Defuse the new swap, and anybody can still Nope it.
+
 ### What the pile SHOWS and what the pile ANSWERS
 
 A card still turning over in the middle of the board is deliberately kept off
