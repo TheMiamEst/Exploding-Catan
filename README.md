@@ -1518,6 +1518,46 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
+### Leaving and coming back
+
+Leaving a lobby used to cost you your seat for good, and the table with it.
+
+A guest's uid was a fresh random on every join. The host matches a rejoin to a
+seat by uid, so a brand new uid matched nothing — and the seat you had was
+still marked taken, under your old id and your name, so it was never offered to
+anybody else either. The table sat one player short and the only way back in
+was a whole new room.
+
+Three things fix it, and they are three different ways of leaving:
+
+**You are remembered.** The uid lives in `localStorage`, so the same browser
+comes back as the same person and drops straight into its own seat. The host
+keeps a random one: a host leaving takes the room with it, so there is nothing
+to come back to — and a random id means a host and a guest in two tabs of the
+same browser cannot collide over it.
+
+**Saying so frees the seat.** Every exit a guest has goes through `teardown`,
+so that is where it says goodbye. In the lobby the host hands the seat back to
+the table and anybody may take it.
+
+**Not saying so frees it too.** The Leave button is the tidy way out; closed
+tabs, flat batteries and walking out of range are most of the real ones. A
+`present/{uid}` node the server removes on the guest's behalf covers those,
+re-armed on every reconnect for the same reason the host's is — an
+`onDisconnect` fires once and is then spent.
+
+**Mid-game the seat is kept, not freed.** Once the cards are dealt a seat holds
+a hand, a colour and pieces on the board. Handing that to a stranger would be
+handing them somebody else's game, so a running table takes no new faces — but
+it always takes back a face it knows. Rejoin from the browser you were playing
+on and your seat is exactly as you left it; the host publishes the whole state,
+so it makes no difference how long you were away.
+
+And a guest nobody seats no longer sits in "waiting for the host to start"
+forever. The host turns a request down by ignoring it, so after a few seconds
+the guest says what it can see for itself: the table is full, or the game has
+already started and you are not in it.
+
 ### What the pile SHOWS and what the pile ANSWERS
 
 A card still turning over in the middle of the board is deliberately kept off

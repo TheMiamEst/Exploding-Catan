@@ -23,6 +23,9 @@
      /rooms/CODE/pub             host → everyone: the log and the feed
      /rooms/CODE/view/{n}        host → that seat: the rest, redacted
      /rooms/CODE/intents         everyone → host: "this is what I did"
+     /rooms/CODE/join            guest → host: "let me sit down"
+     /rooms/CODE/leave           guest → host: "I have gone"
+     /rooms/CODE/present/{uid}   guest → host: "I am still here" (auto-removed)
 
    The state is rewritten in full after every action rather than diffed. It
    cannot drift, and for six people taking turns the traffic is nothing — the
@@ -141,6 +144,30 @@ function randomCode(){
   return s;
 }
 function randomId(){ return Math.random().toString(36).slice(2, 10); }
+
+/* Who this browser is, kept across leaving and coming back.
+
+   A guest's uid was a fresh random on every join, and that is why leaving a
+   lobby cost you your seat for good. The host matches a rejoin to a seat by
+   uid; a brand new uid matches nothing, so you were handed a spare seat
+   instead — except the seat you had was still marked taken, under your old id
+   and your name, so it was never offered to anybody. The table sat one player
+   short and the only way back in was a whole new room.
+
+   Remembered per browser rather than per tab, because closing the tab is one
+   of the ordinary ways of leaving and coming back. A private window with no
+   storage gets a fresh id, which is no worse than before.
+
+   The HOST keeps a random one. A host leaving takes the room with it, so
+   there is nothing to come back to — and a random id means that a host and a
+   guest running in two tabs of the same browser cannot collide over it. */
+function guestUid(){
+  try {
+    let id = localStorage.getItem("ec_uid");
+    if (!id){ id = randomId(); localStorage.setItem("ec_uid", id); }
+    return id;
+  } catch(e){ return randomId(); }
+}
 
 /* Firebase drops keys whose value is undefined and turns sparse arrays into
    objects. Everything on the wire goes through here so neither surprises us
@@ -852,15 +879,36 @@ function startHost(n, name, av){
   // Somebody asking for a seat.
   NET.room.child("join").on("child_added", snap => {
     const j = snap.val(); snap.ref.remove();
-    if (!j || NET.started) return;
-    let seat = NET.roster.findIndex(r => r.uid === j.uid);
-    if (seat < 0) seat = NET.roster.findIndex(r => r.bot);
-    if (seat < 0) return;                                   // table is full
+    if (!j || !j.uid) return;
+    /* Their own seat, if they had one. Never the host's, so a host and a guest
+       sharing a browser cannot end up sharing a seat either. */
+    let seat = NET.roster.findIndex((r, i) => i !== NET.seat && r && r.uid === j.uid);
+    const returning = seat >= 0;
+    if (!returning){
+      // A new face. Only before the cards are dealt: a seat mid-game holds a
+      // hand and a colour on the board, and handing that to a stranger would
+      // be handing them somebody else's game.
+      if (NET.started) return;
+      seat = NET.roster.findIndex(r => r.bot);
+      if (seat < 0) return;                                 // table is full
+    }
     NET.roster[seat] = { seat: seat, name: j.name || PLAYER_NAMES[seat], bot:false,
                          uid: j.uid, av: typeof j.av === "string" ? j.av.slice(0, 40) : "" };
     NET.room.child("seats").set(clean(NET.roster));
     if (NET.onRoster) NET.onRoster();
+    /* Coming back to a game already running: their seat is exactly as they
+       left it, and they need the board to go with it. publish() sends the
+       whole state, so it does not matter how long they were away. */
+    if (returning && NET.started) publish();
   });
+
+  // Somebody saying they have gone, and the same thing noticed rather than
+  // said — see armSeatPresence.
+  NET.room.child("leave").on("child_added", snap => {
+    const j = snap.val(); snap.ref.remove();
+    if (j && j.uid) releaseSeat(j.uid);
+  });
+  NET.room.child("present").on("child_removed", snap => releaseSeat(snap.key));
 
   NET.room.child("intents").on("child_added", snap => {
     const m = snap.val(); snap.ref.remove();
@@ -871,11 +919,47 @@ function startHost(n, name, av){
   hostLobby();
 }
 
+/* Give a seat back to the table.
+
+   Only before the cards are dealt. Once a game is running the seat holds a
+   hand, a colour and pieces on the board, so it is kept for whoever left it —
+   they pick it straight back up by uid, however long they are away. In the
+   lobby there is nothing to keep, and an empty chair that nobody may sit in is
+   the whole complaint. */
+function releaseSeat(uid){
+  if (!isHost() || !uid || NET.started || !NET.roster) return;
+  const seat = NET.roster.findIndex((r, i) => i !== NET.seat && r && r.uid === uid);
+  if (seat < 0) return;
+  NET.roster[seat] = { seat: seat, name: PLAYER_NAMES[seat], bot: true };
+  if (NET.room) NET.room.child("seats").set(clean(NET.roster));
+  if (NET.onRoster) NET.onRoster();
+}
+
+/* A guest's "I am still here", and the promise to take it back down if this
+   browser stops answering.
+
+   Saying you are leaving covers the Leave button. It does not cover a closed
+   tab, a flat battery or a walk out of wifi range, which is most of how people
+   actually leave — so the seat is held open by a node the server removes on
+   their behalf. Re-armed on every reconnect for the same reason the host's is:
+   an onDisconnect fires once and is then spent. */
+function armSeatPresence(){
+  if (!NET.db || !NET.room || !NET.uid) return;
+  if (NET.seatPresenceRef) NET.seatPresenceRef.off();
+  const mine = NET.room.child("present/" + NET.uid);
+  NET.seatPresenceRef = NET.db.ref(".info/connected");
+  NET.seatPresenceRef.on("value", s => {
+    if (!s.val() || NET.role !== "guest" || !NET.room) return;
+    mine.onDisconnect().remove();
+    mine.set(true);
+  });
+}
+
 function startGuest(code, name, av){
   dropLocalGame();
   connect();
   NET.role = "guest"; NET.on = true; NET.dead = null;
-  NET.uid = randomId(); NET.name = name; NET.code = code; NET.seat = null;
+  NET.uid = guestUid(); NET.name = name; NET.code = code; NET.seat = null;
   NET.room = NET.db.ref("rooms/" + code);
 
   NET.room.child("meta").get().then(snap => {
@@ -887,6 +971,7 @@ function startGuest(code, name, av){
       return;
     }
     NET.room.child("join").push(clean({ uid: NET.uid, name: name, av: av || "" }));
+    armSeatPresence();
 
     NET.room.child("seats").on("value", s => {
       NET.roster = arr(s.val(), (s.val() || []).length) .filter(Boolean);
@@ -945,6 +1030,28 @@ function startGuest(code, name, av){
     });
 
     guestLobby();
+    /* Nobody gave us a chair.
+
+       The host turns a request down by ignoring it — the table is full, or the
+       game is already running and this is a face it does not recognise. That
+       left the asker sitting in "waiting for the host to start", which is not
+       what is happening and never resolves. Now more so, because people who
+       leave will come back and try, and someone whose browser has forgotten
+       who it was arrives as a stranger. So the guest gives it a few seconds
+       and then says what it can see for itself. */
+    setTimeout(function(){
+      if (!NET.on || NET.seat !== null || NET.dead) return;
+      const running = !!NET.started;
+      teardown();
+      openModal(running ? "That game has already started" : "That table is full",
+        '<p class="sub">' + (running
+          ? "There is no free seat in <b>" + esc(code) + "</b>, and a game already running " +
+            "cannot take a new player — every seat holds a hand and pieces on the board. " +
+            "If you were <em>in</em> this game, rejoin from the browser you were playing on " +
+            "and your seat is still yours."
+          : "Every seat in <b>" + esc(code) + "</b> is taken.") + "</p>",
+        [{ label:"Back", cls:"primary", fn: onlineDialog }]);
+    }, 6000);
   });
 }
 
@@ -997,7 +1104,20 @@ const HOST_GRACE_MS = 15000;
 function teardown(){
   if (NET.hostGraceTimer){ clearTimeout(NET.hostGraceTimer); NET.hostGraceTimer = null; }
   if (NET.presenceRef){ NET.presenceRef.off(); NET.presenceRef = null; }
+  if (NET.seatPresenceRef){ NET.seatPresenceRef.off(); NET.seatPresenceRef = null; }
   if (NET.room){
+    /* Say so on the way out. Every exit a guest has goes through here — the
+       Leave button, starting a local game, joining somewhere else — so this is
+       the one place that has to remember, and the presence node is taken down
+       by hand because leaving deliberately should not wait on a socket
+       noticing. */
+    if (NET.role === "guest" && NET.uid){
+      try {
+        NET.room.child("present/" + NET.uid).onDisconnect().cancel();
+        NET.room.child("present/" + NET.uid).remove();
+        NET.room.child("leave").push(clean({ uid: NET.uid, t: Date.now() }));
+      } catch(e){}
+    }
     NET.room.off();
     if (NET.role === "host") NET.room.remove();
     else NET.room.child("view").off();
@@ -1006,6 +1126,11 @@ function teardown(){
   NET.roomMeta = null;
   NET.seat = null; NET.dead = null; NET.onRoster = null; NET.shownPrompt = null;
   NET.shownKind = null; NET.remote = {}; NET.promptSeat = null;
+  /* Forget what was on screen, or rejoining without reloading the page would
+     be met with silence: the first state to arrive would carry a version this
+     tab had already drawn, and the "nothing new here" test would throw it
+     away. Leaving and coming back in the same sitting is the ordinary case. */
+  NET.lastV = -1; NET.lastPub = null; NET.lastView = null;
   if (typeof closeAllPanels === "function") closeAllPanels();
 }
 
