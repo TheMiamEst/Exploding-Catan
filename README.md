@@ -1561,6 +1561,45 @@ One thing found on the way: the existing `max-width:900px` rule for `#panels`
 had never applied. The base `#panels` rule sits further down the sheet, so at
 equal specificity it won. The new block is placed after it.
 
+### An empty chair, and anybody may sit in it
+
+Somebody leaving mid-game used to end the game without ending it. Their profile
+stayed on screen, their turn came round, and nothing happened — an empty human
+seat never rolls, and the turn clock does not start until somebody does. Play
+reached that seat and stopped there for good.
+
+A seat is now one of three things: a bot nobody has ever sat in, a person who
+is here, and a person who has gone. The first and last are both empty chairs,
+and **anybody with the room code takes either**. That is what makes one door do
+both jobs — joining a game and coming back to it are the same act, and the only
+difference is that a returning player is offered their own chair first if it is
+still free.
+
+**A bot picks up an abandoned seat**, which is the part that unsticks the game.
+The seat keeps its hand, its colour and its pieces; the bot plays them until
+somebody takes the chair, and hands straight back when they do. One agent is
+added and removed rather than rebuilding the set, which would throw away every
+other bot's state mid-game.
+
+Mid-game arrivals used to be refused on the grounds that a seat holds a hand
+and a colour, and handing that to a stranger would be handing them somebody
+else's game. True, but the wrong side of the trade: the alternative was a seat
+nobody could fill and a game that could not go on. A hand somebody walked away
+from is worth less than a table that keeps playing. The feed says who sat down.
+
+Two things had to learn that "not a bot" no longer means "somebody is there".
+Dealing a new board counted an away seat as a player, so the next game stopped
+at that seat the same way the last one did. And prompts were still shipped to
+empty chairs — a dialog nobody will ever answer, which is the same dead-lock
+arriving through the prompt instead of through the turn.
+
+One more, found by testing: the host's lobby dialog reopens whenever the seats
+change, and seats now change *during* a game. So the room dialog appeared over
+the top of a game in progress — and because an open modal is an answer the
+table is waiting for, the bots stopped dead and the game froze behind it. The
+guest lobby had always guarded against this; the host's never needed to until
+now.
+
 ### Leaving and coming back
 
 Leaving a lobby used to cost you your seat for good, and the table with it.

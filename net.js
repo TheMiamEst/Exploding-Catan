@@ -802,6 +802,14 @@ NET.startTable = startTable;
 function hostLobby(){
   const start = startTable;
   const refresh = () => {
+    /* The lobby belongs to the lobby. onRoster fires whenever the seats change
+       and that now happens DURING a game as well — somebody leaving, somebody
+       sitting down — so without this the room dialog reopened over the top of
+       a game in progress. Which was not merely untidy: an open modal is an
+       answer the table is waiting for, so the bots stopped dead and the game
+       froze behind it. The guest lobby has always had this guard; the host's
+       never needed one until seats could change mid-game. */
+    if (NET.started) return;
     const body =
       '<p class="sub">Room code <b style="font-size:22px;letter-spacing:3px">' + NET.code + '</b>' +
       ' — read it out to your friends. They open the same page and press <b>Online → Join</b>.</p>' +
