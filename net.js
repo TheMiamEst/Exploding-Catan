@@ -623,7 +623,12 @@ NET.shipModal = function(title, bodyHTML, buttons, mini){
   if (!isHost() || !NET.started) return false;
   if (seat === null || seat === undefined) return false;
   if (seat === NET.seat) return false;                 // it is the host's own
-  if (!NET.roster[seat] || NET.roster[seat].bot) return false;   // a bot answers inline
+  /* A bot answers inline, and an empty chair is a bot: shipping a dialog to a
+     seat somebody has walked away from is a question that never gets an answer,
+     and the table waits on it forever. That is the same dead-lock the bot
+     take-over exists to prevent, arriving through the prompt instead of
+     through the turn. */
+  if (!NET.roster[seat] || seatIsOpen(NET.roster[seat])) return false;
 
   const id = ++NET.remoteId;
   NET.remote[seat] = { id: id, kind: "modal", key: null, buttons: buttons || [] };
@@ -637,7 +642,8 @@ NET.shipModal = function(title, bodyHTML, buttons, mini){
    trade offer reach the whole table together. */
 NET.shipPanel = function(key, seat, title, bodyHTML, buttons){
   if (!isHost() || !NET.started) return false;
-  if (!NET.roster[seat] || NET.roster[seat].bot) return false;
+  // Same rule as shipModal: nobody is sitting there to read it.
+  if (!NET.roster[seat] || seatIsOpen(NET.roster[seat])) return false;
   const id = ++NET.remoteId;
   NET.remote[seat] = { id: id, kind: "panel", key: key, buttons: buttons || [] };
   writePrompt(seat, { id: id, kind: "panel", key: key, title: title, body: bodyHTML,
@@ -742,7 +748,8 @@ function seatRowsHTML(){
                 : '<span class="none" style="font-size:12px">' +
                   esc(initialOf(nm)) + '</span>') +
          '</span>' +
-         '<span class="f">' + esc(nm) + (r.bot ? " (bot)" : "") +
+         '<span class="f">' + esc(nm) +
+         (r.bot ? " (bot)" : r.away ? " (left — open seat, a bot is playing it)" : "") +
          (i === NET.seat ? " ← you" : "") + "</span></div>";
   }
   return h;
@@ -772,9 +779,13 @@ function startTable(){
       (typeof GAME_BOARD !== "undefined") ? GAME_BOARD : undefined,
       (typeof GAME_WIN_POINTS !== "undefined") ? GAME_WIN_POINTS : 10,
       (typeof GAME_TURN_SECONDS !== "undefined") ? GAME_TURN_SECONDS : 0);
-  const bots = NET.roster.map((r, i) => r.bot ? i : -1).filter(i => i >= 0);
+  /* An empty chair is a bot seat for this purpose, whether it started as one
+     or was left. Dealing a fresh board with somebody still away and counting
+     them as a player is how the new game stops at their seat the same way the
+     last one did. */
+  const bots = NET.roster.map((r, i) => seatIsOpen(r) ? i : -1).filter(i => i >= 0);
   if (bots.length && typeof window.AI !== "undefined"){
-    const humans = NET.roster.map((r, i) => r.bot ? -1 : i).filter(i => i >= 0);
+    const humans = NET.roster.map((r, i) => seatIsOpen(r) ? -1 : i).filter(i => i >= 0);
     window.AI.enable(humans);
   }
   S.players.forEach((p, i) => {
@@ -876,39 +887,63 @@ function startHost(n, name, av){
   NET.room.set(clean({ meta: NET.roomMeta, seats: NET.roster }));
   armHostPresence();
 
-  // Somebody asking for a seat.
+  /* Somebody asking for a seat — which is the same request whether they have
+     been here before or not. Anybody with the code sits down in any empty
+     chair, in the lobby or mid-game.
+
+     Mid-game used to be refused outright, on the grounds that a seat holds a
+     hand and a colour and handing that to a stranger would be handing them
+     somebody else's game. True, but it is the wrong side of the trade: the
+     alternative was a seat nobody could fill and a game that could not go on.
+     A hand somebody abandoned is worth less than a table that keeps playing. */
   NET.room.child("join").on("child_added", snap => {
     const j = snap.val(); snap.ref.remove();
-    if (!j || !j.uid) return;
-    /* Their own seat, if they had one. Never the host's, so a host and a guest
-       sharing a browser cannot end up sharing a seat either. */
+    if (!j || !j.uid || !NET.roster) return;
+    // Their own chair first, if it is still free. That is all "rejoining" is.
     let seat = NET.roster.findIndex((r, i) => i !== NET.seat && r && r.uid === j.uid);
-    const returning = seat >= 0;
-    if (!returning){
-      // A new face. Only before the cards are dealt: a seat mid-game holds a
-      // hand and a colour on the board, and handing that to a stranger would
-      // be handing them somebody else's game.
-      if (NET.started) return;
-      seat = NET.roster.findIndex(r => r.bot);
-      if (seat < 0) return;                                 // table is full
+    const ownSeat = seat >= 0;
+    if (!ownSeat) seat = NET.roster.findIndex((r, i) => i !== NET.seat && seatIsOpen(r));
+    if (seat < 0) return;                                   // every chair taken
+    const took = NET.roster[seat];
+    const wasBotSeat = !!(took && took.bot);
+    const wasAway    = !!(took && took.away);
+    const oldName    = (took && took.name) || PLAYER_NAMES[seat];
+    const name = j.name || PLAYER_NAMES[seat];
+
+    NET.roster[seat] = { seat: seat, name: name, bot: false, uid: j.uid,
+                         av: typeof j.av === "string" ? j.av.slice(0, 40) : "",
+                         away: false };
+    botHandBack(seat);
+    // The board carries the name and the face as well as the roster does.
+    if (S && S.players[seat]){
+      S.players[seat].name = name;
+      S.players[seat].avatar = NET.roster[seat].av || "";
     }
-    NET.roster[seat] = { seat: seat, name: j.name || PLAYER_NAMES[seat], bot:false,
-                         uid: j.uid, av: typeof j.av === "string" ? j.av.slice(0, 40) : "" };
-    NET.room.child("seats").set(clean(NET.roster));
-    if (NET.onRoster) NET.onRoster();
-    /* Coming back to a game already running: their seat is exactly as they
-       left it, and they need the board to go with it. publish() sends the
-       whole state, so it does not matter how long they were away. */
-    if (returning && NET.started) publish();
+    pushRoster();
+
+    if (NET.started){
+      /* Say who just sat down. Somebody appearing in the middle of a game and
+         playing a seat that had another name on it a moment ago is exactly the
+         sort of thing the table has to be told. */
+      if (typeof announce === "function"){
+        if (ownSeat && wasAway) announce(pdotSafe(seat) + " is back", "info");
+        else if (!ownSeat) announce(esc(name) + " takes over " +
+          (wasBotSeat ? "the " + esc(oldName) + " seat" : esc(oldName) + "'s seat"), "big");
+      }
+      if (typeof render === "function") render();
+      // The whole state, so it makes no difference how long they were away or
+      // whether they have ever seen this game before.
+      publish();
+    }
   });
 
   // Somebody saying they have gone, and the same thing noticed rather than
   // said — see armSeatPresence.
   NET.room.child("leave").on("child_added", snap => {
     const j = snap.val(); snap.ref.remove();
-    if (j && j.uid) releaseSeat(j.uid);
+    if (j && j.uid) seatGone(j.uid);
   });
-  NET.room.child("present").on("child_removed", snap => releaseSeat(snap.key));
+  NET.room.child("present").on("child_removed", snap => seatGone(snap.key));
 
   NET.room.child("intents").on("child_added", snap => {
     const m = snap.val(); snap.ref.remove();
@@ -919,20 +954,64 @@ function startHost(n, name, av){
   hostLobby();
 }
 
-/* Give a seat back to the table.
+/* A chair anybody with the code may sit down in.
 
-   Only before the cards are dealt. Once a game is running the seat holds a
-   hand, a colour and pieces on the board, so it is kept for whoever left it —
-   they pick it straight back up by uid, however long they are away. In the
-   lobby there is nothing to keep, and an empty chair that nobody may sit in is
-   the whole complaint. */
-function releaseSeat(uid){
-  if (!isHost() || !uid || NET.started || !NET.roster) return;
-  const seat = NET.roster.findIndex((r, i) => i !== NET.seat && r && r.uid === uid);
-  if (seat < 0) return;
-  NET.roster[seat] = { seat: seat, name: PLAYER_NAMES[seat], bot: true };
+   Three kinds of seat: a bot nobody has ever sat in, a person who is here, and
+   a person who has gone. The first and last are both empty chairs, and the
+   game does not much care which — somebody arriving takes either. That is what
+   makes one door do both jobs: joining a game and coming back to it are the
+   same act, and the only difference is that a returning player is offered
+   their own chair first if it is still free. */
+function seatIsOpen(r){ return !!r && (r.bot || r.away); }
+
+function pushRoster(){
   if (NET.room) NET.room.child("seats").set(clean(NET.roster));
   if (NET.onRoster) NET.onRoster();
+}
+
+/* Somebody left. In the lobby the chair simply goes back to the table.
+
+   Mid-game it cannot: the seat holds a hand, a colour and pieces on the board.
+   So it is MARKED away and handed to a bot — and the bot is the point. An
+   empty human seat never rolls, and the turn clock does not start until
+   somebody does, so play reached that seat and stopped there for good. The
+   profile sat on screen and the game was over without ending. A bot picks the
+   turn up, the game carries on, and the chair stays open for whoever wants it. */
+function seatGone(uid){
+  if (!isHost() || !uid || !NET.roster) return;
+  const seat = NET.roster.findIndex((r, i) =>
+    i !== NET.seat && r && r.uid === uid && !r.away);
+  if (seat < 0) return;
+  if (!NET.started){
+    NET.roster[seat] = { seat: seat, name: PLAYER_NAMES[seat], bot: true };
+  } else {
+    NET.roster[seat].away = true;
+    // Anything they were being asked goes with them, or the table waits on an
+    // answer that is never coming.
+    dropPrompt(seat);
+    botTakeOver(seat);
+    if (typeof announce === "function" && S && S.players[seat])
+      announce(pdotSafe(seat) + " has left — a bot is playing that seat until " +
+               "somebody takes it", "info");
+  }
+  pushRoster();
+}
+
+function pdotSafe(seat){
+  if (typeof pdot === "function" && S && S.players[seat]) return pdot(S.players[seat]);
+  return (NET.roster[seat] && NET.roster[seat].name) || PLAYER_NAMES[seat];
+}
+
+/* Hand a seat to a bot, and take it back again. One agent at a time: rebuilding
+   the whole set would throw away every other bot's state mid-game. */
+function botTakeOver(seat){
+  if (!S || !window.AI || !window.AI.makeAgent) return;
+  window.AGENTS = window.AGENTS || {};
+  if (!window.AGENTS[seat]) window.AGENTS[seat] = window.AI.makeAgent(seat);
+  if (typeof botTick === "function") botTick();
+}
+function botHandBack(seat){
+  if (window.AGENTS) delete window.AGENTS[seat];
 }
 
 /* A guest's "I am still here", and the promise to take it back down if this
@@ -1041,15 +1120,11 @@ function startGuest(code, name, av){
        and then says what it can see for itself. */
     setTimeout(function(){
       if (!NET.on || NET.seat !== null || NET.dead) return;
-      const running = !!NET.started;
       teardown();
-      openModal(running ? "That game has already started" : "That table is full",
-        '<p class="sub">' + (running
-          ? "There is no free seat in <b>" + esc(code) + "</b>, and a game already running " +
-            "cannot take a new player — every seat holds a hand and pieces on the board. " +
-            "If you were <em>in</em> this game, rejoin from the browser you were playing on " +
-            "and your seat is still yours."
-          : "Every seat in <b>" + esc(code) + "</b> is taken.") + "</p>",
+      openModal("That table is full",
+        '<p class="sub">Everybody in <b>' + esc(code) + '</b> is sitting down and ' +
+        'nobody has left, so there is no chair to take. A seat opens the moment ' +
+        'somebody goes — try again then.</p>',
         [{ label:"Back", cls:"primary", fn: onlineDialog }]);
     }, 6000);
   });
