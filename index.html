@@ -1472,7 +1472,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-09-02b";
+const GAME_VERSION = "2026-09-02c";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -6869,13 +6869,36 @@ function scheduleTurnTimer(){
   if (!timerEnabled() || S.turnTimerPaused || S.phase === "over") return;
   turnTimerHandle = setTimeout(turnTimerTick, 250);
 }
+
+/* An answer the TABLE is waiting on, as opposed to a window somebody opened
+   for themselves.
+
+   humanPromptOpen() is the bots' test and takes in panelBox as well, because a
+   trade offer left hanging stops them dead and they must wait it out. It is
+   the wrong test for the clock, and using it there made trading stop the
+   timer: buying kitten cards, trading with the bank and offering a trade are
+   all things you choose to do with your own turn, and choosing to do them
+   should not stop your turn running out. From the chair it read as the clock
+   pausing at random, because nothing about a trade window says "the game is
+   waiting".
+
+   A modal is the opposite. Nobody opens one on purpose — a discard owed to a
+   seven, a forced Nope, a robber handed to whoever Defused it — and until it
+   is answered the game genuinely cannot move. Those still hold, wherever at
+   the table they are: NET.anyPrompt covers a dialog shipped to somebody else's
+   screen, which leaves no overlay on this one. */
+function answerOwed(){
+  if (typeof document !== "undefined" && document.querySelector(".overlay")) return true;
+  if (window.NET && NET.anyPrompt && NET.anyPrompt()) return true;
+  return false;
+}
 /* Is the clock allowed to be counting right now?
 
    Not in the background, and only during a turn somebody is actually playing.
    Everything that is not "the game is waiting for the player whose turn it is"
-   holds it: a tab nobody is looking at, an answer owed, a dialog open anywhere
-   at the table, an Imploding Kitten still landing, or somebody sitting on the
-   target while the table decides what to do about it.
+   holds it: a tab nobody is looking at, an answer the table is owed, an
+   Imploding Kitten still landing, or somebody sitting on the target while the
+   table decides what to do about it.
 
    HELD, not paused. A pause is a piece of state something has to remember to
    undo, and the ones that get forgotten are exactly the ones on the rare paths
@@ -6889,7 +6912,7 @@ function turnClockHeld(){
   if (S.pending || S.select || S.seven) return true;
   if (typeof implodeActive === "function" && implodeActive()) return true;
   if (typeof implodeRevealing === "function" && implodeRevealing()) return true;
-  if (typeof humanPromptOpen === "function" && humanPromptOpen()) return true;
+  if (answerOwed()) return true;
   /* Somebody has reached the target and it has not been settled. What follows
      is a Nope, an answer to it, and possibly several more — none of which is
      the current player's time to spend. */
@@ -9731,13 +9754,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-09-02b"></script>
+<script src="ai.js?v=2026-09-02c"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-09-02b"></script>
-<script src="net.js?v=2026-09-02b"></script>
+<script src="firebase-config.js?v=2026-09-02c"></script>
+<script src="net.js?v=2026-09-02c"></script>
 </body>
 </html>

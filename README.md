@@ -1625,6 +1625,21 @@ needs no clean-up: the deadline slides along in front of it, so however long it
 lasts the player still gets every second they were owed, and when the reason
 goes the clock simply carries on.
 
+**Trading does not hold it.** The first version of the hold borrowed
+`humanPromptOpen()`, which is the *bots'* test — and that one counts trade
+panels, because a trade offer left hanging stops a bot dead and it has to wait
+the offer out. It is the wrong test for a clock. Buying kitten cards, trading
+with the bank and offering a trade are all things you choose to do with your
+own turn, and choosing to do them should not stop your turn running out. From
+the chair it read as the timer pausing at random, because nothing about a trade
+window says "the game is waiting".
+
+A modal is the opposite. Nobody opens one on purpose — a discard owed to a
+seven, a forced Nope, a robber handed to whoever Defused it — and until it is
+answered the game genuinely cannot move. Those still hold, wherever at the
+table they are, including a dialog shipped to somebody else's screen that
+leaves no overlay on this one. The bots keep their own test, unchanged.
+
 Backgrounded tabs are the same question asked differently. Browsers cut
 background timers to about one a second and suspend them outright on mobile, so
 a tick arriving much later than it was scheduled did not happen at the table.
