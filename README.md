@@ -1518,7 +1518,23 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
-### Two mobile fixes, and not a redesign
+### Two mobile fixes, behind a width gate
+
+Every rule below exists for a small screen, and **nothing outside a media query
+was changed to make room for them**. That is not tidiness, it is the lesson: a
+first version put the height rule and the Fullscreen button in the base sheet,
+where they applied to every screen. The button widened the header enough to
+wrap it onto a second row on a narrower laptop, which shortens the board area;
+`height:100dvh` re-measures the whole column against a number that is only
+interesting on a phone. Between them the deck and the discard pile ended up
+below the fold in the middle of a real game, on a laptop, with friends.
+
+The gate is **width**, not a guess about the device — a touch laptop is still a
+laptop. Above 900px the layout is the one it always was, and that is checked
+rather than assumed: every computed layout property of html, body, header,
+stage, boardArea, bottom, piles, deckWrap, discardWrap, panels and feed is
+compared against the pre-mobile build at 1920x1080, 1366x660 and 960x600, and
+they match exactly.
 
 Full mobile support means rethinking the whole layout, which is not what these
 are. These are the two things that stop a phone being usable at all.

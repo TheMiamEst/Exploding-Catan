@@ -25,21 +25,6 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
-  /* The height a phone actually has right now.
-
-     100% of the viewport on a mobile browser is measured against the LARGE
-     viewport — the one you get with the address bar scrolled away — so a
-     fixed full-height layout is taller than the window from the moment it
-     loads, and the bottom bar sits behind the browser's own furniture. dvh is
-     the same number as the window, and it follows the address bar as it comes
-     and goes. Declared after the 100% so browsers without dvh keep the old
-     value rather than nothing. */
-  html,body{height:100dvh}
-  body{
-    /* No pull-to-refresh and no rubber-banding. Dragging a card downwards on
-       a phone reloaded the page, which on a local game is the game gone. */
-    overscroll-behavior:none;
-  }
   body{
     background:var(--bg); color:var(--ink);
     font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;
@@ -63,11 +48,6 @@
     position:relative;
     display:flex; align-items:center; flex-wrap:wrap; gap:14px; padding:8px 14px;
     background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto;
-    /* Out from under the notch and the rounded corners. Zero everywhere that
-       has no notch, so this costs nothing on a desktop. */
-    padding-top:calc(8px + env(safe-area-inset-top));
-    padding-left:calc(14px + env(safe-area-inset-left));
-    padding-right:calc(14px + env(safe-area-inset-right));
   }
   header h1{font-size:16px;margin:0;letter-spacing:.5px}
   /* "Exploding" in the red the danger colour uses everywhere else, "Catan" in
@@ -734,10 +714,6 @@
   #bottom{
     flex:0 0 auto; background:var(--panel); border-top:1px solid var(--line);
     padding:8px 10px; display:flex; align-items:center; gap:10px;
-    /* Clear of the home bar, which otherwise sits across the hand. */
-    padding-bottom:calc(8px + env(safe-area-inset-bottom));
-    padding-left:calc(10px + env(safe-area-inset-left));
-    padding-right:calc(10px + env(safe-area-inset-right));
   }
   .group{display:flex; gap:5px; align-items:center}
   .group.hand{flex-wrap:wrap; justify-content:center; max-width:100%; padding-bottom:2px}
@@ -863,7 +839,42 @@
                padding:1px 6px; font-size:12px; font-variant-numeric:tabular-nums}
   .recent span.seven{border-color:var(--danger); color:var(--danger)}
 
+  /* ══ PHONES ONLY ═══════════════════════════════════════════════════
+     Everything below this line exists for a small screen and NOTHING above it
+     was changed to make room, because a laptop mid-game is not the place to
+     find out that a mobile fix moved the board. A previous version of this put
+     the height rule and the Fullscreen button in the base sheet, where they
+     applied to every screen: the button widened the header enough to wrap it
+     onto a second row on a narrower laptop, which shortens the board area, and
+     `height:100dvh` re-measures the whole column against a number that is only
+     interesting on a phone. Between them the deck and the discard pile ended
+     up below the fold in the middle of a real game.
+
+     So the gate is width, not a guess about the device: a touch laptop is a
+     laptop. Above 900px this file is byte-for-byte the layout it always was. */
+  #fsBtn{display:none}
+
   @media (max-width:900px){
+    /* The height a phone actually has right now. 100% of the viewport on a
+       mobile browser is measured against the LARGE viewport — the one you get
+       once the address bar has scrolled away — so a fixed full-height layout
+       is taller than the window from the moment it loads and the hand sits
+       behind the browser's own furniture. dvh follows the address bar. */
+    html,body{height:100dvh}
+    /* No pull-to-refresh: dragging a card downwards reloaded the page, which
+       on a local game is the game gone. */
+    body{overscroll-behavior:none}
+    /* Out from under the notch and the home bar. */
+    header{padding-top:calc(5px + env(safe-area-inset-top));
+           padding-left:calc(8px + env(safe-area-inset-left));
+           padding-right:calc(8px + env(safe-area-inset-right))}
+    #bottom{padding-bottom:calc(8px + env(safe-area-inset-bottom));
+            padding-left:calc(10px + env(safe-area-inset-left));
+            padding-right:calc(10px + env(safe-area-inset-right))}
+    /* A phone browser spends a third of a small screen on its own address bar.
+       This is the one control that takes it back, and it is only here. */
+    #fsBtn{display:inline-block}
+
     #panels{width:min(300px, 54%)}
     /* Full-size dice would eat a narrow board. */
     .die{width:58px; height:58px; border-radius:11px; padding:7px}
@@ -875,10 +886,7 @@
     /* Stacked into a column these ran down past the top of the log and sat on
        it. Wrapped they stay two rows deep, and the log is placed underneath
        whatever height they end up — see placeFeed. */
-    header{gap:7px; padding:5px 8px;
-           padding-top:calc(5px + env(safe-area-inset-top));
-           padding-left:calc(8px + env(safe-area-inset-left));
-           padding-right:calc(8px + env(safe-area-inset-right))}
+    header{gap:7px; padding:5px 8px}
     header h1{font-size:14px}
     /* Narrow enough that the header wraps anyway, so the advice takes a line
        of its own rather than squeezing itself down to three words. */
@@ -1559,7 +1567,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-09-02f";
+const GAME_VERSION = "2026-09-02g";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -9914,13 +9922,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-09-02f"></script>
+<script src="ai.js?v=2026-09-02g"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-09-02f"></script>
-<script src="net.js?v=2026-09-02f"></script>
+<script src="firebase-config.js?v=2026-09-02g"></script>
+<script src="net.js?v=2026-09-02g"></script>
 </body>
 </html>
