@@ -1518,6 +1518,49 @@ comes off. Undoing it puts the cut road back together and Longest Road with it,
 and the winner drops back under the target for the same reason anybody does:
 the thing that gave them the points has been un-done.
 
+### Two mobile fixes, and not a redesign
+
+Full mobile support means rethinking the whole layout, which is not what these
+are. These are the two things that stop a phone being usable at all.
+
+**Full screen.** A phone browser spends a third of a small screen on its own
+address bar. There is now a Fullscreen button in the header, which hides itself
+where the API does not exist rather than offering something that does nothing,
+and says so if the request is refused — a button that appears broken is worse
+than one that explains itself.
+
+iPhone Safari does not implement the Fullscreen API at all (iPad does), so the
+route there is Share -> Add to Home Screen, which the
+`apple-mobile-web-app-capable` meta turns into a chromeless launch.
+
+Three things help even without going full screen. `100dvh` is the height the
+window actually has: `100%` is measured against the viewport with the address
+bar scrolled away, so a fixed full-height layout was taller than the window
+from the moment it loaded and the hand sat behind the browser's furniture.
+`viewport-fit=cover` plus safe-area insets let the page reach under the notch
+without putting anything readable there — repeated in the narrow and short
+media queries, which trim the padding right back and were taking the insets
+with them. And `overscroll-behavior:none` stops pull-to-refresh, so dragging a
+card downwards no longer reloads the page, which on a local game is the game
+gone.
+
+**Trade windows.** Measured on a 384px screen: the panel column was 167px wide
+and the trade window inside it was 423px tall in a 406px column. Cut off at
+both ends — and the only thing that could scroll was the column *behind* the
+panel, which is `pointer-events:none` so that an empty column never eats a
+click, so a finger laid on the panel had nothing to drag. Cut off and
+unscrollable, exactly as reported.
+
+On a narrow screen the column stops being a column and gives the panel the
+width of the screen, and the panel scrolls **inside itself** — the half that
+matters, because the thing under your finger is then the thing that moves. The
+same window is now 347px of a 384px screen, fits top to bottom, and scrolls
+when it has to.
+
+One thing found on the way: the existing `max-width:900px` rule for `#panels`
+had never applied. The base `#panels` rule sits further down the sheet, so at
+equal specificity it won. The new block is placed after it.
+
 ### Leaving and coming back
 
 Leaving a lobby used to cost you your seat for good, and the table with it.

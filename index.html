@@ -2,7 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- viewport-fit=cover lets the page reach under the notch and the home bar;
+     the safe-area insets below keep anything readable out from under them. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- The browser's own chrome painted the same colour as the header, so the
+     strip above the page stops looking like somebody else's app. -->
+<meta name="theme-color" content="#1c2129">
+<!-- Added to the home screen on iOS, this runs with no browser chrome at all,
+     which is the only route to full screen an iPhone has: Safari on the phone
+     does not implement the Fullscreen API. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Exploding Catan">
 <title>Exploding Catan</title>
 <style>
   :root{
@@ -13,6 +25,21 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
+  /* The height a phone actually has right now.
+
+     100% of the viewport on a mobile browser is measured against the LARGE
+     viewport — the one you get with the address bar scrolled away — so a
+     fixed full-height layout is taller than the window from the moment it
+     loads, and the bottom bar sits behind the browser's own furniture. dvh is
+     the same number as the window, and it follows the address bar as it comes
+     and goes. Declared after the 100% so browsers without dvh keep the old
+     value rather than nothing. */
+  html,body{height:100dvh}
+  body{
+    /* No pull-to-refresh and no rubber-banding. Dragging a card downwards on
+       a phone reloaded the page, which on a local game is the game gone. */
+    overscroll-behavior:none;
+  }
   body{
     background:var(--bg); color:var(--ink);
     font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;
@@ -36,6 +63,11 @@
     position:relative;
     display:flex; align-items:center; flex-wrap:wrap; gap:14px; padding:8px 14px;
     background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto;
+    /* Out from under the notch and the rounded corners. Zero everywhere that
+       has no notch, so this costs nothing on a desktop. */
+    padding-top:calc(8px + env(safe-area-inset-top));
+    padding-left:calc(14px + env(safe-area-inset-left));
+    padding-right:calc(14px + env(safe-area-inset-right));
   }
   header h1{font-size:16px;margin:0;letter-spacing:.5px}
   /* "Exploding" in the red the danger colour uses everywhere else, "Catan" in
@@ -702,6 +734,10 @@
   #bottom{
     flex:0 0 auto; background:var(--panel); border-top:1px solid var(--line);
     padding:8px 10px; display:flex; align-items:center; gap:10px;
+    /* Clear of the home bar, which otherwise sits across the hand. */
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));
+    padding-left:calc(10px + env(safe-area-inset-left));
+    padding-right:calc(10px + env(safe-area-inset-right));
   }
   .group{display:flex; gap:5px; align-items:center}
   .group.hand{flex-wrap:wrap; justify-content:center; max-width:100%; padding-bottom:2px}
@@ -839,7 +875,10 @@
     /* Stacked into a column these ran down past the top of the log and sat on
        it. Wrapped they stay two rows deep, and the log is placed underneath
        whatever height they end up — see placeFeed. */
-    header{gap:7px; padding:5px 8px}
+    header{gap:7px; padding:5px 8px;
+           padding-top:calc(5px + env(safe-area-inset-top));
+           padding-left:calc(8px + env(safe-area-inset-left));
+           padding-right:calc(8px + env(safe-area-inset-right))}
     header h1{font-size:14px}
     /* Narrow enough that the header wraps anyway, so the advice takes a line
        of its own rather than squeezing itself down to three words. */
@@ -1184,6 +1223,44 @@
   .tline > span:first-child{color:var(--dim); font-size:11px; min-width:52px}
   .pick.tight .rate{opacity:.6; font-size:10.5px}
   .panel.forme{border-color:#7fc48f; box-shadow:0 12px 34px #000a, 0 0 0 2px #7fc48f33}
+
+  /* ── A dialog on a phone ──────────────────────────────────────────
+     Measured on a 384px screen: the panel column was 167px wide and the trade
+     window inside it was 423px tall in a 406px column. So the dialog was cut
+     off at both ends, and the only thing that could scroll was the column
+     BEHIND it — which is pointer-events:none so that an empty column never
+     eats a click, and a finger laid on the panel therefore had nothing to
+     drag. Cut off, and unscrollable, exactly as reported.
+
+     Two changes, and no redesign. The column stops being a column and gives
+     the panel the width of the screen; and the panel scrolls INSIDE ITSELF,
+     which is the half that matters — the thing under your finger is the thing
+     that moves, and it needs no help from anything behind it.
+
+     Panels sit at the bottom, where a thumb is. */
+  @media (max-width:720px){
+    #panels{
+      left:8px; right:8px; width:auto; top:8px; bottom:8px;
+      justify-content:flex-end;
+      overflow:visible;                /* the panel does its own scrolling */
+    }
+    .panel{
+      max-height:100%; min-height:0;
+      overflow-y:auto; -webkit-overflow-scrolling:touch;
+      /* Scrolling to the end of a trade must not start scrolling the board
+         behind it. */
+      overscroll-behavior:contain;
+      /* A finger needs to be able to drag this without the page deciding the
+         gesture belongs to something else. */
+      touch-action:pan-y;
+    }
+    /* There is width for these now, so they stop being postage stamps. */
+    .panel .actions{justify-content:stretch}
+    .panel .actions button{flex:1 1 auto; padding:9px 12px; font-size:13.5px}
+    .panel .pick{gap:6px}
+    .panel .pick button{min-height:34px}
+  }
+
   /* An answer is still owed — the turn controls are gone until it is given. */
   .thinking.owed{color:var(--accent)}
   /* The board moved under an open panel — a Nope rewound something. */
@@ -1290,7 +1367,10 @@
      the rest. Nothing is removed — the same numbers, the same cards, smaller.
      ────────────────────────────────────────────────────────────────── */
   @media (max-height:560px){
-    header{padding:3px 8px; gap:8px}
+    header{padding:3px 8px; gap:8px;
+           padding-top:calc(3px + env(safe-area-inset-top));
+           padding-left:calc(8px + env(safe-area-inset-left));
+           padding-right:calc(8px + env(safe-area-inset-right))}
     header h1{font-size:13px}
     button.sm{padding:2px 6px; font-size:11px}
     #modeTag{font-size:9px}
@@ -1327,7 +1407,10 @@
     #boardArea{inset:3px}
     /* One row of buttons, not three. Wrapped, they were taller than the hand
        they sat beside and the board paid for all of it. */
-    #bottom{padding:3px 6px; gap:6px}
+    #bottom{padding:3px 6px; gap:6px;
+            padding-bottom:calc(3px + env(safe-area-inset-bottom));
+            padding-left:calc(6px + env(safe-area-inset-left));
+            padding-right:calc(6px + env(safe-area-inset-right))}
     .bside{flex:0 1 auto}
     .actions-bar{flex-wrap:nowrap; gap:4px}
     .actions-bar button{padding:5px 8px; font-size:11px; white-space:nowrap}
@@ -1407,6 +1490,10 @@
        change, and a button reading "Motion: off" answers the question before
        it has to be asked. Filled in by drawMotionBtn at load. -->
   <button class="sm" id="fxBtn" onclick="cycleMotion()">Motion</button>
+  <!-- Hidden unless the browser can actually do it, so it never offers
+       something that does nothing. See wireFullscreen. -->
+  <button class="sm" id="fsBtn" onclick="toggleFullscreen()" hidden
+    title="Fill the screen">Fullscreen</button>
   <span id="modeTag" hidden></span>
   <button class="sm" onclick="onlineDialog()">Online</button>
   <button class="sm" onclick="showRules()">Rules</button>
@@ -1472,7 +1559,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-09-02d";
+const GAME_VERSION = "2026-09-02e";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -7840,6 +7927,62 @@ function applyMotion(){
   drawMotionBtn();
 }
 
+/* ══ FULL SCREEN ═════════════════════════════════════════════════════
+   A phone browser spends a third of a small screen on its own address bar
+   and button row. This is the one thing that takes it back.
+
+   The Fullscreen API needs a gesture to start it, so it is a button rather
+   than something the page does to you on load — browsers refuse it otherwise,
+   and being thrown into full screen unasked is obnoxious anyway.
+
+   iPhone Safari does not implement it at all (iPad does). There is no way
+   around that from a web page, so rather than offer a button that quietly
+   does nothing the button hides itself and the Tips line says the thing that
+   DOES work there: Share → Add to Home Screen, which the
+   apple-mobile-web-app-capable meta turns into a chromeless launch. */
+function fullscreenAvailable(){
+  const el = document.documentElement;
+  return !!(el.requestFullscreen || el.webkitRequestFullscreen);
+}
+function fullscreenOn(){
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+function toggleFullscreen(){
+  const el = document.documentElement;
+  try {
+    if (fullscreenOn()){
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    } else {
+      const go = el.requestFullscreen || el.webkitRequestFullscreen;
+      // navigationUI:"hide" is a hint, ignored where it is not understood.
+      const p = go && go.call(el, { navigationUI: "hide" });
+      /* It can be refused after the fact — an embedded view, a policy, a
+         click the browser did not count as a gesture — and the promise is
+         the only place that says so. Silently doing nothing is the one
+         outcome worth avoiding: a button that appears broken is worse than
+         one that explains itself. */
+      if (p && p.catch) p.catch(() => {
+        hint("This browser would not go full screen from here.");
+        drawFullscreenBtn();
+      });
+    }
+  } catch(e){ hint("This browser would not go full screen from here."); }
+}
+/* The label follows the state, including when it is left by the Escape key or
+   a swipe rather than by the button. */
+function drawFullscreenBtn(){
+  const b = document.getElementById("fsBtn");
+  if (!b) return;
+  b.hidden = !fullscreenAvailable();
+  b.textContent = fullscreenOn() ? "Exit full screen" : "Fullscreen";
+}
+function wireFullscreen(){
+  drawFullscreenBtn();
+  document.addEventListener("fullscreenchange", drawFullscreenBtn);
+  document.addEventListener("webkitfullscreenchange", drawFullscreenBtn);
+}
+
 function cycleMotion(){
   MOTION = MOTION_MODES[(MOTION_MODES.indexOf(MOTION) + 1) % MOTION_MODES.length];
   try { localStorage.setItem("ec_motion", MOTION); } catch(e){}
@@ -9689,6 +9832,7 @@ preloadArt(() => {
 window.addEventListener("load", function(){
   initBoardControls();
   drawTipBtn();
+  wireFullscreen();
   renderIdle();                 // no forced dialog: the header stays reachable
   // If a game was running when this tab last drew, say so rather than leave
   // the player looking at an opening screen they did not ask for.
@@ -9770,13 +9914,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-09-02d"></script>
+<script src="ai.js?v=2026-09-02e"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-09-02d"></script>
-<script src="net.js?v=2026-09-02d"></script>
+<script src="firebase-config.js?v=2026-09-02e"></script>
+<script src="net.js?v=2026-09-02e"></script>
 </body>
 </html>
