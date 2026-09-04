@@ -1567,7 +1567,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-09-02g";
+const GAME_VERSION = "2026-09-03a";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2732,12 +2732,18 @@ function render(){
   // Before the strip is drawn, not after: a throw that has just arrived wants
   // to be in this repaint rather than to cause another one.
   syncEmotes();
+  /* Before the counters are drawn, not after. A flight holds its cards back
+     until they land, and taking that hold a frame late - which is where it
+     used to happen, inside the animation's own callback - meant the number
+     went up, the browser painted it, and then it dropped again when the hold
+     finally arrived. The card being dealt appeared, vanished, and appeared a
+     second time. Held here, it shows up once: when it lands. */
+  checkFlights();
   drawBoard(); drawPlayers(); drawBottom(); drawDeck(); drawDiscard(); drawDice(); drawHint();
   drawModeTag(); drawChat(); drawDiceBox(); drawTurnOrder();
   refreshFeedMarks();
   checkStalePanels();
   checkShowcase();
-  checkFlights();
   // A repaint in the middle of a drag (a bot moving, say) wipes the outlines
   // showing where the card may go. Put them straight back.
   if (dragCard) markDropTargets();
@@ -8020,12 +8026,19 @@ function drawMotionBtn(){
 
 applyMotion();
 
+/* Whether an animation asked for RIGHT NOW would actually be seen. Motion
+   turned off, or a tab nobody is looking at, means the card never flies - and
+   a counter must never be held back waiting on one that is not coming, which
+   is why the holds ask this too rather than relying on fxSoon to drop them. */
+function fxWillPlay(){
+  return fxOn && !(typeof document !== "undefined" && document.hidden);
+}
 /* Every one of these is measured a frame late, so the board it is measuring
    has been laid out. A hidden tab never runs that frame, so rather than let a
    backlog pile up and replay against a board that has moved on, an animation
    asked for while nobody is looking is simply dropped. */
 function fxSoon(fn){
-  if (!fxOn || (typeof document !== "undefined" && document.hidden)) return;
+  if (!fxWillPlay()) return;
   requestAnimationFrame(fn);
 }
 
@@ -8470,11 +8483,22 @@ let lastFx = -1;              // -1 = this screen has not looked at this table y
    in the air on its way to that player, and each card clears its own hold at
    the moment it visually lands.
 
+   The hold is taken the moment the flight is first SEEN, in the same breath as
+   the render that would otherwise draw it, and before a single counter is
+   drawn. Taking it a frame later - which is when the cards actually start
+   moving - meant the number went up, the browser painted it, and then it
+   dropped back down when the hold finally arrived. A card appearing, vanishing
+   and appearing again is worse than one that simply arrives late, so the plan
+   for a flight is worked out up front and its holds are placed immediately;
+   only the measuring and the moving wait for the next frame.
+
    This is a view and only a view. The state is already correct the whole time;
    the worst a bug in here can do is show the wrong number for a second. Every
    hold is cleared by a timer that is set when it is taken - so nothing depends
    on an animation finishing, or even on it having started - and no count can
-   ever be pushed below zero. */
+   ever be pushed below zero. Nothing is held back when nothing is going to fly
+   either: with motion off, or on a screen nobody is watching, the counters just
+   tell the truth straight away. */
 const arrivingRes = {};   // pid -> { resource: how many still flying }
 const arrivingKit = {};   // pid -> how many kitten cards still flying
 
@@ -8494,6 +8518,7 @@ function afterArrival(fn, delay){
 }
 function holdRes(pid, r, delay){
   if (pid === null || pid === undefined || !r) return;
+  if (!fxWillPlay()) return;
   if (!arrivingRes[pid]) arrivingRes[pid] = {};
   arrivingRes[pid][r] = (arrivingRes[pid][r] || 0) + 1;
   afterArrival(function(){
@@ -8503,6 +8528,7 @@ function holdRes(pid, r, delay){
 }
 function holdKit(pid, delay){
   if (pid === null || pid === undefined) return;
+  if (!fxWillPlay()) return;
   arrivingKit[pid] = (arrivingKit[pid] || 0) + 1;
   afterArrival(function(){
     if (arrivingKit[pid] > 0) arrivingKit[pid]--;
@@ -8564,19 +8590,21 @@ function playFlight(f){
    reads as a sequence rather than a swarm, and capped so a six-player payout
    does not bury the board. */
 function playProduction(src){
+  /* The running order is worked out now, not a frame from now: the holds have
+     to be in place before the counters are drawn. Only the measuring waits. */
+  const plan = [];
+  for (const g of src)
+    for (let k = 0; k < g.n && plan.length < FX_MAX_CARDS; k++)
+      plan.push({ h: g.h, p: g.p, r: g.r, at: 45 * plan.length + 100 });
+  for (const c of plan) holdRes(c.p, c.r, c.at);
   fxSoon(function(){
     const flashed = {};
-    let sent = 0;
-    for (const g of src){
-      if (sent >= FX_MAX_CARDS) break;
-      const hp = hexPoint(g.h), sp = resLandPoint(g.p, g.r);
-      if (!hp || !sp) continue;
-      if (!flashed[g.h]){ flashed[g.h] = 1; flashHex(g.h); }
-      for (let k = 0; k < g.n && sent < FX_MAX_CARDS; k++, sent++){
-        flyCard(hp, sp, resFaceHTML(g.r), "", 45 * sent + 100, sent);
-        holdRes(g.p, g.r, 45 * sent + 100);
-      }
-    }
+    plan.forEach(function(c, i){
+      const hp = hexPoint(c.h), sp = resLandPoint(c.p, c.r);
+      if (!hp || !sp) return;
+      if (!flashed[c.h]){ flashed[c.h] = 1; flashHex(c.h); }
+      flyCard(hp, sp, resFaceHTML(c.r), "", c.at, i);
+    });
   });
 }
 
@@ -8590,6 +8618,12 @@ function playKitten(f){
      played on one screen. The `pid === viewSeat()` test below is what keeps it
      private either way. */
   const key = (f && typeof f === "object") ? (f.c || f.privateCard || null) : null;
+  /* The card is not in the hand until it is in the hand — and the hold that
+     keeps it out has to be taken here, before the hand is drawn, rather than
+     inside the frame below. Taken there it was one paint too late: the card
+     appeared among the others, then disappeared to go and fly in, then landed.
+     Now the face crossing the screen is the first anybody sees of it. */
+  holdKit(pid, 60);
   fxSoon(function(){
     const to = kitLandPoint(pid);
     if (!to) return;
@@ -8603,11 +8637,6 @@ function playKitten(f){
              : '<span class="fxback">' + esc((KITTEN[key] || {}).name || "") + "</span>")
       : kittenBackHTML();
     flyCard(deckPoint(), to, inner, "kit", 60, 0);
-    // The card is not in the hand until it is in the hand. For the player who
-    // drew it that means the face they have been watching cross the screen is
-    // the one that turns up among their cards, rather than a card appearing at
-    // the same time as its own arrival is still being animated.
-    holdKit(pid, 60);
   });
 }
 
@@ -8641,6 +8670,26 @@ function benchPoint(pid){
 }
 
 function playCardsFx(f){
+  /* Face up for both ends of it.
+
+     A robbery travels face down so the table cannot read what was taken —
+     but the person it was taken FROM is not "the table". They held the card;
+     they are entitled to know which one left. Only they and the thief see
+     it, which is exactly the two people who would know at a real table, and
+     net.js hands the identity to those two seats and to nobody else. */
+  const me = viewSeat();
+  const bundle = f.b ||
+    ((f.privatePid === me || f.f === me) ? f.privateBundle : null);
+  // Planned up front so the holds land before the counters are drawn.
+  const plan = [];
+  if (bundle)
+    for (const r of RES)
+      for (let k = 0; k < (bundle[r] || 0) && plan.length < FX_MAX_CARDS; k++)
+        plan.push({ r: r, at: 55 * plan.length });
+  // Only what ARRIVES is held back. What was taken is gone the moment it is
+  // taken, which is how it feels from the other end of a robbery.
+  if (f.o !== null && f.o !== undefined)
+    for (const c of plan) holdRes(f.o, c.r, c.at);
   fxSoon(function(){
     // Worked out per card rather than once, because each one is going to a
     // different pile now.
@@ -8648,49 +8697,43 @@ function playCardsFx(f){
     const toFor = r => (f.o === null || f.o === undefined) ? benchPoint(f.f)
                                                           : resLandPoint(f.o, r);
     if (!fromFor("wood") || !toFor("wood")) return;
-    let i = 0;
-    /* Face up for both ends of it.
-
-       A robbery travels face down so the table cannot read what was taken —
-       but the person it was taken FROM is not "the table". They held the card;
-       they are entitled to know which one left. Only they and the thief see
-       it, which is exactly the two people who would know at a real table, and
-       net.js hands the identity to those two seats and to nobody else. */
-    const me = viewSeat();
-    const bundle = f.b ||
-      ((f.privatePid === me || f.f === me) ? f.privateBundle : null);
     if (!bundle){
       // Face down, so there is no pile to aim at: the row as a whole.
       const from = fromFor(null), to = toFor(null);
-      for (; i < (f.n || 0) && i < FX_MAX_CARDS; i++)
+      for (let i = 0; i < (f.n || 0) && i < FX_MAX_CARDS; i++)
         flyCard(from, to, resBackHTML(), "", 55 * i, i);
       return;
     }
-    for (const r of RES)
-      for (let k = 0; k < (bundle[r] || 0) && i < FX_MAX_CARDS; k++, i++){
-        flyCard(fromFor(r), toFor(r), resFaceHTML(r), "", 55 * i, i);
-        // Only what ARRIVES is held back. What was taken is gone the moment it
-        // is taken, which is how it feels from the other end of a robbery.
-        if (f.o !== null && f.o !== undefined) holdRes(f.o, r, 55 * i);
-      }
+    plan.forEach(function(c, i){
+      flyCard(fromFor(c.r), toFor(c.r), resFaceHTML(c.r), "", c.at, i);
+    });
   });
 }
 
 function playTradeFx(f){
+  // Both halves of the swap, planned before a counter is drawn so each side's
+  // holds are already in place by the time anything shows a number.
+  const out = [], back = [];
+  for (const r of RES)
+    for (let k = 0; k < (f.g[r] || 0) && out.length < FX_MAX_CARDS; k++)
+      out.push({ r: r, at: 55 * out.length });
+  for (const r of RES)
+    for (let k = 0; k < (f.h[r] || 0) && back.length < FX_MAX_CARDS; k++)
+      back.push({ r: r, at: 55 * back.length + 110 });
+  if (f.b !== null && f.b !== undefined)
+    for (const c of out) holdRes(f.b, c.r, c.at);
+  for (const c of back) holdRes(f.a, c.r, c.at);
   fxSoon(function(){
     const aFor = r => resLandPoint(f.a, r);
     const bFor = r => (f.b === null || f.b === undefined) ? benchPoint(f.a)
                                                          : resLandPoint(f.b, r);
     if (!aFor("wood") || !bFor("wood")) return;
-    let i = 0, j = 0;
-    for (const r of RES) for (let k = 0; k < (f.g[r] || 0) && i < FX_MAX_CARDS; k++, i++){
-      flyCard(aFor(r), bFor(r), resFaceHTML(r), "", 55 * i, i);
-      if (f.b !== null && f.b !== undefined) holdRes(f.b, r, 55 * i);
-    }
-    for (const r of RES) for (let k = 0; k < (f.h[r] || 0) && j < FX_MAX_CARDS; k++, j++){
-      flyCard(bFor(r), aFor(r), resFaceHTML(r), "", 55 * j + 110, j);
-      holdRes(f.a, r, 55 * j + 110);
-    }
+    out.forEach(function(c, i){
+      flyCard(aFor(c.r), bFor(c.r), resFaceHTML(c.r), "", c.at, i);
+    });
+    back.forEach(function(c, j){
+      flyCard(bFor(c.r), aFor(c.r), resFaceHTML(c.r), "", c.at, j);
+    });
   });
 }
 
@@ -9922,13 +9965,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-09-02g"></script>
+<script src="ai.js?v=2026-09-03a"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-09-02g"></script>
-<script src="net.js?v=2026-09-02g"></script>
+<script src="firebase-config.js?v=2026-09-03a"></script>
+<script src="net.js?v=2026-09-03a"></script>
 </body>
 </html>

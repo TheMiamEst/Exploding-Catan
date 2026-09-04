@@ -577,6 +577,24 @@ moment it visually lands. A kitten card is not in your hand until it is in your
 hand — and it arrives face up, so the card you watched cross the screen is the
 one that turns up among your cards.
 
+**And it appears once.** The hold used to be taken inside the animation's own
+callback, which runs a frame after the render that put the card there — so a
+drawn card appeared among your cards, the browser painted it, and then it
+vanished again when the hold finally landed, only to come back when the card
+did. A payout was worse: the counters jumped to the full new figure and then
+dropped to zero before climbing back one card at a time. The state was right
+throughout and every number ended up correct, which is why this survived so
+long; it just looked like the game could not make up its mind.
+
+The plan for a flight is now worked out the moment the flight is first seen,
+and its holds are placed there and then — measuring and moving are all that
+wait for the next frame. `checkFlights` moved ahead of the drawing in
+`render()` to match, so the hold is in place before a single counter is drawn.
+Nothing is held back when nothing is going to fly, either: with motion off, or
+on a screen nobody is watching, `fxWillPlay()` is false and the counters simply
+tell the truth straight away rather than waiting out an animation that is not
+coming.
+
 That is a view and only a view: the state is correct the whole time, so the
 worst a bug in there can do is show a wrong number for a second. Every hold is
 cleared by a timer set when the hold is taken — nothing waits on an animation
