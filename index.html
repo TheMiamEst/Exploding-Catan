@@ -1567,7 +1567,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-09-03a";
+const GAME_VERSION = "2026-09-03b";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -6136,12 +6136,17 @@ function canDefuseEntry(e, pid){
   return TARGETED.has(e.card.key) && e.target === pid;
 }
 
+/* Returns the card it took, so a journal entry can record WHICH one paid for
+   it rather than just what kind it was. Answering an entry has to charge that
+   card again, and "any Defuse in that hand" is not the same thing as "the
+   Defuse that was played" once somebody is holding two. */
 function spendCard(p, key){
   const i = p.cards.findIndex(c => c.key === key);
-  if (i < 0) return false;
-  S.discard.push(p.cards.splice(i, 1)[0]);
+  if (i < 0) return null;
+  const card = p.cards.splice(i, 1)[0];
+  S.discard.push(card);
   touch();
-  return true;
+  return card;
 }
 
 /* ── Answering from inside a prompt ───────────────────────────────
@@ -6272,7 +6277,7 @@ function nopeEntry(id, noperId){
   pileDrop(S.journal.slice(idx + 1).map(x => x.id));
   pileCancel(e.id);
   S.journal.splice(idx);
-  spendCard(noper, "nope");
+  const paidNope = spendCard(noper, "nope");
 
   // Undoing an entry throws away everything that came after it, so any forced
   // dialog still on screen is asking about a state that no longer exists —
@@ -6288,9 +6293,33 @@ function nopeEntry(id, noperId){
     const oi = owner.cards.indexOf(e.card);
     if (oi >= 0) S.discard.push(owner.cards.splice(oi, 1)[0]);
   }
-  // Same rule one level up: a Nope that is itself Noped is still spent. The
-  // rewind predates the reaction, so it would otherwise come back for free.
-  if (e.spent && S.players[e.spent.pid]) spendCard(S.players[e.spent.pid], e.spent.key);
+  /* Same rule one level up: a Nope that is itself Noped is still spent. The
+     rewind predates the reaction, so it would otherwise come back for free.
+
+     Charged by IDENTITY, not by kind. This used to take the first card of the
+     right sort out of that hand, which is only the same card if the rewind
+     really did put the original back — and a snapshot taken a moment too
+     late does not. Then this reached past the gap and took a SECOND card,
+     which left the game without ever being played. Holding one, nothing
+     happened, because there was nothing else to take; holding three, a cascade
+     ended with two played and one eaten, and a win went through against a Nope
+     that was still in somebody's hand when the argument started.
+
+     Naming the card makes that unrepresentable: if it is not in the hand it
+     was not handed back, and taking anything else would be inventing a payment
+     nobody made. Entries from an older build carry no id and still fall back
+     to the kind. */
+  if (e.spent && S.players[e.spent.pid]){
+    const payer = S.players[e.spent.pid];
+    const named = e.spent.id !== undefined && e.spent.id !== null;
+    const i = named ? payer.cards.findIndex(c => c.id === e.spent.id)
+                    : payer.cards.findIndex(c => c.key === e.spent.key);
+    if (i >= 0){ S.discard.push(payer.cards.splice(i, 1)[0]); touch(); }
+    else if (named)
+      console.error("the " + e.spent.key + " spent on entry " + e.id + " (" + e.kind +
+                    ") was not in " + payer.name + "'s hand after the rewind — " +
+                    "that entry's snapshot postdates its own card");
+  }
   // Undoing an answer puts what it answered back on the table. A robbery
   // Defused and then Noped is a robbery again, and the others standing on that
   // hex may reach for it in their turn.
@@ -6308,7 +6337,8 @@ function nopeEntry(id, noperId){
   const noteEntry = logAction(pdot(noper) + " <b>Nopes</b> " +
             (selfRoll ? "their own roll" : answering), "defend",
             { actor: noperId, snap: undone, nopeable: true, turnBack: turnBack,
-              spent: { pid: noperId, key: "nope" }, show: "nope",
+              spent: { pid: noperId, key: "nope", id: paidNope ? paidNope.id : null },
+              show: "nope",
               // What this Nope took off the table. Carried so that a Nope of
               // THIS Nope can say what came back — see below.
               undid: { plain: e.plain, actor: e.actor, kind: e.kind } });
@@ -6500,7 +6530,7 @@ function defuseSeven(e, defuserId){
   const snapBefore = snapAll();
   const head = S.seven.queue[0];
 
-  spendCard(d, "defuse");
+  const paidDefuse = spendCard(d, "defuse");
   const i = S.seven.queue.indexOf(defuserId);
   if (i >= 0) S.seven.queue.splice(i, 1);
 
@@ -6510,7 +6540,8 @@ function defuseSeven(e, defuserId){
   // end the turn of a roller who Defused their own seven.
   logAction(pdot(d) + " <b>Defuses</b> the seven — their hand is spared", "defend",
             { actor: defuserId, snap: snapBefore, nopeable: true, turnSafe: true,
-              spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
+              spent: { pid: defuserId, key: "defuse",
+                       id: paidDefuse ? paidDefuse.id : null }, show: "defuse" });
 
   // closeModal takes away EVERY forced dialog on the table, this screen's and
   // any shipped to another — including the discard window belonging to
@@ -6557,7 +6588,7 @@ function defuseRobber(e, defuserId){
   if (!thief || e.fromHex === undefined || e.fromHex === null) return false;
 
   const snapBefore = snapAll();
-  spendCard(d, "defuse");
+  const paidDefuse = spendCard(d, "defuse");
   e.answered = true;
 
   // Put the robbery back: the robber where it was, the card with whoever it
@@ -6577,7 +6608,9 @@ function defuseRobber(e, defuserId){
   const note = logAction(pdot(d) + " <b>Defuses</b> the robbery — they move the robber instead",
             "defend",
             { actor: defuserId, target: e.actor, snap: snapBefore, nopeable: true,
-              turnSafe: true, spent: { pid: defuserId, key: "defuse" }, show: "defuse" });
+              turnSafe: true, spent: { pid: defuserId, key: "defuse",
+                                       id: paidDefuse ? paidDefuse.id : null },
+              show: "defuse" });
   note.unanswers = e.id;
 
   // "No you": they place it, and rob whoever is there. knight:false because
@@ -6621,7 +6654,10 @@ function defuseEntry(id, defuserId){
   pileDrop(S.journal.slice(idx + 1).map(x => x.id));
   pileCancel(e.id);
   S.journal.splice(idx);
-  spendCard(d, "defuse");
+  // The entry above is built before the card is known; which of the defuser's
+  // Defuses actually left their hand is only settled here.
+  const paidDefuse = spendCard(d, "defuse");
+  answerable.spent.id = paidDefuse ? paidDefuse.id : null;
   // Same as a Nope: whatever forced dialog was standing on the entry we just
   // erased is asking about a state that no longer exists.
   closeModal();
@@ -9738,7 +9774,23 @@ function nopeWholeTurn(ownerId, pid){
   const sameTurn = !!playing && playing.id === pid;
   // Read before the cancel, which is what takes them back under the target.
   const wasWin = totalVP(victim) >= S.winPoints;
-  spendCard(noper, "nope");
+  /* Before the card is spent, not after — and this is the whole of the bug.
+
+     A counter-Nope rewinds to the snapshot its target was journalled against
+     and then charges that Nope again by hand, because `spent` says who paid
+     and the rewind is supposed to PREDATE the payment: without the re-charge
+     the answered Nope would come back to its owner for free. Every other
+     answer in the game journals first and pays afterwards, so that holds.
+     This one paid first. The rewind therefore restored a hand with the Nope
+     already gone, and the re-charge took a second one out of it.
+
+     It only shows on somebody holding more than one: with a single Nope in
+     hand the second charge finds nothing to take and does no damage. Which is
+     why it lasted until a cascade at the end of a game — three Nopes, two
+     played, and the third gone, so the win went through against a card that
+     was still in the hand when the argument started. */
+  const snapBefore = snapAll();
+  const paidNope = spendCard(noper, "nope");
   logMsg(sameTurn
     ? "<b>" + victim.name + "</b>'s turn was Noped by <b>" + noper.name + "</b>."
     : "<b>" + noper.name + "</b> Nopes <b>" + victim.name + "</b>'s win, which takes <b>"
@@ -9751,9 +9803,9 @@ function nopeWholeTurn(ownerId, pid){
             sameTurn ? pdot(victim) + "'s turn was <b>Noped</b>"
                      : pdot(victim) + "'s win is <b>Noped</b> — " + pdot(playing) +
                        "'s turn is cancelled with it",
-            "defend", { actor: ownerId, snap: snapAll(), nopeable: true, turnBack: turnBack,
-                        spent: { pid: ownerId, key: "nope" }, show: "nope",
-                        wonBy: wasWin ? pid : null });
+            "defend", { actor: ownerId, snap: snapBefore, nopeable: true, turnBack: turnBack,
+                        spent: { pid: ownerId, key: "nope", id: paidNope ? paidNope.id : null },
+                        show: "nope", wonBy: wasWin ? pid : null });
   clearImplodeClock();
   cancelTurn(pid, wasWin);                    // cancelTurn ends the turn itself
   noteEntry.turn = S.turnCounter;             // it belongs to the turn it made
@@ -9965,13 +10017,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-09-03a"></script>
+<script src="ai.js?v=2026-09-03b"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-09-03a"></script>
-<script src="net.js?v=2026-09-03a"></script>
+<script src="firebase-config.js?v=2026-09-03b"></script>
+<script src="net.js?v=2026-09-03b"></script>
 </body>
 </html>

@@ -1989,6 +1989,44 @@ same sum out on paper — this turn's buildings and knights, and then Longest Ro
 and Largest Army recomputed from what is left — which is a second
 implementation of the rules to keep in step with the first.
 
+### The cascade eats a card it was never given
+
+Reported from a real game: three Nopes in hand, a win to answer, two Nopes
+played each way, and the answerer came out holding **none** instead of one. The
+win went through against a card that had been in his hand when the argument
+started.
+
+Answering an entry rewinds to the snapshot that entry was journalled against,
+and then charges the answered card again by hand — `spent` says who paid.
+That second charge is there because the rewind is supposed to **predate** the
+payment: without it the answered Nope would be handed back to its owner for
+free. Every answer in the game journals its snapshot first and pays afterwards,
+so that holds — except `nopeWholeTurn`, which paid first. Its snapshot
+therefore restored a hand with the Nope already gone, and the re-charge reached
+past the gap and took a **second** one, which left the game without ever being
+played.
+
+Invisible to anybody holding a single Nope, because then there is nothing else
+to take. It needs two in one hand, which is why it survived until an end-game
+cascade.
+
+Two changes, because one of them alone would only have fixed today's case:
+
+- `nopeWholeTurn` takes its snapshot **before** spending, like everything else.
+- The re-charge names the card. `spendCard` returns what it took, the entry
+  records that card's id alongside the kind, and answering charges **that
+  card** or nothing at all. "Any Nope in that hand" is only the same card if
+  the rewind really did put the original back; naming it makes a second charge
+  unrepresentable, and says so in the console if a snapshot is ever taken late
+  again. Entries from an older build carry no id and still fall back to the
+  kind.
+
+Measured on the reported cascade, three Nopes each, six counter-Nopes deep:
+`3,3 -> 2,3 -> 2,2 -> 1,2 -> 1,1 -> 0,1 -> 0,0`, one card to the discard per
+Nope played, none lost. Before: `3,3 -> 2,3 -> 1,2 -> 1,2 -> 0,1 -> 0,1 -> 1,0`.
+With the old snapshot deliberately put back, the arithmetic now stays right
+anyway and the console names the offending entry.
+
 ### When a bot spends a Nope
 
 Two reasons, and no others: **to cancel a win**, or **to protect a hand that is

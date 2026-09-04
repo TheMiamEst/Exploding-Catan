@@ -265,7 +265,7 @@ function serializeGame(){
       // journalled as the answer rather than as a card play, so this is the
       // only record that they were cards at all - and the discard pile has to
       // show them like any other card somebody played.
-      spent: e.spent ? { pid: e.spent.pid, key: e.spent.key } : null,
+      spent: e.spent ? { pid: e.spent.pid, key: e.spent.key, id: e.spent.id } : null,
       cardOwner: e.cardOwner, participants: e.participants || null,
       noDefuse: !!e.noDefuse, notice: !!e.notice,
       show: e.show || null, plain: e.plain, snap: 1,
