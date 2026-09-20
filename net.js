@@ -25,7 +25,7 @@
      /rooms/CODE/intents         everyone → host: "this is what I did"
      /rooms/CODE/join            guest → host: "let me sit down"
      /rooms/CODE/leave           guest → host: "I have gone"
-     /rooms/CODE/present/{uid}   guest → host: "I am still here" (auto-removed)
+     /rooms/CODE/present/{uid}/{sid}  guest → host: "I am still here"
 
    The state is rewritten in full after every action rather than diffed. It
    cannot drift, and for six people taking turns the traffic is nothing — the
@@ -951,7 +951,11 @@ function startHost(n, name, av){
     const j = snap.val(); snap.ref.remove();
     if (j && j.uid) seatGone(j.uid);
   });
-  NET.room.child("present").on("child_removed", snap => seatGone(snap.key));
+  /* Presence, both ways round. A node appearing is somebody here; a node
+     going is somebody who MIGHT be gone, which is not the same thing and must
+     not be treated as though it were — see seatMaybeGone. */
+  NET.room.child("present").on("child_added",   snap => seatHere(snap.key));
+  NET.room.child("present").on("child_removed", snap => seatMaybeGone(snap.key));
 
   NET.room.child("intents").on("child_added", snap => {
     const m = snap.val(); snap.ref.remove();
@@ -977,6 +981,70 @@ function pushRoster(){
   if (NET.onRoster) NET.onRoster();
 }
 
+/* How long a vanished presence node is given to come back before the host
+   believes it. The room node gets the same benefit of the doubt for the same
+   reason — see HOST_GRACE_MS — and this is the other half of that fix.
+
+   Shorter than the host's, because the cost of waiting is different: a room
+   that is really gone wastes fifteen seconds of somebody's evening, while a
+   seat that is really gone holds up the turn it is sitting on. */
+const SEAT_GRACE_MS = 12000;
+
+/* A presence node has gone. That is EVIDENCE of leaving, and weak evidence.
+
+   Firebase removes an onDisconnect node on any connection loss at all: a wifi
+   handover, a laptop sleeping for a moment, a socket being cycled. Worse, the
+   host's own clean-up (NET.room.onDisconnect().remove(), see armHostPresence)
+   deletes the whole room including present/ — so a one-second blip on the
+   HOST's machine removed every guest's node at once, and the host duly
+   announced that all of them had left and handed all their seats to bots
+   while they sat there watching. That is the "randomly kicked" nobody could
+   explain, and it could not happen before empty seats became playable,
+   because until then nothing was listening.
+
+   So a removal starts a clock instead of a takeover. Anybody whose node is
+   back before it runs out was never gone, and the table is never told. */
+function seatMaybeGone(uid){
+  if (!isHost() || !uid) return;
+  NET.goneTimers = NET.goneTimers || {};
+  if (NET.goneTimers[uid]) return;                  // already counting
+  NET.goneTimers[uid] = setTimeout(function(){
+    delete NET.goneTimers[uid];
+    seatGone(uid);
+  }, SEAT_GRACE_MS);
+}
+
+function clearGoneTimer(uid){
+  if (NET.goneTimers && NET.goneTimers[uid]){
+    clearTimeout(NET.goneTimers[uid]);
+    delete NET.goneTimers[uid];
+  }
+}
+
+/* Somebody's browser is answering again.
+
+   Usually this is the far end of a blip and there is nothing to undo. When the
+   blip outlasted the grace period there is: the seat is marked away with a bot
+   on it, and the person it belongs to is sitting right there. They get it
+   straight back without rejoining, because from where they are sitting they
+   never left. */
+function seatHere(uid){
+  if (!isHost() || !uid || !NET.roster) return;
+  clearGoneTimer(uid);
+  const seat = NET.roster.findIndex((r, i) =>
+    i !== NET.seat && r && r.uid === uid && r.away);
+  if (seat < 0) return;                             // nothing was taken away
+  NET.roster[seat].away = false;
+  NET.roster[seat].bot  = false;
+  botHandBack(seat);
+  pushRoster();
+  if (NET.started){
+    if (typeof announce === "function") announce(pdotSafe(seat) + " is back", "info");
+    if (typeof render === "function") render();
+    publish();
+  }
+}
+
 /* Somebody left. In the lobby the chair simply goes back to the table.
 
    Mid-game it cannot: the seat holds a hand, a colour and pieces on the board.
@@ -987,6 +1055,7 @@ function pushRoster(){
    turn up, the game carries on, and the chair stays open for whoever wants it. */
 function seatGone(uid){
   if (!isHost() || !uid || !NET.roster) return;
+  clearGoneTimer(uid);
   const seat = NET.roster.findIndex((r, i) =>
     i !== NET.seat && r && r.uid === uid && !r.away);
   if (seat < 0) return;
@@ -1033,12 +1102,44 @@ function botHandBack(seat){
 function armSeatPresence(){
   if (!NET.db || !NET.room || !NET.uid) return;
   if (NET.seatPresenceRef) NET.seatPresenceRef.off();
-  const mine = NET.room.child("present/" + NET.uid);
+  if (NET.seatPresenceMine) NET.seatPresenceMine.off();
+  /* One child per SESSION, rather than one node per player.
+
+     The node used to be present/{uid}, written by whichever visit was current
+     — and an onDisconnect belongs to the connection that armed it, not to the
+     visit. So an old session dying late (a closed laptop, a phone off wifi:
+     the server can take a minute to give up on a socket that was never shut
+     properly) removed the node the NEW session had just written, and the host
+     was told that somebody who had just sat down had left. Under its own
+     session id an old visit can only ever remove its own, and a player is
+     present while any session of theirs is. */
+  const mine = NET.room.child("present/" + NET.uid + "/" + NET.session);
   NET.seatPresenceRef = NET.db.ref(".info/connected");
   NET.seatPresenceRef.on("value", s => {
     if (!s.val() || NET.role !== "guest" || !NET.room) return;
     mine.onDisconnect().remove();
     mine.set(true);
+  });
+  /* And put it back if anything else takes it down.
+
+     The host wipes the whole room on its own disconnects and writes it back a
+     moment later (armHostPresence), which takes every guest's presence with it
+     and cannot restore it — only this browser can say that it is here.
+     Without this the room came back with nobody in it, and the grace period
+     above would then run out for the entire table at once.
+
+     Debounced, so that a write which cannot succeed retries at a walking pace
+     instead of spinning. */
+  NET.seatPresenceMine = mine;
+  mine.on("value", v => {
+    if (v.exists() || NET.role !== "guest" || !NET.on || NET.dead || !NET.room) return;
+    if (NET.seatPresenceRetry) return;
+    NET.seatPresenceRetry = setTimeout(function(){
+      NET.seatPresenceRetry = null;
+      if (NET.role !== "guest" || !NET.on || NET.dead || !NET.room) return;
+      mine.onDisconnect().remove();
+      mine.set(true);
+    }, 400);
   });
 }
 
@@ -1047,6 +1148,9 @@ function startGuest(code, name, av){
   connect();
   NET.role = "guest"; NET.on = true; NET.dead = null;
   NET.uid = guestUid(); NET.name = name; NET.code = code; NET.seat = null;
+  // New every visit, where the uid is deliberately the same one every visit.
+  // See armSeatPresence for what the difference between them is for.
+  NET.session = randomId();
   NET.room = NET.db.ref("rooms/" + code);
 
   NET.room.child("meta").get().then(snap => {
@@ -1188,6 +1292,12 @@ function teardown(){
   if (NET.hostGraceTimer){ clearTimeout(NET.hostGraceTimer); NET.hostGraceTimer = null; }
   if (NET.presenceRef){ NET.presenceRef.off(); NET.presenceRef = null; }
   if (NET.seatPresenceRef){ NET.seatPresenceRef.off(); NET.seatPresenceRef = null; }
+  if (NET.seatPresenceMine){ NET.seatPresenceMine.off(); NET.seatPresenceMine = null; }
+  if (NET.seatPresenceRetry){ clearTimeout(NET.seatPresenceRetry); NET.seatPresenceRetry = null; }
+  if (NET.goneTimers){
+    for (const k in NET.goneTimers) clearTimeout(NET.goneTimers[k]);
+    NET.goneTimers = {};
+  }
   if (NET.room){
     /* Say so on the way out. Every exit a guest has goes through here — the
        Leave button, starting a local game, joining somewhere else — so this is
@@ -1196,8 +1306,9 @@ function teardown(){
        noticing. */
     if (NET.role === "guest" && NET.uid){
       try {
-        NET.room.child("present/" + NET.uid).onDisconnect().cancel();
-        NET.room.child("present/" + NET.uid).remove();
+        const mine = NET.room.child("present/" + NET.uid + "/" + NET.session);
+        mine.onDisconnect().cancel();
+        mine.remove();
         NET.room.child("leave").push(clean({ uid: NET.uid, t: Date.now() }));
       } catch(e){}
     }
