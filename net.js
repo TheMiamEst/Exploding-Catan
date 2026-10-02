@@ -243,6 +243,9 @@ function serializeGame(){
     seven: S.seven ? { actor: S.seven.actor, jid: S.seven.jid,
                        queue: S.seven.queue.slice() } : null,
     winner: S.winner, revealed: S.revealed,
+    // Who is being made to spend a Nope on a win, so that everybody else's
+    // Nopes are refused on their own screen rather than on the host's.
+    forcedNope: S.forcedNope || null,
     diceLog: S.diceLog.slice(-60),
 
     // The deadline travels as "milliseconds still to run", so nobody has to
@@ -269,6 +272,13 @@ function serializeGame(){
       cardOwner: e.cardOwner, participants: e.participants || null,
       noDefuse: !!e.noDefuse, notice: !!e.notice,
       show: e.show || null, plain: e.plain, snap: 1,
+      /* Whose win this entry took off the table. It used to stay on the host
+         — "nothing on a terminal reads it" — and then something did: a Nope
+         may not be played onto an entry that would hand somebody else the
+         game, and that is decided on every screen that draws the log. Without
+         it a guest lit the line up, dragged onto it, and had the host refuse.
+         Nothing secret: the whole table watched the win be cancelled. */
+      wonBy: e.wonBy === undefined ? null : e.wonBy,
       // Somebody already spent a Defuse on this one. Travels so the marker
       // stops offering itself the moment it is settled, rather than letting a
       // second player drag a card the host is only going to turn away.
@@ -386,6 +396,7 @@ function applyGame(b){
         queue: arr(b.seven.queue, b.n).filter(x => x !== null && x !== undefined) }
     : null;
   S.winner = (b.winner === undefined) ? null : b.winner;
+  S.forcedNope = b.forcedNope || null;
   S.revealed = !!b.revealed;
   S.diceLog = arr(b.diceLog, (b.diceLog && b.diceLog.length) || 0).filter(x => x !== null);
 

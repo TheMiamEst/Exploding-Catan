@@ -368,8 +368,26 @@
     font-size:10px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase;
     padding:2px 8px; border-radius:5px;
   }
-  .discpile.droppable{border-color:#7fc48f; box-shadow:0 0 0 3px #7fc48f44}
-  .discpile.dropping{border-color:#a6e6b4; box-shadow:0 0 0 4px #7fc48f77}
+  /* The pile is where every card is played, so while one is being carried it
+     has to be the loudest thing on screen — it was a thin green line you had
+     to be looking for, on a corner of the board you are not looking at. */
+  @keyframes pileready{
+    0%,100%{ box-shadow:0 0 0 4px #7fc48f66, 0 0 22px 4px #7fc48f38, 0 6px 18px #0008 }
+    50%    { box-shadow:0 0 0 6px #9fe0af88, 0 0 32px 8px #7fc48f5c, 0 6px 18px #0008 }
+  }
+  .discpile.droppable{
+    border-color:#a6e6b4;
+    animation:pileready 1.15s ease-in-out infinite;
+  }
+  /* And brighter still with the card actually over it, so letting go is a
+     decision you can see the result of before you make it. */
+  .discpile.dropping{
+    border-color:#d8ffe2;
+    animation:none;
+    box-shadow:0 0 0 7px #bff0cbcc, 0 0 40px 12px #7fc48f88, 0 8px 22px #0009;
+    transform:translateY(-3px) scale(1.04);
+  }
+  .discpile{ transition:transform .12s ease, box-shadow .12s ease }
   /* Looked back through rather than sitting on top. */
   .discpile.back{border-style:dashed; opacity:.9}
 
@@ -2165,6 +2183,7 @@ function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
     seven: null,              // {actor, queue:[pid]} — a 7 still being paid for
     robberDue: [],            // robber moves owed behind the one in progress
     select: null,             // {kind, ...} forced board interaction
+    forcedNope: null,         // {pid, winner} while a win is being Noped to order
     /* A card that has been PLAYED but is still waiting on something before it
        can resolve — two number tokens for an Alter, a victim for an Attack.
        On the state rather than in a variable because the person playing it may
@@ -3846,21 +3865,24 @@ function drawBottom(){
   h += `</div></div>`;
 
   // ── actions ──
-  h += `<div class="bside right"><div class="actions-bar">`;
+  // Built on its own rather than straight into `h`, so that the repaint can
+  // tell a bar whose BUTTONS changed from a bar that was merely redrawn — see
+  // noteActionsShape.
+  let act = "";
   // Being stuck is much easier to unpick when the screen says who on.
   const pend = pendingAnswerers().filter(s => s !== p.id);
   if (pend.length && S.phase !== "over"){
-    h += `<span class="thinking"><span class="dot" style="background:${S.players[pend[0]].color}"></span>
+    act += `<span class="thinking"><span class="dot" style="background:${S.players[pend[0]].color}"></span>
             waiting for ${esc(S.players[pend[0]].name)}…</span>`;
   }
   if (!myTurn && S.phase !== "over"){
     const who = S.players[S.cur];
-    h += `<span class="thinking"><span class="dot" style="background:${who.color}"></span>
+    act += `<span class="thinking"><span class="dot" style="background:${who.color}"></span>
             ${who.name} is thinking…</span>`;
   } else if (owesAnswer() && S.phase !== "over"){
     // The buttons are gated anyway; this is so a folded-away window does not
     // read as a game that has stopped responding.
-    h += `<span class="thinking owed">⏳ ${
+    act += `<span class="thinking owed">⏳ ${
             (S.select && S.select.kind === "seat")
               ? (S.select.purpose === "nopeturn"
                    ? "click the portrait of the player whose turn you are cancelling"
@@ -3869,19 +3891,20 @@ function drawBottom(){
           : (S.seven && !owesSevenCut(p.id)) ? "waiting on the seven to be paid"
           : "finish the open window first"}</span>`;
   } else if (S.phase === "roll"){
-    h += `<button class="primary" id="rollBtn" ${handoverActive() ? "disabled" : ""}
+    act += `<button class="primary" id="rollBtn" ${handoverActive() ? "disabled" : ""}
             onclick="rollDice()">Roll Dice</button>`;
   } else if (S.phase === "main"){
-    h += `<button onclick="bankTradeDialog()">Bank / Port</button>`;
-    h += `<button onclick="playerTradeDialog()">Trade</button>`;
-    h += `<button class="warn" onclick="requestEndTurn()">End Turn</button>`;
+    act += `<button onclick="bankTradeDialog()">Bank / Port</button>`;
+    act += `<button onclick="playerTradeDialog()">Trade</button>`;
+    act += `<button class="warn" onclick="requestEndTurn()">End Turn</button>`;
   } else if (S.phase.startsWith("setup")){
-    h += `<span class="emptyhand">Setup — place your ${S.setupNeed}</span>`;
+    act += `<span class="emptyhand">Setup — place your ${S.setupNeed}</span>`;
   } else if (S.phase === "over"){
-    h += `<button class="primary" onclick="showStandings()">Final standings</button>`;
-    h += `<button onclick="newGameDialog()">New Game</button>`;
+    act += `<button class="primary" onclick="showStandings()">Final standings</button>`;
+    act += `<button onclick="newGameDialog()">New Game</button>`;
   }
-  h += `</div></div>`;
+  noteActionsShape(act);
+  h += `<div class="bside right"><div class="actions-bar">` + act + `</div></div>`;
 
   /* The reason this guard matters more than the others: your hand lives here.
      Rebuilding the bar re-creates every card in it, which drops whatever you
@@ -5034,9 +5057,37 @@ document.addEventListener("keydown", e => {
    DICE / PRODUCTION / ROBBER
    ══════════════════════════════════════════════════════════════════════ */
 
+/* When this screen last asked for a roll. Online the asking and the rolling
+   happen on different machines, so between them there is a window in which
+   this screen's own phase still says "roll" and clicking again is not a
+   mistake anybody could see they were making. The check below it is the one
+   that actually decides — this only stops the second intent being sent at
+   all, so the log does not fill up with requests the host is going to refuse.
+   Time-based on purpose: it expires by itself, so it can never wedge a turn
+   the way a latch keyed to game state could after a rewind. */
+let rollAskedAt = 0;
+
 function rollDice(){
+  /* One roll to a turn. This is the whole of the exploit: there was no check
+     here of any kind, so a second call — a double click, or a second intent
+     sent during the round trip — simply rolled again, paid everybody again and
+     wrote a second roll into the log. Everything else in this function is
+     about whether NOW is a good moment; this is about whether it has already
+     happened, and it has to come first. */
+  if (!S || S.phase !== "roll") return;
   if (owesAnswer()){ hint("Finish the open window first."); return; }
   if (handoverActive()) return;      // the last turn is still open to an answer
+  /* Only a guest waits on an answer, so only a guest needs this — and it must
+     not be anybody else's problem. Applied to everyone it would have caught
+     the BOTS, which roll through this same function: at speed two seats roll
+     inside the same second, the second one would be refused, and ai.js counts
+     a refused roll as a turn taken (`rollDice(); return true;`). The driver
+     would then spin on a phase that never leaves "roll". A guard against
+     clicking twice has no business anywhere near the table's own pace. */
+  if (window.NET && NET.isGuest && NET.isGuest()){
+    if (Date.now() - rollAskedAt < 1200) return;
+    rollAskedAt = Date.now();
+  }
   if (netSend("roll")) return;
   startTurnTimer();
   doRoll();
@@ -5542,6 +5593,9 @@ function playCard(idx, ownerId){
 /* Is there a turn going that this player could cancel outright? */
 function canNopeTurnNow(me){
   if (!S || S.phase === "over" || S.phase.startsWith("setup")) return false;
+  // The pile reaches a Nope through here rather than through canNopeFor, so
+  // without this the forced-Nope lock had a second door standing open.
+  if (!canNopeNow(me)) return false;
   return S.cur !== me && !implodeActive();
 }
 
@@ -5580,9 +5634,25 @@ function nopeCancelsCard(e, me){
   // A roll is thrown again, a Nope or a Defuse is taken back. Neither belongs
   // to a turn you could take instead, so both have always come through here.
   if (e.kind === "roll" || e.kind === "defend") return true;
-  // There IS a turn to take, and taking it cancels this card too. The bigger
-  // answer is on the table, so it stays what the gesture means.
-  if (canNopeTurnNow(me)) return false;
+  /* There is a turn to take, and taking it cancels this card too — but ONLY
+     when the card is that turn's own doing. The bigger answer is on the table,
+     so where it really is bigger it stays what the gesture means.
+
+     Whose turn it is and who threw the card are two different questions, and
+     this asked the first while meaning the second. An Exploding Kitten is
+     playable off-turn, so the thrower is very often not the player having the
+     turn: Blue explodes you while Green is playing. Cancelling Green's turn
+     then does nothing whatever about Blue's Kitten — and it was the only thing
+     on offer, because the seat pick lights the player having the turn and
+     nobody else. So the victim spent a Nope, an innocent player lost a turn,
+     the hand stayed in the bank, and the one card in the game that answers an
+     Exploding Kitten could not answer this one.
+
+     It reads from the outside exactly as reported: the pile "does nothing"
+     (you open the seat pick, see only a bystander offered, and back out), and
+     the only log line that visibly responds is the roll — so people Noped the
+     roll instead, and rerolled their own turn while their hand stayed gone. */
+  if (canNopeTurnNow(me) && e.actor === S.cur) return false;
   return aimedAtMe(e, me);
 }
 
@@ -5689,7 +5759,8 @@ function seatPickable(pid){
      is exempt: these are their own cards, on their own turn. */
   if (implodeActive() && s.actor !== S.cur) return false;
   // Cancelling a turn can only be aimed at the person having one.
-  if (s.purpose === "nopeturn") return pid === S.cur && !implodeActive();
+  if (s.purpose === "nopeturn")
+    return pid === S.cur && !implodeActive() && canNopeNow(s.actor);
   return true;
 }
 
@@ -6081,7 +6152,49 @@ function canNopeEntry(e){
    number of your own is the whole point. You pay a card for it either way. */
 function canNopeFor(e, pid){
   if (!canNopeEntry(e)) return false;
+  if (!canNopeNow(pid)) return false;
+  /* Answering this would put somebody else's win back on the table.
+
+     `wonBy` marks a Nope that took a win off — so Noping THAT entry undoes the
+     denial and the winner wins. Which is a fine thing to do when the win
+     coming back is your own, and never a thing anybody does on purpose
+     otherwise. It happened by accident instead: at the end of a game the
+     answerable entry is whatever was played last, and during a Nope chain
+     that is somebody else's Nope. Play yours on top and you have just handed
+     the game to the player you were both trying to stop.
+
+     Not offered at all rather than warned about, because unlike the reroll
+     there is no reading of it where it was what you wanted. */
+  if (e.wonBy !== null && e.wonBy !== undefined && e.wonBy !== pid) return false;
   return e.kind === "roll" || e.actor !== pid;
+}
+
+/* May this player play a Nope AT ALL just now?
+
+   While somebody is being forced to spend a Nope on a win, nobody else may
+   play one. The forced Nope is an obligation the game hands out and then waits
+   on, and waiting is the problem: the table is live the whole time that player
+   is reading their prompt. A second Nope played into that gap is answering
+   whatever the journal happens to end on, and once the forced one lands the
+   two are in a chain nobody chose the order of. Reported from a real game —
+   "I played my nope at the same time as another player was being forced to
+   stop a win with his, leading to mine being counted against his, reinstating
+   the original win". Both cards spent, and the win went through anyway.
+
+   So the obligation is served first and alone. It cannot deadlock: the forced
+   player is the one person this does not stop, and their prompt has exactly
+   one button. */
+function canNopeNow(pid){
+  if (!S || !S.forcedNope) return true;
+  if (S.phase === "over") return true;
+  /* Read from the table rather than trusted. If the forced player's Nope has
+     left their hand the obligation is served, whatever the flag still says —
+     and if they have gone from the game entirely there is nothing left to wait
+     for. A lock on the last card of the last turn is not something to leave
+     depending on a flag being cleared down every path out of here. */
+  const f = S.players[S.forcedNope.pid];
+  if (!f || !f.cards.some(c => c.key === "nope")) return true;
+  return S.forcedNope.pid === pid;
 }
 
 /* A robbery: the robber has been moved, and may have taken a card with it.
@@ -6208,6 +6321,14 @@ function nopeEntry(id, noperId){
   if (idx < 0) return false;
   const e = S.journal[idx];
   if (!canNopeEntry(e)) return false;
+  /* canNopeEntry asks whether the ENTRY is still open. Whether THIS player may
+     answer it is a different question, and it was only ever asked further out
+     — in dropAllowed, in the bot. Both happen to ask it, so nothing was
+     getting through; but the rule that a Nope may not hand somebody else the
+     game, and the rule that nobody plays one over a forced Nope, both live in
+     canNopeFor, and this is the function that does the rewinding. It should
+     not be depending on its callers to have checked. */
+  if (!canNopeFor(e, noperId)) return false;
   const noper = S.players[noperId];
   if (!noper.cards.some(c => c.key === "nope")) return false;
 
@@ -6912,6 +7033,9 @@ function forcedNoperFor(winnerId){
 }
 
 function forcedWinNope(winner, pid){
+  /* Everybody else's Nopes are locked from here until this one is spent — see
+     canNopeNow. Set before the prompt, because the prompt is the wait. */
+  S.forcedNope = { pid: pid, winner: winner.id };
   promptFor(pid);
   const p = S.players[pid];
   logMsg(`<b>${winner.name}</b> reaches ${S.winPoints} VP — <b>${p.name}</b> is forced to Nope it.`);
@@ -7313,6 +7437,7 @@ function checkVictory(){
 }
 
 function declareWinner(pid){
+  S.forcedNope = null;
   clearGameLive();              // finished, not lost
   const p = S.players[pid];
   /* The one invariant worth asserting, in the one place it can be broken.
@@ -7876,7 +8001,18 @@ function openModal(title, bodyHTML, buttons, opts){
     btns += `<button class="${b.cls || ""}" ${b.disabled ? "disabled" : ""} onclick="window.__mb(${i})">${b.label}</button>`;
   });
   drawLocalModal(title, bodyHTML, btns, canMini);
-  window.__mb = (i) => buttons[i].fn();
+  /* A dialog button does not move the way the action bar's do, so the accident
+     here is the simpler one: the same button answered twice. Confirming a
+     trade, paying a seven, dealing a new board — none of them want doing
+     twice, and several of them travel as an intent, where the second arrives
+     at a host that has already acted on the first. One answer per press. */
+  let mbLast = -1, mbAt = 0;
+  window.__mb = (i) => {
+    const now = Date.now();
+    if (i === mbLast && now - mbAt < CLICK_SETTLE_MS) return;
+    mbLast = i; mbAt = now;
+    buttons[i].fn();
+  };
 }
 function closeModal(){
   modalKey = null;
@@ -9718,9 +9854,62 @@ function markDropTargets(){
   if (hand) hand.classList.add("droppable");
 }
 
+/* Set for the one beat between confirming the warning below and the drop it
+   was warning about, so the second pass through performDrop does not ask
+   again. */
+let rerollConfirmed = false;
+
+/* Would this Nope land on the dropper's OWN roll?
+
+   On your own turn, with nobody attacking you, your roll is the only entry a
+   Nope can reach — the pile refuses (nothing on it is yours to answer) and
+   every other line belongs to a turn that is already over. So the one thing
+   the card CAN do is throw your own dice again, and the log line lights up
+   saying so. That is a real move and people do want it. It is also exactly
+   what somebody reaches for when they meant to answer an Exploding Kitten and
+   cannot find anywhere else to put the card, and then the dice come up
+   different, the Nope is gone, and their hand is still in the bank.
+
+   So it is worth one sentence before it happens. Only for your own roll:
+   Noping somebody ELSE's roll is an ordinary play with an obvious effect. */
+function nopeHitsOwnRoll(info, drop){
+  if (!S || !info || info.key !== "nope") return false;
+  if (drop.kind !== "entry" && drop.kind !== "pile") return false;
+  if (drop.jid === null || drop.jid === undefined) return false;
+  const e = S.journal.find(x => x.id === drop.jid);
+  if (!e || e.kind !== "roll") return false;
+  if (e.actor !== info.ownerId) return false;
+  return nopeCancelsCard(e, info.ownerId);
+}
+
+function warnReroll(info, drop){
+  const e = S.journal.find(x => x.id === drop.jid);
+  const n = (e && e.payload && e.payload.sum) ||
+            (S.rolled ? S.rolled[0] + S.rolled[1] : null);
+  openModal("That would throw your own dice again", `
+    <div class="warnbox">This Nope is landing on <b>your own roll</b>${
+      n ? ", the " + n : ""}. It will be thrown again, and the card is spent
+      either way — whatever the dice come up second time is the number you
+      keep.</div>
+    <p class="sub">Nothing else is answerable right now, which is why your roll
+    is the only line lit up. If you were reaching for an attack, there is not
+    one on the table to answer.</p>`,
+    [{ label:"Keep my roll", fn: () => { closeModal(); render(); } },
+     { label:"Throw them again", cls:"warn",
+       fn: () => { closeModal(); rerollConfirmed = true;
+                   try { performDrop(info, drop); } finally { rerollConfirmed = false; } } }]);
+}
+
 /* ── doing the drop ──────────────────────────────────────────────────── */
 function performDrop(info, drop){
   const { idx, ownerId, key, card } = info;
+  // Asked on the screen that did the dragging, and only there: the host
+  // replaying somebody else's drop is not the person who needs the warning,
+  // and it has already been answered on their screen.
+  if (!rerollConfirmed && !window.__netApplying && nopeHitsOwnRoll(info, drop)){
+    warnReroll(info, drop);
+    return;
+  }
   if (netSend("drop", [idx, drop.kind,
         drop.kind === "entry"  ? drop.jid :
         drop.kind === "pile"   ? drop.jid :
@@ -9764,6 +9953,13 @@ function performDrop(info, drop){
 /* Dropping a Nope on whoever is playing cancels their whole turn — the second
    of the card's two uses, and the only one that is not answering a log entry. */
 function nopeWholeTurn(ownerId, pid){
+  /* The forced player is the one person this lets through, which is what makes
+     it safe to put here: forcedWinNope sets the flag and then calls straight
+     into this, so the obligation serves itself and everybody else waits. It
+     matters most for the BOTS, which reach this function directly rather than
+     through a drop — a bot deciding to Nope while a person was still reading
+     their forced-Nope prompt is the same race, arriving by a faster route. */
+  if (!canNopeNow(ownerId)) return;
   const victim = S.players[pid], noper = S.players[ownerId];
   /* Whose turn actually comes off, which is not always the person being
      answered. A win reached during somebody else's turn cancels THAT turn, so
@@ -9790,6 +9986,9 @@ function nopeWholeTurn(ownerId, pid){
      played, and the third gone, so the win went through against a card that
      was still in the hand when the argument started. */
   const snapBefore = snapAll();
+  // Served. Whether this is the forced Nope or a later one in the chain, the
+  // table is not waiting on that prompt any more.
+  S.forcedNope = null;
   const paidNope = spendCard(noper, "nope");
   logMsg(sameTurn
     ? "<b>" + victim.name + "</b>'s turn was Noped by <b>" + noper.name + "</b>."
@@ -9829,6 +10028,66 @@ window.addEventListener("blur",          cancelCardDrag);
 /* Belt and braces: if anything ever does manage to start a native drag on this
    page, swallow it rather than let the browser open the card art in a window
    of its own. */
+/* ══ DOUBLE CLICKS ═══════════════════════════════════════════
+   Two different accidents, and they want different answers.
+
+   ACTING TWICE. The dice had no guard of any kind: rollDice rolled, whoever
+   asked and whenever. Online that does not even take a fast finger — a guest's
+   click changes nothing on their own screen, because the state comes back from
+   the host a round trip later, so the button sits there still saying Roll Dice
+   and a second click sends a second intent. The host had nothing to refuse it
+   with and rolled again: two payouts, two lines in the log, one turn. That is
+   answered on the action itself, with a check against the game's own state,
+   because a check there holds against a double click, a duplicated intent, a
+   replayed message and a bot alike.
+
+   ACTING ON THE WRONG THING. Roll Dice and End Turn are the same button in the
+   same place: the bar carries one button before the roll and three after, and
+   End Turn is the rightmost of the three. So the first click rolls, the bar is
+   rebuilt under the pointer, and the second click of a double lands on End
+   Turn and ends the turn it had just started. Nothing is wrong with either
+   button — the problem is a button arriving under a finger that was already on
+   its way down. So a row of buttons that has just CHANGED does not answer for
+   a moment afterwards.
+
+   Shorter than the system double-click threshold is no use here; this has to
+   cover the whole gesture, not the gap inside it. Long enough to swallow the
+   tail of a double click, short enough that nobody waiting to press the button
+   they can see ever notices. */
+const CLICK_SETTLE_MS = 400;
+let actionsShape = null, actionsChangedAt = 0;
+
+/* Called from the repaint with the action bar's markup. Only a change to the
+   BUTTONS starts the clock, and the shape is reduced to their actions to say
+   so exactly.
+
+   Two things would otherwise start it wrongly. The bar is rebuilt constantly
+   for reasons that have nothing to do with the buttons — a resource arriving,
+   a card moving in the hand. And the bar carries text as well: "waiting for
+   Blue…", "Orange is thinking…", the line saying what you still owe. Those
+   change as other people act, which is exactly while you are sitting on your
+   own turn deciding, and a deliberate press on End Turn must not be swallowed
+   because somebody else's name appeared in the corner. */
+function noteActionsShape(html){
+  const shape = (html.match(/onclick="[^"]*"/g) || []).join("|");
+  if (actionsShape === shape) return;
+  // Not on the first paint: there was no button there to be clicking at.
+  if (actionsShape !== null) actionsChangedAt = Date.now();
+  actionsShape = shape;
+}
+function buttonsSettling(){ return Date.now() - actionsChangedAt < CLICK_SETTLE_MS; }
+
+/* Capture, so it is decided before the button's own onclick is reached — and
+   swallowed rather than merely ignored, so nothing further down sees it. */
+document.addEventListener("click", function(ev){
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  if (!t.closest(".actions-bar button")) return;
+  if (!buttonsSettling()) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+}, true);
+
 window.addEventListener("dragstart", function(e){ e.preventDefault(); });
 window.addEventListener("dragover",  function(e){ e.preventDefault(); });
 window.addEventListener("drop",      function(e){ e.preventDefault(); });
