@@ -1585,7 +1585,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-10-13";
+const GAME_VERSION = "2026-10-13b";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -2111,6 +2111,12 @@ function uiBlocked(){
   // Ahead of everything, including the proxy exemption: this one blocks the
   // whole table, the player whose card it is most of all.
   if (typeof implodeRevealing === "function" && implodeRevealing()) return true;
+  /* Fast track +'s road round is everybody's at once. S.cur still names the
+     first player, and with a bot in that seat this said "a bot is playing",
+     which hid every road spot on the board from the person at this screen —
+     nothing to click, the bots finished theirs, and the game sat waiting on
+     roads it had made impossible to place. */
+  if (S && S.phase === "setup3") return false;
   if (drivenByProxy()) return false;
   if (window.NET && NET.isOnline && NET.isOnline()){
     // A prompt handed to you is yours to answer even on somebody else's turn.
@@ -2977,7 +2983,8 @@ function drawBoard(){
       h += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#fff"
               stroke-width="${on ? 16 : 12}" stroke-linecap="round" opacity="${on ? ".85" : ".3"}"
               style="cursor:pointer" onclick="edgeClick(${e.id})"/>`;
-      h += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${cur().color}"
+      const spotColor = S.players[S.phase === "setup3" ? viewSeat() : S.cur].color;
+      h += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${spotColor}"
               stroke-width="${on ? 9 : 7}" stroke-linecap="round"
               ${on ? "" : 'stroke-dasharray="7 5"'} opacity=".95"
               style="cursor:pointer" onclick="edgeClick(${e.id})"/>`;
@@ -3030,7 +3037,7 @@ function drawBoard(){
 function roadSpotShown(eid){
   if (S.phase === "setup3"){
     const me = viewSeat();
-    return !!(S.roadsOwed && S.roadsOwed[me] > 0 && canPlaceRoad(eid, me, null));
+    return !!(S.roadsOwed && S.roadsOwed[me] > 0 && openingRoadLegal(eid, me));
   }
   const sel = S.select;
   if (sel && sel.kind === "road") return canPlaceRoad(eid, S.cur, sel.fromVertex);
@@ -4270,7 +4277,7 @@ function drawHint(){
     if (!left) hint("Waiting for everyone to place their roads.", true);
     else if (S.roadArm && S.roadArm[me] !== null)
       hint("Click again to confirm placement, or click elsewhere to cancel.", true);
-    else hint(`Place ${left === 2 ? "two roads" : "one more road"} — each must touch your own settlement or road. Everybody is placing at once.`, true);
+    else hint(`Place ${left === 2 ? "a road on each of your settlements" : "a road on your other settlement"}. Everybody is placing at once.`, true);
   } else if (S.phase.startsWith("setup")){
     hint(`Place your ${S.setupNeed} — click a highlighted spot.`, true);
   } else if (S.phase === "roll"){
@@ -5097,18 +5104,35 @@ function beginOpeningRoads(){
   botTick();
 }
 
+/* An opening road goes on one of your settlements that does not have one yet:
+   one road each, the same as Catan's own opening. Extending a road, or putting
+   both on the same settlement, left the other one bare.
+
+   Since settlements are always at least two edges apart, no edge touches two
+   players' settlements — so under this rule two players can never want the
+   same edge, and first-come-first-served never actually has to decide
+   anything. It is still enforced, in case that ever stops being true. */
+function openingRoadLegal(eid, pid){
+  const e = edges[eid];
+  if (!e || e.owner !== null) return false;
+  return e.v.some(vid => {
+    const v = vertices[vid];
+    return v.owner === pid && !v.edges.some(x => edges[x].owner === pid);
+  });
+}
+
 /* Whoever clicked: the person at this screen, or a guest's seat replayed by
    the host. Click once to arm an edge, again to lay it — armed per seat, since
    everybody is placing at once. */
 function openingRoadClick(eid, pid){
   if (!S || S.phase !== "setup3" || !S.roadsOwed || !(S.roadsOwed[pid] > 0)) return;
-  if (!canPlaceRoad(eid, pid, null)){ S.roadArm[pid] = null; render(); return; }
+  if (!openingRoadLegal(eid, pid)){ S.roadArm[pid] = null; render(); return; }
   if (S.roadArm[pid] !== eid){ S.roadArm[pid] = eid; render(); return; }
   placeOpeningRoad(eid, pid);
 }
 function placeOpeningRoad(eid, pid){
   // Checked again at the moment it lands: somebody else may have got there first.
-  if (!S.roadsOwed || !(S.roadsOwed[pid] > 0) || !canPlaceRoad(eid, pid, null)) return false;
+  if (!S.roadsOwed || !(S.roadsOwed[pid] > 0) || !openingRoadLegal(eid, pid)) return false;
   edges[eid].owner = pid;
   S.players[pid].roads++;
   S.roadsOwed[pid]--;
@@ -5118,7 +5142,7 @@ function placeOpeningRoad(eid, pid){
   // Somebody boxed in by everybody else's roads has nowhere left to build. They
   // are let off rather than waited on for ever.
   S.roadsOwed = S.roadsOwed.map((n, i) =>
-    n > 0 && !edges.some(e => canPlaceRoad(e.id, i, null)) ? 0 : n);
+    n > 0 && !edges.some(e => openingRoadLegal(e.id, i)) ? 0 : n);
   if (S.roadsOwed.every(n => n <= 0)) finishSetup();
   else render();
   return true;
@@ -10578,13 +10602,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-10-13"></script>
+<script src="ai.js?v=2026-10-13b"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-10-13"></script>
-<script src="net.js?v=2026-10-13"></script>
+<script src="firebase-config.js?v=2026-10-13b"></script>
+<script src="net.js?v=2026-10-13b"></script>
 </body>
 </html>

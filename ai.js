@@ -785,7 +785,7 @@ function makeAgent(pid){
     /* Fast track +'s road round: no settlement just placed to point away
        from, so look past both ends of every legal edge. */
     openingRoad(){
-      const legal = edges.filter(e => canPlaceRoad(e.id, pid, null));
+      const legal = edges.filter(e => openingRoadLegal(e.id, pid));
       if (!legal.length) return null;
       let best = null;
       for (const e of legal){
@@ -1202,18 +1202,24 @@ function tickNow(){
      end a turn that does not exist. */
   if (S.phase === "setup3"){
     if (!S.roadsOwed) return schedule(IDLE);
+    /* Every bot lays one road on the same beat, then the next beat the
+       second. It used to finish one bot's two before starting the next, which
+       read as taking turns in a round that is meant to have none. */
+    let any = false;
     for (const q of S.players){
+      if (S.phase !== "setup3") break;            // the last road ended it
       const ag = agentOf(q.id);
       if (!ag || !(S.roadsOwed[q.id] > 0)) continue;
       const eid = ag.openingRoad();
       if (eid === null || eid === undefined){ S.roadsOwed[q.id] = 0; continue; }
       window.__botActing = true;
       try { placeOpeningRoad(eid, q.id); } finally { window.__botActing = false; }
-      return schedule();
+      any = true;
     }
+    if (S.phase !== "setup3") return schedule();
     // A bot with nowhere to build has been let off, which may finish the round.
-    if (S.roadsOwed.every(n => n <= 0)) finishSetup();
-    return schedule(IDLE);
+    if (S.roadsOwed.every(n => n <= 0)){ finishSetup(); return schedule(); }
+    return schedule(any ? undefined : IDLE);
   }
 
   // A human prompt is open. Wait it out.
