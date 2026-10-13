@@ -1585,7 +1585,7 @@
    host and say so instead of quietly misbehaving. A date rather than a version
    name on purpose — a name has to be decided, and a stamp that has to be
    decided is a stamp somebody forgets to change. */
-const GAME_VERSION = "2026-09-03b";
+const GAME_VERSION = "2026-10-13";
 
 const RES = ["wood","brick","sheep","wheat","ore"];
 const RES_NAME = {wood:"Wood", brick:"Brick", sheep:"Sheep", wheat:"Wheat", ore:"Ore"};
@@ -1670,6 +1670,27 @@ let GAME_PLAYERS = 4;
 let GAME_ALL_BOTS = false;
 function modeOf(){ return (S && MODES[S.mode]) ? S.mode : "normal"; }
 function fastStart(){ return modeOf() !== "normal"; }
+
+/* The fast tracks' first round, which is protected.
+
+   Both fast modes open on a full hand, and that turned out to make them slower
+   rather than faster: six cards is over the seven line after one good roll, so
+   a 7 before your first turn cut you in half, and an Exploding Kitten or an
+   Attack in the first round took the head start away before it had been used.
+   So until everybody has had one turn: no 7 comes up, and neither of those two
+   cards can be played. Nothing on screen says so — the cards simply do not
+   offer themselves, and the dice simply do not show a 7.
+
+   Turns are counted from 1 when setup ends, so the first round is the first
+   seat-count of them. */
+function openingRound(){
+  return fastStart() && !!S && !S.phase.startsWith("setup") &&
+         S.turnCounter <= S.players.length;
+}
+/* A card the opening round holds back. */
+function heldBack(key){
+  return (key === "attack" || key === "explode") && openingRound();
+}
 
 /* Playable on anyone's turn, not just your own: a Nope to cancel the turn in
    progress, and the two direct attacks. */
@@ -2950,7 +2971,8 @@ function drawBoard(){
                 stroke="${S.players[e.owner].color}" stroke-width="8" stroke-linecap="round"/>`;
       }
     } else if (!uiHidden && roadSpotShown(e.id)){
-      const on = armed("road", e.id) || armed("free", e.id);
+      const on = armed("road", e.id) || armed("free", e.id) ||
+                 (S.phase === "setup3" && S.roadArm && S.roadArm[viewSeat()] === e.id);
       // Halo + dashed fill so the target stays legible over any terrain colour.
       h += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#fff"
               stroke-width="${on ? 16 : 12}" stroke-linecap="round" opacity="${on ? ".85" : ".3"}"
@@ -3006,6 +3028,10 @@ function drawBoard(){
 /* Which build spots the board offers right now. During setup the forced
    placement wins; otherwise anything legal and affordable is shown. */
 function roadSpotShown(eid){
+  if (S.phase === "setup3"){
+    const me = viewSeat();
+    return !!(S.roadsOwed && S.roadsOwed[me] > 0 && canPlaceRoad(eid, me, null));
+  }
   const sel = S.select;
   if (sel && sel.kind === "road") return canPlaceRoad(eid, S.cur, sel.fromVertex);
   if (S.select || S.pending || S.phase !== "main") return false;
@@ -3833,10 +3859,10 @@ function drawBottom(){
       // Nothing is playable into an imploded turn but the turn's own cards, so
       // nothing lights up as though it were. The refusal is silent: a card
       // that does not offer itself needs no explanation.
-      const offTurn  = OFF_TURN.has(c.key) && !locked && !isVP && !S.pending &&
+      const offTurn  = OFF_TURN.has(c.key) && !locked && !isVP && !S.pending && !heldBack(c.key) &&
                         S.phase !== "over" && !S.phase.startsWith("setup") &&
                         S.cur !== p.id && !implodeActive();
-      const playable = (myTurn && !locked && !isVP && !S.pending &&
+      const playable = (myTurn && !locked && !isVP && !S.pending && !heldBack(c.key) &&
                         (def.kind !== "response" || c.key === "nope") &&
                         (S.phase === "main" || S.phase === "roll")) || offTurn;
       const canAnswer = !locked && live.some(e =>
@@ -3881,7 +3907,12 @@ function drawBottom(){
     act += `<span class="thinking"><span class="dot" style="background:${S.players[pend[0]].color}"></span>
             waiting for ${esc(S.players[pend[0]].name)}…</span>`;
   }
-  if (!myTurn && S.phase !== "over"){
+  if (S.phase === "setup3"){
+    const left = S.roadsOwed ? S.roadsOwed[p.id] : 0;
+    act += left > 0
+      ? `<span class="emptyhand">Setup — place ${left === 2 ? "your two roads" : "your last road"}</span>`
+      : `<span class="emptyhand">Waiting for everyone to place their roads…</span>`;
+  } else if (!myTurn && S.phase !== "over"){
     const who = S.players[S.cur];
     act += `<span class="thinking"><span class="dot" style="background:${who.color}"></span>
             ${who.name} is thinking…</span>`;
@@ -4233,6 +4264,13 @@ function drawHint(){
   } else if (S.select && S.select.kind === "alter"){
     hint(S.select.first === null ? "Pick the first number token to swap."
                                  : "Now pick the second number token.", true);
+  } else if (S.phase === "setup3"){
+    const me = viewSeat();
+    const left = S.roadsOwed ? S.roadsOwed[me] : 0;
+    if (!left) hint("Waiting for everyone to place their roads.", true);
+    else if (S.roadArm && S.roadArm[me] !== null)
+      hint("Click again to confirm placement, or click elsewhere to cancel.", true);
+    else hint(`Place ${left === 2 ? "two roads" : "one more road"} — each must touch your own settlement or road. Everybody is placing at once.`, true);
   } else if (S.phase.startsWith("setup")){
     hint(`Place your ${S.setupNeed} — click a highlighted spot.`, true);
   } else if (S.phase === "roll"){
@@ -4908,7 +4946,10 @@ function vertexClick(vid){
 
 function edgeClick(eid){
   if (netSend("edge", [eid])) return;
-  if (swallowedByPan() || uiBlocked()) return;
+  if (swallowedByPan()) return;
+  // Everybody's turn at once, so not gated on whose turn it is.
+  if (S.phase === "setup3"){ openingRoadClick(eid, viewSeat()); return; }
+  if (uiBlocked()) return;
   const sel = S.select;
 
   // ── setup: forced road placement ──
@@ -4964,6 +5005,15 @@ function placeSettlement(vid, setup){
     } else {
       announce(pdot(cur()) + " places their first settlement", "info");
     }
+    /* Fast track + places settlements only; the roads come afterwards, all at
+       once — see beginOpeningRoads. */
+    if (S.mode === "fastplus"){
+      S.select = null;
+      S.setupIdx++;
+      if (S.setupIdx >= S.setupOrder.length) beginOpeningRoads();
+      else beginSetupStep();
+      return;
+    }
     S.setupNeed = "road";
     S.select = { kind:"road", fromVertex: vid };
     render();
@@ -4998,18 +5048,8 @@ function placeRoad(eid, setup){
     logMsg(`<b>${cur().name}</b> lays a road.`);
     S.select = null;
     S.setupIdx++;
-    if (S.setupIdx >= S.setupOrder.length){
-      S.phase = "roll";
-      S.cur = S.firstPlayer;
-      S.turnCounter = 1;
-      S.turnRec = freshTurnRecord();
-      logMsg("Setup complete. <b>" + cur().name + "</b> to roll.");
-      updateLongestRoad();
-      render();
-      botTick();
-    } else {
-      beginSetupStep();
-    }
+    if (S.setupIdx >= S.setupOrder.length) finishSetup();
+    else beginSetupStep();
     return;
   }
 
@@ -5018,6 +5058,70 @@ function placeRoad(eid, setup){
   logAction(pdot(cur()) + " builds a <b>road</b>", "buy", { snap: snapBefore });
   updateLongestRoad();
   afterBuild();
+}
+
+function finishSetup(){
+  S.phase = "roll";
+  S.cur = S.firstPlayer;
+  S.turnCounter = 1;
+  S.turnRec = freshTurnRecord();
+  S.roadsOwed = null;
+  S.roadArm = null;
+  logMsg("Setup complete. <b>" + cur().name + "</b> to roll.");
+  updateLongestRoad();
+  render();
+  botTick();
+}
+
+/* Fast track +: every settlement is down, and now everybody lays their two
+   opening roads at the same time rather than taking turns at it.
+
+   Simultaneous means first come, first served: two players reaching for the
+   same edge get it in the order the host hears them, and the second click
+   lands on an edge that is no longer free and does nothing. Each road must
+   touch your own settlement or your own road, so the second may extend the
+   first or start from your other settlement.
+
+   setup3, so that every `phase.startsWith("setup")` test in the game — no
+   cards, no trading, no clock — holds for it without being told. */
+function beginOpeningRoads(){
+  S.phase = "setup3";
+  S.setupNeed = "road";
+  S.select = null;
+  S.armed = null;
+  S.cur = S.firstPlayer;
+  S.roadsOwed = S.players.map(() => 2);
+  S.roadArm = S.players.map(() => null);
+  logMsg("Everybody places two roads.");
+  render();
+  botTick();
+}
+
+/* Whoever clicked: the person at this screen, or a guest's seat replayed by
+   the host. Click once to arm an edge, again to lay it — armed per seat, since
+   everybody is placing at once. */
+function openingRoadClick(eid, pid){
+  if (!S || S.phase !== "setup3" || !S.roadsOwed || !(S.roadsOwed[pid] > 0)) return;
+  if (!canPlaceRoad(eid, pid, null)){ S.roadArm[pid] = null; render(); return; }
+  if (S.roadArm[pid] !== eid){ S.roadArm[pid] = eid; render(); return; }
+  placeOpeningRoad(eid, pid);
+}
+function placeOpeningRoad(eid, pid){
+  // Checked again at the moment it lands: somebody else may have got there first.
+  if (!S.roadsOwed || !(S.roadsOwed[pid] > 0) || !canPlaceRoad(eid, pid, null)) return false;
+  edges[eid].owner = pid;
+  S.players[pid].roads++;
+  S.roadsOwed[pid]--;
+  // Anybody else's arm on this edge has nowhere to go now.
+  S.roadArm = S.roadArm.map((a, i) => (i === pid || a === eid) ? null : a);
+  logMsg(`<b>${S.players[pid].name}</b> lays a road.`);
+  // Somebody boxed in by everybody else's roads has nowhere left to build. They
+  // are let off rather than waited on for ever.
+  S.roadsOwed = S.roadsOwed.map((n, i) =>
+    n > 0 && !edges.some(e => canPlaceRoad(e.id, i, null)) ? 0 : n);
+  if (S.roadsOwed.every(n => n <= 0)) finishSetup();
+  else render();
+  return true;
 }
 
 function hexClick(hid){
@@ -5129,8 +5233,14 @@ function rollDice(){
    and come round again. */
 function doRoll(){
   const snapBefore = snapAll();
-  const d1 = 1 + Math.floor(Math.random() * 6);
-  const d2 = 1 + Math.floor(Math.random() * 6);
+  let d1 = 1 + Math.floor(Math.random() * 6);
+  let d2 = 1 + Math.floor(Math.random() * 6);
+  // The opening round of a fast track has no 7 — see openingRound. Thrown
+  // again rather than nudged, so the other ten totals keep their odds.
+  while (openingRound() && d1 + d2 === 7){
+    d1 = 1 + Math.floor(Math.random() * 6);
+    d2 = 1 + Math.floor(Math.random() * 6);
+  }
   S.rolled = [d1, d2];
   S.rollId = (S.rollId || 0) + 1;
   const sum = d1 + d2;
@@ -5729,6 +5839,7 @@ function canPlayToPile(key, me){
   const def = KITTEN[key];
   if (!def) return false;
   if (def.kind === "vp") return false;             // a point, never a play
+  if (heldBack(key)) return false;                  // the fast tracks' first round
   if (def.kind === "response") return false;       // answered above, not played
   // Starting something new while you still owe somebody an answer is how the
   // seven queue gets lost. Reactions are exempt and are handled before this.
@@ -10467,13 +10578,13 @@ window.addEventListener("beforeunload", function(ev){
 
 function logMsgSafe(m){ if (S) logMsg(m); }
 </script>
-<script src="ai.js?v=2026-09-03b"></script>
+<script src="ai.js?v=2026-10-13"></script>
 <!-- Online play. The two Firebase scripts are the only thing on this page that
      comes off the network; if they fail to load (no internet, opened straight
      off the disk) the Online button says so and the local game is untouched. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="firebase-config.js?v=2026-09-03b"></script>
-<script src="net.js?v=2026-09-03b"></script>
+<script src="firebase-config.js?v=2026-10-13"></script>
+<script src="net.js?v=2026-10-13"></script>
 </body>
 </html>

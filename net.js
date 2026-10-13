@@ -227,6 +227,7 @@ function serializeGame(){
     // than the pile needs, so it could not be rebuilt at the far end anyway.
     pile: (S.pile || []).slice(-PILE_KEEP),
     setupNeed: S.setupNeed,
+    roadsOwed: S.roadsOwed || null, roadArm: S.roadArm || null,
     deckLen: S.deck.length, discardLen: S.discard.length,
     longestRoad: S.longestRoad, largestArmy: S.largestArmy, roadLens: S.roadLens,
     implodeTurn: S.implodeTurn, implodeBy: S.implodeBy,
@@ -386,6 +387,8 @@ function applyGame(b){
   S.playing = b.playing || null;
   S.pile = arr(b.pile, (b.pile && b.pile.length) || 0).filter(Boolean);
   S.setupNeed = b.setupNeed;
+  S.roadsOwed = b.roadsOwed ? arr(b.roadsOwed, b.n).map(x => x || 0) : null;
+  S.roadArm = b.roadArm ? arr(b.roadArm, b.n).map(x => (x === undefined ? null : x)) : null;
   S.longestRoad = b.longestRoad || { owner:null, len:0 };
   S.largestArmy = b.largestArmy || { owner:null, n:0 };
   S.roadLens = arr(b.roadLens, b.n).map(x => x || 0);
@@ -531,7 +534,9 @@ function handleIntent(m){
     case "roll":        if (mine) rollDice(); break;
     case "endTurn":     if (mine) requestEndTurn(); break;
     case "vertex":      if (mine || ownsSelect(seat)) vertexClick(a[0]); break;
-    case "edge":        if (mine || ownsSelect(seat)) edgeClick(a[0]); break;
+    // During Fast track +'s road round everybody places at once, as themselves.
+    case "edge":        if (S.phase === "setup3") openingRoadClick(a[0], seat);
+                        else if (mine || ownsSelect(seat)) edgeClick(a[0]); break;
     case "hex":         if (mine || ownsSelect(seat)) hexClick(a[0]); break;
     // Choosing who a card is aimed at, by clicking their portrait. Guarded by
     // ownsSelect like the board clicks: the pick belongs to whoever played the

@@ -467,7 +467,8 @@ function pickCardPlay(p){
     .map((c, i) => ({ c, i }))
     .filter(o => {
       const d = KITTEN[o.c.key];
-      return d.kind !== "vp" && d.kind !== "response" && o.c.boughtTurn !== S.turnCounter;
+      return d.kind !== "vp" && d.kind !== "response" && o.c.boughtTurn !== S.turnCounter &&
+             !(typeof heldBack === "function" && heldBack(o.c.key));
     });
   if (!playable.length) return null;
 
@@ -781,6 +782,26 @@ function makeAgent(pid){
       }
       return best ? best.vid : null;
     },
+    /* Fast track +'s road round: no settlement just placed to point away
+       from, so look past both ends of every legal edge. */
+    openingRoad(){
+      const legal = edges.filter(e => canPlaceRoad(e.id, pid, null));
+      if (!legal.length) return null;
+      let best = null;
+      for (const e of legal){
+        let score = 0;
+        for (const end of e.v){
+          if (vertices[end].owner === pid) continue;     // the end we come from
+          for (const nb of vertices[end].adj){
+            if (vertices[nb].owner !== null) continue;
+            score = Math.max(score, vertexValue(nb));
+          }
+        }
+        if (!best || score > best.score) best = { id: e.id, score };
+      }
+      return best.id;
+    },
+
     setupRoad(fromVertex){
       // Point the opening road at the best spot we could reach next.
       const legal = edges.filter(e => canPlaceRoad(e.id, pid, fromVertex));
@@ -1174,6 +1195,26 @@ function tickNow(){
   // "clicks" go out as intents — so it would play for the human sitting there.
   if (window.NET && NET.isGuest && NET.isGuest()) return;
   if (!S.players.some(p => agentOf(p.id))) return;      // no bots at this table
+
+  /* Fast track +'s road round has no current player: every bot owing a road
+     lays one, a step at a time like everything else. Ahead of the turn logic
+     below, which would otherwise find the "current" bot unable to act and
+     end a turn that does not exist. */
+  if (S.phase === "setup3"){
+    if (!S.roadsOwed) return schedule(IDLE);
+    for (const q of S.players){
+      const ag = agentOf(q.id);
+      if (!ag || !(S.roadsOwed[q.id] > 0)) continue;
+      const eid = ag.openingRoad();
+      if (eid === null || eid === undefined){ S.roadsOwed[q.id] = 0; continue; }
+      window.__botActing = true;
+      try { placeOpeningRoad(eid, q.id); } finally { window.__botActing = false; }
+      return schedule();
+    }
+    // A bot with nowhere to build has been let off, which may finish the round.
+    if (S.roadsOwed.every(n => n <= 0)) finishSetup();
+    return schedule(IDLE);
+  }
 
   // A human prompt is open. Wait it out.
   //
