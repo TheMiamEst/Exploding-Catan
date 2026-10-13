@@ -1240,6 +1240,11 @@ function tickNow(){
     if (acted) return schedule();
   }
 
+  // Somebody is still paying for a seven or an Attack. The player whose turn
+  // it is waits like everybody else — a person cannot roll, play or end the
+  // turn past it (owesAnswer), and a bot must not either.
+  if (S.seven || (S.attackDue && S.attackDue.length)){ guard = 0; return schedule(IDLE); }
+
   const ag = agentOf(S.cur);
   if (!ag){ guard = 0; return schedule(IDLE); }         // human's turn — hands off
   if (++guard > 500){ guard = 0; safeEndTurn(); return schedule(IDLE); }

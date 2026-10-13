@@ -2181,6 +2181,7 @@ function newGame(numPlayers, mode, boardKey, winPoints, turnSeconds){
     handoverUntil: 0,         // wall clock: the turn that just ended is still answerable
     handoverTurn: -1,         // which turn that was
     seven: null,              // {actor, queue:[pid]} — a 7 still being paid for
+    attackDue: [],            // [{pid, n, jid}] — Attack discards still owed
     robberDue: [],            // robber moves owed behind the one in progress
     select: null,             // {kind, ...} forced board interaction
     forcedNope: null,         // {pid, winner} while a win is being Noped to order
@@ -3655,10 +3656,7 @@ function scrollDiscard(delta){
    answered, rewound, or simply aged out — and a card nobody can answer any
    more is exactly the case where this must draw nothing. */
 function answerMarks(rec){
-  if (!rec || !S) return "";
-  if (rec.dead) return "";
-  const e = S.journal.find(x => x.id === rec.jid);
-  if (!e) return "";
+  if (!S) return "";
   const me = viewSeat();
   const p = S.players[me];
   if (!p) return "";
@@ -3682,7 +3680,10 @@ function answerMarks(rec){
      takes a turn, and the seats light up to ask whose. A Defuse is still the
      narrow, easily-missed answer to one particular card, so it keeps its
      corner. */
-  const canD = p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, me);
+  // Anything the pile could Defuse, not only the card on show: a robbery or a
+  // seven's cut puts no card there, and those are most of what gets Defused.
+  const canD = p.cards.some(c => c.key === "defuse" && fresh(c)) &&
+               pileAnswers("defuse", me).length > 0;
   if (!canD) return "";
   return '<div class="evmarks">' +
            markFace("defuse", "defuse", "Drop your Defuse here to answer this") +
@@ -3847,8 +3848,13 @@ function drawBottom(){
               : reaction ? "reaction" : locked ? "locked" : "";
       if (canAnswer) cls += " armedreact";
       if (held) cls += " picked";
-      const tip = esc(def.name + (c.flavor ? " · " + c.flavor : "") + " — " + def.text) +
-                  (locked ? "" : "\nDrag it where it should go.");
+      // The last line of the tooltip is what you DO with the card, so it has to
+      // be true of the card. A Feral Kitten is never moved at all, and every
+      // card that is played goes to the same place.
+      const how = isVP   ? "\nA point while it is in your hand — it is never played."
+                : locked ? "\nBought this turn — drag it to the discard pile from next turn."
+                         : "\nDrag it to the discard pile to play it.";
+      const tip = esc(def.name + (c.flavor ? " · " + c.flavor : "") + " — " + def.text) + how;
       h += `<div class="kcard ${cls}" title="${tip}"
                  data-idx="${i}" data-owner="${p.id}"
                  onpointerdown="cardPointerDown(event,${i},${p.id})">
@@ -3934,6 +3940,30 @@ function drawBottom(){
    view rather than deleted, so the list can be scrolled back through. The `ms`
    argument is accepted for compatibility with the old toast calls and ignored.
 */
+/* Add to a line already in the log, on every screen. The feed record is what
+   travels to guests (they rebuild from S.feed), and the element is what the
+   host is looking at. With no journal id, the newest line is the one meant. */
+function lastJournalId(){
+  return S && S.journal.length ? S.journal[S.journal.length - 1].id : null;
+}
+function amendFeed(jid, extra){
+  if (!S || !S.feed || !S.feed.length) return;
+  let rec = null;
+  if (jid === null || jid === undefined) rec = S.feed[S.feed.length - 1];
+  else for (let i = S.feed.length - 1; i >= 0 && !rec; i--) if (S.feed[i].jid === jid) rec = S.feed[i];
+  if (!rec) return;
+  rec.html += extra;
+  const box = document.getElementById("feed");
+  if (!box) return;
+  const el = (jid === null || jid === undefined)
+    ? box.lastElementChild
+    : box.querySelector('.ev[data-jid="' + jid + '"]');
+  if (!el) return;
+  const marks = el.querySelector(".evmarks");
+  if (marks) marks.insertAdjacentHTML("beforebegin", extra);
+  else el.insertAdjacentHTML("beforeend", extra);
+}
+
 function announce(html, kind, entry){
   const box = document.getElementById("feed");
   if (!box) return;
@@ -4236,8 +4266,8 @@ function clearImplodeClock(){
 function implodeRevealMs(){ return IMPLODE_SHOW_MS + SHOWCASE_FADE; }
 
 function startImplodeClock(){
-  // The Imploding Kitten replaces the ordinary turn timer completely.
-  pauseTurnTimer("implode");
+  // The Imploding Kitten replaces the ordinary turn timer completely — held
+  // by turnClockHeld for as long as implodeActive() says so.
   clearImplodeClock();
   /* The twenty seconds start when the card has finished landing, not when it
      is drawn.
@@ -5170,7 +5200,6 @@ function produce(sum){
    cards. Snapshotted with everything else, so a rewind puts the queue back
    precisely as it stood, and stepSeven picks it up from there. */
 function startSevenSequence(actor, jid){
-  pauseTurnTimer("seven");
   S.seven = { actor: actor, jid: jid,
               queue: S.players.filter(p => totalRes(p) > 7).map(p => p.id) };
   // Repaint before anybody is asked to pay, and after the queue exists so the
@@ -5263,7 +5292,46 @@ function botAnswerHold(){ botAnswerUntil = Date.now() + AI_PACE + 1200; }
 function botAnswerDone(){ botAnswerUntil = 0; }
 function botAnswering(){ return Date.now() < botAnswerUntil; }
 
+/* Ask the player at the head of the Attack queue for their cards.
+
+   One at a time, and never during a seven: both go through discardDialog, and
+   two discards on one screen — or for one player — share a single dialog and
+   its counters. The seven was rolled while the debt stood, so it goes first;
+   owesAnswer now stops anybody rolling past an Attack in the first place, so
+   that only arises if a seven was already running when the Attack landed. */
+function askAttackDue(){
+  if (!S || !S.attackDue || !S.attackDue.length) return;
+  if (window.NET && NET.isGuest && NET.isGuest()) return;
+  if (S.seven || S.phase === "over") return;
+  const due = S.attackDue[0];
+  const p = S.players[due.pid];
+  // Whatever they hold now is all they can give. A hand that emptied in the
+  // meantime owes nothing.
+  const n = p ? Math.min(due.n, totalRes(p)) : 0;
+  if (!n){ S.attackDue.shift(); askAttackDue(); render(); return; }
+  discardDialog(p, n, () => {
+    // Only the answer the queue is actually waiting on counts: the board may
+    // have been rewound underneath this dialog while it was open.
+    if (!S.attackDue || !S.attackDue.length || S.attackDue[0] !== due) return;
+    S.attackDue.shift();
+    askAttackDue();
+    render();
+  }, { mini: true, answers: due.jid === null ? undefined : due.jid });
+}
+
 function sevenWatchdog(){
+  // An Attack's discard gets the same safety net as a seven's. Checked first
+  // and on its own, because the seven's early return below would skip it.
+  if (S && !S.seven && S.attackDue && S.attackDue.length &&
+      !(window.NET && NET.isGuest && NET.isGuest())){
+    if ((typeof humanPromptOpen === "function" && humanPromptOpen()) || botAnswering()){
+      attackWatchIdle = 0;
+    } else if (++attackWatchIdle >= 2){
+      attackWatchIdle = 0;
+      askAttackDue();
+      render();
+    }
+  } else attackWatchIdle = 0;
   if (!S || !S.seven || !S.seven.queue.length){ sevenWatchIdle = 0; return; }
   // A terminal decides nothing, here as everywhere else.
   if (window.NET && NET.isGuest && NET.isGuest()) return;
@@ -5274,6 +5342,7 @@ function sevenWatchdog(){
   stepSeven();
   render();
 }
+let attackWatchIdle = 0;
 setInterval(sevenWatchdog, SEVEN_WATCH_MS);
 
 /* Robber moves QUEUE rather than overwrite each other. Two can be owed at
@@ -5294,7 +5363,6 @@ function beginRobberMove(actor, opts){
      which pauses for its own reasons - but a robbery Defused on somebody
      else's turn handed the defuser a board decision with the current player's
      clock still running down behind it. */
-  pauseTurnTimer("choice");
   S.select = move;
   setTimeout(botTick, 0);
   logMsg(`<b>${S.players[actor].name}</b> must move the robber.`);
@@ -5333,7 +5401,7 @@ function chooseVictim(victims, sel){
       if (S === gameAtCall) window.__pickVictim(pickId);
     }, AI_PACE);
   } else {
-    openModal("Choose a victim", html, []);
+    openModal("Choose a victim", html, [], { owed: true });
   }
   // Nobody is asked whether they would like to Defuse. There used to be a
   // window here — a Knight stealing from you, do you want to say "no you"? —
@@ -5382,7 +5450,6 @@ function finishRobber(sel){
     checkVictory();
   }
   if (nextRobberMove()) return;      // another one was waiting behind it
-  if (!S.seven) resumeTurnTimer();
   render();
 }
 
@@ -5736,7 +5803,6 @@ function playToPile(idx, ownerId){
    held while it is open: the turn clock stops, so nobody picks a victim
    against a countdown. */
 function beginSeatPick(actorId, card, purpose){
-  pauseTurnTimer("choice");
   S.select = { kind:"seat", actor: actorId, cardId: card.id,
                key: card.key, purpose: purpose };
   // The wording lives in drawHint, which runs on every repaint and would
@@ -5776,7 +5842,6 @@ function seatClick(pid){
   S.select = null;
   S.playing = null;
   hint(null);
-  resumeTurnTimer();
   if (!card){ render(); return; }
   if (s.purpose === "nopeturn"){ nopeWholeTurn(s.actor, pid); render(); return; }
   if (card.key === "favor"){
@@ -5794,7 +5859,6 @@ function cancelSeatPick(){
   S.select = null;
   S.playing = null;
   hint(null);
-  resumeTurnTimer();
   render();
 }
 
@@ -5810,7 +5874,6 @@ function beginAlterPick(actorId, onPick){
 }
 
 function favorGuessDialog(c, idx, tid, ownerId){
-  pauseTurnTimer("choice");
   const asker = ownerId === undefined ? S.cur : ownerId;
   const want = { wood:0, brick:0, sheep:0, wheat:0, ore:0 };
   const refresh = () => {
@@ -5828,14 +5891,13 @@ function favorGuessDialog(c, idx, tid, ownerId){
     }
     h += `<div class="stack">Naming ${total} of 3</div>`;
     openModal("Favor — name 3 cards", h, [
-      { label:"Cancel", fn: () => { closeModal(); resumeTurnTimer(); } },
+      { label:"Cancel", fn: () => { closeModal(); } },
       { label:"Demand", cls:"primary", disabled: total !== 3, fn: () => {
           closeModal();
-          resumeTurnTimer();
           proposeAction({ type:"card", card:c, idx, actor:asker, target:tid,
                           payload:{ want:{ ...want } }, quiet: !!c.synthetic });
         } }
-    ]);
+    ], { owed: true });
   };
   window.__fv = (r, d) => {
     const total = RES.reduce((s, x) => s + want[x], 0);
@@ -5866,6 +5928,14 @@ function resolveCard(action){
       flyCards(target.id, null, gone);          // back to the bank, face up
       for (const r of RES){ n += target.res[r]; S.bank[r] += target.res[r]; target.res[r] = 0; }
       logMsg(`💥 <b>${actor.name}</b> explodes <b>${target.name}</b> — ${n} resources returned to the bank.`);
+      /* On the line that played the card, rather than a line of its own: the
+         card and its cost are one event, and the count used to live only in
+         logMsg, which is written and never shown. A Defused Kitten bouncing
+         back has no line of its own and amends the one announcing it. */
+      amendFeed(action.quiet ? null : lastJournalId(),
+        "<br>" + (n ? pdot(target) + " loses <b>" + n + "</b> card" + (n === 1 ? "" : "s") +
+                      " to the bank " + resList(gone)
+                    : "<span style='opacity:.55'>" + pdot(target) + " had nothing to lose</span>"));
       break;
     }
 
@@ -5873,7 +5943,27 @@ function resolveCard(action){
       const n = Math.min(3, totalRes(target));
       if (n === 0){ logMsg(`<b>${target.name}</b> has nothing to drop.`); break; }
       logMsg(`<b>${target.name}</b> must drop ${n} resource${n === 1 ? "" : "s"}.`);
-      discardDialog(target, n, () => { render(); });
+      /* Owed as STATE, not as an open dialog.
+
+         The discard used to exist only as the dialog asking for it, and a
+         dialog is the least durable thing in the game. On the host, closing
+         ANY dialog withdraws every one shipped to a guest (NET.clearRemote) —
+         and the very next thing after an off-turn Attack is usually the roll,
+         and a seven opens and closes several: the discards, the victim pick.
+         The Attack's request went with the first of them, nothing remembered
+         it had been made, and the target simply never paid. A rewind did the
+         same (nopeEntry and defuseEntry both closeModal).
+
+         The seven never had this problem because S.seven outlives its
+         dialogs and a watchdog asks again whenever one goes missing. This is
+         that, for Attacks. */
+      // The line this Attack just wrote, so the discard dialog can offer to
+      // answer it. A Defused Attack bouncing back writes no line of its own.
+      const je = S.journal[S.journal.length - 1];
+      const jid = (je && je.card && je.card.key === "attack" && je.target === target.id) ? je.id : null;
+      S.attackDue = S.attackDue || [];
+      S.attackDue.push({ pid: target.id, n: n, jid: jid });
+      askAttackDue();
       break;
     }
 
@@ -5967,6 +6057,7 @@ function snapAll(){
     seven:   S.seven ? { actor: S.seven.actor, jid: S.seven.jid,
                          queue: S.seven.queue.slice() } : null,
     robberDue: (S.robberDue || []).map(m => Object.assign({}, m)),
+    attackDue: (S.attackDue || []).map(m => Object.assign({}, m)),
     rec: S.turnRec ? {
       edges: S.turnRec.edges.slice(),
       verts: S.turnRec.verts.map(v => Object.assign({}, v)),
@@ -6004,6 +6095,7 @@ function restoreAll(s){
   S.seven = s.seven ? { actor: s.seven.actor, jid: s.seven.jid,
                         queue: s.seven.queue.slice() } : null;
   S.robberDue = (s.robberDue || []).map(m => Object.assign({}, m));
+  S.attackDue = (s.attackDue || []).map(m => Object.assign({}, m));
   if (s.rec && S.turnRec){
     S.turnRec.edges = s.rec.edges.slice();
     S.turnRec.verts = s.rec.verts.map(v => Object.assign({}, v));
@@ -6298,10 +6390,10 @@ function promptReactions(pid, jid){
 function reactNoteHTML(e){
   const roll = !!(e && e.kind === "roll");
   return `<div class="reactnote">You are holding an answer to this — spend it from
-          here, or fold the dialog away and drop it on the log yourself.
+          here, or fold the dialog away and drop the card on the discard pile.
           ${roll ? `A Nope throws the dice again and the turn carries on; a Defuse
                     spares your hand alone and lets the rest of the seven stand.` : ""}
-          The window closes a few lines further down the log.</div>`;
+          The chance to answer ends with the turn.</div>`;
 }
 
 /* No card opens a window asking whether you would like to answer it — not a
@@ -6577,6 +6669,7 @@ function nopeEntry(id, noperId){
   // stood. Whoever is at the head of it still owes their cards, and their
   // dialog went with the rewind, so ask again.
   if (S.seven) stepSeven();
+  else if (S.attackDue && S.attackDue.length) askAttackDue();
 
   /* Undoing a Nope can put a WIN back on the table.
 
@@ -7062,7 +7155,7 @@ function forcedWinNope(winner, pid){
     spend it — no choice. ${winner.name}'s turn is cancelled and everything they
     gained this turn is destroyed, including whatever took them to the target.</div>`,
     [{ label:`Cancel ${winner.name}'s turn`, cls:"warn",
-       fn: () => { closeModal(); nopeWholeTurn(pid, winner.id); } }]);
+       fn: () => { closeModal(); nopeWholeTurn(pid, winner.id); } }], { owed: true });
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -7081,6 +7174,7 @@ const TURN_TICK_MS = 250;
    cut background timers to about one a second and suspend them entirely on
    mobile, so the excess is given back rather than spent. */
 const TURN_TICK_SLACK = 600;
+let lastHeld = false;
 function timerEnabled(){ return !!(S && S.turnSeconds); }
 function startTurnTimer(){
   if (!timerEnabled()) return;
@@ -7112,35 +7206,20 @@ function stopTurnTimer(){
   S.turnTimerPaused = false;
   S.turnTimerPauseReason = null;
 }
-function pauseTurnTimer(reason){
-  if (!timerEnabled() || S.turnTimerPaused) return;
-  /* There is no clock to pause yet.
+/* There used to be two ways to stop the clock, and they disagreed.
 
-     The turn clock does not start until the dice are thrown, so anything that
-     pauses it before the roll — a Knight played first, which is a perfectly
-     ordinary opening — was pausing nothing. And "pausing nothing" wrote
-     turnTimerRemaining = max(0, 0 - now) = 0: a clock with nought left on it.
-     The next resume then started a clock that had already expired, and the
-     player was told their turn had run out of time before it had begun. */
-  if (!S.turnTimerUntil) return;
-  if (turnTimerHandle){ clearTimeout(turnTimerHandle); turnTimerHandle = null; }
-  S.turnTimerRemaining = Math.max(0, (S.turnTimerUntil - Date.now()) / 1000);
-  S.turnTimerPaused = true;
-  S.turnTimerPauseReason = reason || "choice";
-  S.turnTimerUntil = 0;
-  render();
-}
-function resumeTurnTimer(){
-  if (!timerEnabled() || !S.turnTimerPaused) return;
-  S.turnTimerPaused = false;
-  S.turnTimerPauseReason = null;
-  // Belt and braces on the same thing: never start a clock that is already
-  // out. If there is genuinely nothing left, leave it stopped and let the
-  // roll start a fresh one, rather than expiring on the next tick.
-  if (S.turnTimerRemaining <= 0){ S.turnTimerUntil = 0; return; }
-  S.turnTimerUntil = Date.now() + S.turnTimerRemaining * 1000;
-  scheduleTurnTimer();
-}
+   One was pauseTurnTimer / resumeTurnTimer, called by hand from a dozen places
+   — the seven, the robber, the seat pick, the Favor dialog, the discard. The
+   other is turnClockHeld, asked fresh on every tick. Every one of those dozen
+   places was ALSO covered by the hold, so the hand-written pauses only ever
+   added ways to go wrong: a resume that arrived while the hold still stood, a
+   resume with nothing left that took the clock off the screen for the rest of
+   the turn (so it never ran out), a pause keyed to a reason that the next
+   closeModal resumed regardless of whose dialog it was.
+
+   So there is one now. The clock counts while the game is waiting on the
+   player whose turn it is, and is held otherwise, and turnClockHeld is the
+   whole of the definition. */
 function scheduleTurnTimer(){
   if (turnTimerHandle) clearTimeout(turnTimerHandle);
   if (!timerEnabled() || S.turnTimerPaused || S.phase === "over") return;
@@ -7165,8 +7244,19 @@ function scheduleTurnTimer(){
    the table they are: NET.anyPrompt covers a dialog shipped to somebody else's
    screen, which leaves no overlay on this one. */
 function answerOwed(){
-  if (typeof document !== "undefined" && document.querySelector(".overlay")) return true;
-  if (window.NET && NET.anyPrompt && NET.anyPrompt()) return true;
+  /* Not "is there a dialog on screen", which is what this asked. That held the
+     clock for the Online menu, the rules, the dice history, the avatar picker
+     — any dialog at all, open on the HOST's screen, stopped the turn of
+     whoever was playing. And online, NET.anyPrompt counted the trade, bank and
+     buy windows shipped to a guest as well as the dialogs they owe, so a guest
+     opening the bank on their own turn froze their own clock for as long as
+     they left it open.
+
+     A dialog says itself whether the table is waiting on it: see openModal's
+     `owed`. That is the discards, the Favor, the victim pick, the forced Nope
+     — decisions somebody has to make before the game can move. */
+  if (modalOwed) return true;
+  if (window.NET && NET.anyOwed && NET.anyOwed()) return true;
   return false;
 }
 /* Is the clock allowed to be counting right now?
@@ -7187,6 +7277,7 @@ function turnClockHeld(){
   if (S.winner !== null || S.phase === "over") return true;
   if (S.phase !== "main" && S.phase !== "roll") return true;
   if (S.pending || S.select || S.seven) return true;
+  if (S.attackDue && S.attackDue.length) return true;
   if (typeof implodeActive === "function" && implodeActive()) return true;
   if (typeof implodeRevealing === "function" && implodeRevealing()) return true;
   if (answerOwed()) return true;
@@ -7221,14 +7312,33 @@ function turnTimerTick(){
      nothing. */
   if (!S.turnTimerUntil) return;
 
-  // Time that passed while this screen was not running is handed back.
-  if (S.turnTimerUntil && since > TURN_TICK_SLACK)
-    S.turnTimerUntil += since - TURN_TICK_MS;
-
   /* Held: the deadline slides along in front of the hold, so however long it
-     lasts the player still gets every second they were owed. */
-  if (turnClockHeld()){
-    if (S.turnTimerUntil) S.turnTimerUntil += since;
+     lasts the player still gets every second they were owed.
+
+     OR a late tick: time that passed while this screen was not running is
+     handed back. Never both. They used to be two separate `+=` lines, and a
+     tick that was late AND held — which is every tick of a held clock in a
+     background tab, where browsers throttle timers to about one a second —
+     got the time back twice: once as "late", once as "held". Each real second
+     pushed the deadline about 1.75 seconds further away, so a clock left held
+     in the background grew instead of standing still. That is the 82 seconds
+     on a 40-second turn. */
+  const held = turnClockHeld();
+  if (held) S.turnTimerUntil += since;
+  else if (since > TURN_TICK_SLACK) S.turnTimerUntil += since - TURN_TICK_MS;
+  /* And whatever the arithmetic, a turn never has more than a turn on it. This
+     is the rule itself, not a patch over the line above: there is no state in
+     which more than turnSeconds can legitimately be left. */
+  S.turnTimerUntil = Math.min(S.turnTimerUntil, now + S.turnSeconds * 1000);
+
+  // Guests freeze their clocks on the host's word, so they have to hear the
+  // moment it changes — a hold starting or ending is not always a state
+  // change that would have published anyway (a tab going to the background).
+  if (held !== lastHeld){
+    lastHeld = held;
+    if (window.NET && NET.publishSoon) NET.publishSoon();
+  }
+  if (held){
     paintTurnTimer();
     scheduleTurnTimer();
     return;
@@ -7826,8 +7936,6 @@ function playerTradeDialog(){
    ══════════════════════════════════════════════════════════════════════ */
 
 function discardDialog(p, n, done, opts){
-  const timerPause = !(opts && opts.answers !== undefined);
-  if (timerPause) pauseTurnTimer("choice");
   const ag = agentOf(p.id);
   if (ag && ag.chooseDiscard){
     const pick = ag.chooseDiscard(p, n);
@@ -7843,7 +7951,6 @@ function discardDialog(p, n, done, opts){
     setTimeout(function(){
       botAnswerDone();
       if (S !== gameAtCall) return;
-      if (timerPause) resumeTurnTimer();
       done();
     }, AI_PACE);
     return;
@@ -7870,11 +7977,10 @@ function discardDialog(p, n, done, opts){
     const ansEntry = answers === undefined ? null : S.journal.find(x => x.id === answers);
     const react = promptReactions(p.id, answers);
     openModal("Discard — " + esc(p.name), h + (react.length ? reactNoteHTML(ansEntry) : "") +
-      `<p class="mininote">Fold this away with − if you would rather answer the
-       log first. Nothing moves until you come back and confirm.</p>`, [
+      `<p class="mininote">Fold this away with − if you would rather play a card
+       on the discard pile first. Nothing moves until you come back and confirm.</p>`, [
       { label:"Confirm", cls:"primary", disabled: total !== n, fn: () => {
           closeModal();
-          if (timerPause) resumeTurnTimer();
           flyCards(p.id, null, pick);      // to the bank, face up
           for (const r of RES) take(p, r, pick[r]);
           logMsg(`<b>${p.name}</b> discards ${n}.`);
@@ -7911,6 +8017,10 @@ let modalKey  = null;
 /* Forced dialogs are exactly the ones that may be folded away — a discard, a
    card aimed at you. Menus are not, and must not lock the table. */
 let modalForced = false;
+/* The table is waiting on this dialog: the turn clock holds while it is open,
+   folded away or not. Every forced dialog, plus the few decisions that are
+   not foldable (the Favor demand, the victim pick). Menus never. */
+let modalOwed = false;
 
 function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
   // Same dialog redrawing itself, or a different one taking the screen? The
@@ -7940,7 +8050,7 @@ function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
 
   const mini = canMini
     ? `<button class="minibtn" onclick="toggleModalMini()"
-         title="Fold this away — the board and the log stay live, and it is still owed"
+         title="Fold this away — the board and your hand stay live, and it is still owed"
        ><span class="down">−</span><span class="up">▴</span></button>` : "";
   // Written only where it differs. An identical write is not free: it drops
   // any text selection inside the dialog and costs a layout for nothing.
@@ -7958,6 +8068,7 @@ function drawLocalModal(title, bodyHTML, btnsHTML, canMini){
 function dismissLocalModal(){
   if (modalEl){ modalEl.remove(); modalEl = null; }
   modalForced = false;
+  modalOwed = false;
   document.body.classList.remove("hasmodal");
 }
 
@@ -7973,7 +8084,7 @@ function toggleModalMini(){
 /* The dialog has been taken off this screen by somebody else — online, the
    host withdrawing it. Called from net.js, since closeModal is the host's way
    of doing this and a terminal never runs it. */
-function forgetModalFold(){ modalKey = null; modalMini = false; modalForced = false; }
+function forgetModalFold(){ modalKey = null; modalMini = false; modalForced = false; modalOwed = false; }
 
 /* Tag the dialog about to be opened as belonging to one seat. Online, that is
    what sends it to the right person instead of drawing it on the host's
@@ -7985,9 +8096,11 @@ function promptFor(pid){ if (window.NET) NET.promptSeat = pid; }
    answering them is sometimes better done from the log than from the dialog. */
 function openModal(title, bodyHTML, buttons, opts){
   const canMini = !!(opts && opts.mini);
+  // A foldable dialog is a forced one, and a forced one is always owed.
+  const owed = canMini || !!(opts && opts.owed);
   // Shipped elsewhere: nothing to draw here, and anything already on this
   // screen belongs to a dialog that has been handed away.
-  if (window.NET && NET.shipModal && NET.shipModal(title, bodyHTML, buttons, canMini)){
+  if (window.NET && NET.shipModal && NET.shipModal(title, bodyHTML, buttons, canMini, owed)){
     dismissLocalModal();
     forgetModalFold();
     return;
@@ -8001,6 +8114,7 @@ function openModal(title, bodyHTML, buttons, opts){
     btns += `<button class="${b.cls || ""}" ${b.disabled ? "disabled" : ""} onclick="window.__mb(${i})">${b.label}</button>`;
   });
   drawLocalModal(title, bodyHTML, btns, canMini);
+  modalOwed = owed;
   /* A dialog button does not move the way the action bar's do, so the accident
      here is the simpler one: the same button answered twice. Confirming a
      trade, paying a seven, dealing a new board — none of them want doing
@@ -8018,7 +8132,6 @@ function closeModal(){
   modalKey = null;
   modalMini = false;
   dismissLocalModal();
-  if (S && S.turnTimerPauseReason === "choice") resumeTurnTimer();
   if (window.NET && NET.clearRemote) NET.clearRemote();
 }
 
@@ -9182,7 +9295,16 @@ function checkPlaying(){
    about: a prompt only ever appears for somebody who is actually holding the
    card, so it gives the rest of the table nothing. */
 function iCanAnswer(e){
-  return !!answerMarks(e);
+  /* Per entry. This handed a journal ENTRY to answerMarks, which takes a pile
+     RECORD and looks it up by `rec.jid` — an entry has `id`, so the lookup
+     found nothing and this was false every time. The popup it gates, "You can
+     Defuse this — drop the card on the pile", had never once appeared. */
+  if (!S || !e) return false;
+  const me = viewSeat();
+  const p = S.players[me];
+  if (!p) return false;
+  const fresh = c => c.boughtTurn !== S.turnCounter || playableWhenDrawn(c);
+  return p.cards.some(c => c.key === "defuse" && fresh(c)) && canDefuseEntry(e, me);
 }
 
 /* The card that would answer it, held up in the middle of the board.
@@ -9447,6 +9569,10 @@ function checkStalePanels(){
 function owesAnswer(){
   if (!S) return false;
   if (S.seven) return true;        // a seven still being paid, by anybody
+  // An Attack still being paid, by anybody. Without this the turn simply went
+  // on around it: the next player rolled, a seven opened its own dialogs over
+  // the top, and the Attack's was lost.
+  if (S.attackDue && S.attackDue.length) return true;
   if (modalForced) return true;    // a forced dialog here, open or folded away
   // A robber still to place, two tokens still to name. Setup's placements are
   // the turn rather than an interruption to it, so they are not owed in this
@@ -9729,8 +9855,9 @@ function dropTargetAt(x, y){
     return { kind:"pile", jid: shown ? shown.jid : null,
              el: pileEl.querySelector(".discpile") || pileEl };
   }
-  const evEl = el.closest(".ev[data-jid]");
-  if (evEl) return { kind:"entry", jid: +evEl.dataset.jid, el: evEl };
+  /* The log is not a drop target any more. Everything it could answer, the
+     pile answers — see pileAnswers — so the log is for reading. "entry"
+     drops still exist, but only as what a pile drop is resolved into. */
   const pc = el.closest(".pcard[data-pid]");
   if (pc) return { kind:"player", pid: +pc.dataset.pid, el: pc };
   const hand = el.closest(".hand[data-hand]");
@@ -9777,6 +9904,10 @@ function dropAllowed(info, drop){
     if (key === "defuse") return canDefuseEntry(e, me);
     return false;
   }
+  // A whole turn, chosen on the pile from askWhichAnswer. Only the turn in
+  // progress, and only for somebody who may take a turn at all.
+  if (drop.kind === "turn")
+    return key === "nope" && drop.pid === S.cur && canNopeTurnNow(me);
   /* The pile takes two quite different things.
 
      A Nope or a Defuse dropped on it answers the card it is showing — which is
@@ -9787,28 +9918,8 @@ function dropAllowed(info, drop){
      it: you no longer have to know in advance who a card is aimed at and hit
      their seat with it. Play it to the pile and the game stops and asks. */
   if (drop.kind === "pile"){
-    const e = drop.jid === null ? null : S.journal.find(x => x.id === drop.jid);
-    if (key === "defuse") return !!e && canDefuseEntry(e, me);
-    /* A Nope does ONE thing: it cancels somebody's turn.
-
-       It used to have two uses — cancel the card lying on the pile, or cancel
-       a whole turn — and which one you got depended on whether the card
-       underneath happened to still be answerable. That made the same gesture
-       mean two very different things at two different moments, and it did not
-       even do the small one cleanly: cancelling a card rewinds the journal past
-       that card, so everything the player had done SINCE was undone with it and
-       handed back. Nope somebody's Alter the Future and the kitten card they
-       bought afterwards came back to them, paid for twice.
-
-       A Nope that can cancel a winning turn was never going to be worth
-       spending on one card anyway. So: it takes the turn, the seats light up
-       to say whose, and nothing that turn did is handed back.
-
-       The exception is an attack that landed on YOU while there is no turn to
-       take, which is what happens whenever one is thrown at you during your
-       own — see nopeCancelsCard. Then the pile answers the card it is showing,
-       exactly as it does for a Defuse. */
-    if (key === "nope") return nopeCancelsCard(e, me) || canNopeTurnNow(me);
+    // A Nope or a Defuse answers whatever there is to answer — see pileAnswers.
+    if (key === "defuse" || key === "nope") return pileAnswers(key, me).length > 0;
     return canPlayToPile(key, me);
   }
   /* A seat card is no longer somewhere you can drop a card. Everything is
@@ -9847,9 +9958,6 @@ function markDropTargets(){
     if (dropAllowed(dragCard, { kind:"pile", jid: shown ? shown.jid : null, el: pile }))
       pile.classList.add("droppable");
   }
-  document.querySelectorAll(".ev[data-jid]").forEach(el => {
-    if (dropAllowed(dragCard, { kind:"entry", jid:+el.dataset.jid, el })) el.classList.add("droppable");
-  });
   const hand = document.querySelector('.hand[data-hand="' + me + '"]');
   if (hand) hand.classList.add("droppable");
 }
@@ -9891,13 +9999,88 @@ function warnReroll(info, drop){
       n ? ", the " + n : ""}. It will be thrown again, and the card is spent
       either way — whatever the dice come up second time is the number you
       keep.</div>
-    <p class="sub">Nothing else is answerable right now, which is why your roll
-    is the only line lit up. If you were reaching for an attack, there is not
-    one on the table to answer.</p>`,
+    <p class="sub">Your roll is the only thing a Nope can answer right now. If
+    you were reaching for an attack, there is not one on the table to answer.</p>`,
     [{ label:"Keep my roll", fn: () => { closeModal(); render(); } },
      { label:"Throw them again", cls:"warn",
        fn: () => { closeModal(); rerollConfirmed = true;
                    try { performDrop(info, drop); } finally { rerollConfirmed = false; } } }]);
+}
+
+/* ══ the pile answers everything ════════════════════════════════════════════════════
+   The pile used to answer only the card it was showing, so anything that put
+   no card on it — a roll, a seven's cut, a robbery — could only be answered by
+   finding its line in the log and dropping onto that. Which made the log
+   compulsory reading for the one decision that has to be made fastest.
+
+   So a Nope or a Defuse dropped on the pile answers whatever there is for it
+   to answer, and when there is more than one thing, it asks. Newest first:
+   the last thing that happened is nearly always the one meant.
+
+   Each answer is {jid, label} for an entry, or {turn, label} for a whole
+   turn. The checks are the same ones the log used — canDefuseEntry,
+   nopeCancelsCard, canNopeTurnNow — so nothing becomes answerable that was
+   not before; it just stops needing the log. */
+function pileAnswers(key, me){
+  const out = [];
+  if (!S || (key !== "nope" && key !== "defuse")) return out;
+  let rollSeen = false;
+  for (const e of openEntries()){
+    const ok = key === "defuse" ? canDefuseEntry(e, me) : nopeCancelsCard(e, me);
+    if (!ok) continue;
+    // One roll: the dice on the table. An older one could only be an
+    // abandoned throw, and two buttons saying the same thing is a trap.
+    if (e.kind === "roll"){ if (rollSeen) continue; rollSeen = true; }
+    out.push({ jid: e.id, label: answerLabel(e, me, key) });
+  }
+  if (key === "nope" && canNopeTurnNow(me))
+    out.push({ turn: S.cur, label: "Cancel " + pdot(S.players[S.cur]) + "'s whole turn" });
+  /* Looking back through the pile is pointing at a card: if the card on show
+     is one of the answers, that is the answer, and nobody needs asking. */
+  if (out.length > 1 && discardIdx > 0){
+    const shown = discardDropRec();
+    const hit = shown && out.find(o => o.jid === shown.jid);
+    if (hit) return [hit];
+  }
+  return out;
+}
+
+/* What an answer is called on the button that chooses it. Rolls and robberies
+   have no card to name, so they are named for what answering them does. */
+function answerLabel(e, me, key){
+  const who = S.players[e.actor];
+  if (e.kind === "roll"){
+    if (key === "defuse") return "The 7 — keep your hand";
+    return e.actor === me ? "Your own roll — throw the dice again"
+                          : pdot(who) + "'s roll — they throw again";
+  }
+  if (isRobberEntry(e)) return pdot(who) + "'s robber, on your hex";
+  if (e.kind === "defend")
+    return pdot(who) + "'s " + (e.spent && e.spent.key === "defuse" ? "Defuse" : "Nope");
+  if (e.card && KITTEN[e.card.key])
+    return pdot(who) + "'s " + esc(KITTEN[e.card.key].name);
+  return esc(e.plain);
+}
+
+/* More than one thing to answer: say which. Local to the screen that did the
+   dragging, and the answer goes out as an ordinary drop on one entry — so the
+   host never has to ask anybody anything. */
+function askWhichAnswer(info, answers){
+  const word = info.key === "defuse" ? "Defuse" : "Nope";
+  openModal("What are you " + (info.key === "defuse" ? "Defusing" : "Noping") + "?",
+    '<p class="sub">Your ' + word + ' can answer more than one thing right now. ' +
+    'Newest first.</p>',
+    answers.map(a => ({
+      label: a.label, cls: a.turn !== undefined ? "warn" : "",
+      fn: () => {
+        closeModal();
+        // Choosing your own roll from a list that says so IS the warning.
+        rerollConfirmed = true;
+        try { performDrop(info, a.turn !== undefined ? { kind:"turn", pid:a.turn }
+                                                     : { kind:"entry", jid:a.jid }); }
+        finally { rerollConfirmed = false; }
+      }
+    })).concat([{ label:"Keep the card", fn: () => { closeModal(); render(); } }]));
 }
 
 /* ── doing the drop ──────────────────────────────────────────────────── */
@@ -9910,28 +10093,34 @@ function performDrop(info, drop){
     warnReroll(info, drop);
     return;
   }
+  /* A Nope or a Defuse on the pile becomes a drop on ONE thing before it goes
+     anywhere: decided here, on the screen of the person holding the card, so
+     that the question is asked of them and nobody else. */
+  if (drop.kind === "pile" && (key === "nope" || key === "defuse")){
+    const answers = pileAnswers(key, ownerId);
+    if (!answers.length) return;
+    // The host replaying an old-style drop cannot ask anybody; take the newest.
+    if (answers.length > 1 && !window.__netApplying){ askWhichAnswer(info, answers); return; }
+    const a = answers[0];
+    performDrop(info, a.turn !== undefined ? { kind:"turn", pid:a.turn }
+                                           : { kind:"entry", jid:a.jid });
+    return;
+  }
+
   if (netSend("drop", [idx, drop.kind,
         drop.kind === "entry"  ? drop.jid :
+        drop.kind === "turn"   ? drop.pid :
         drop.kind === "pile"   ? drop.jid :
         drop.kind === "player" ? drop.pid :
         drop.kind === "hand"   ? drop.overIdx : null])) return;
 
   if (drop.kind === "hand"){ reorderHand(ownerId, idx, drop.overIdx); return; }
 
-  if (drop.kind === "pile"){
-    if (key === "defuse"){ defuseEntry(drop.jid, ownerId); return; }
-    if (key === "nope"){
-      // The card the pile is showing, when that is something aimed at you and
-      // there is no turn to take instead. Otherwise the seats decide.
-      const e = drop.jid === null || drop.jid === undefined
-                ? null : S.journal.find(x => x.id === drop.jid);
-      if (nopeCancelsCard(e, ownerId)) nopeEntry(drop.jid, ownerId);
-      else beginSeatPick(ownerId, card, "nopeturn");
-      return;
-    }
-    playToPile(idx, ownerId);
-    return;
-  }
+  if (drop.kind === "pile"){ playToPile(idx, ownerId); return; }
+
+  // There is only ever one turn to take, so there is nobody to pick: the
+  // seat pick this used to open offered exactly one seat.
+  if (drop.kind === "turn"){ nopeWholeTurn(ownerId, drop.pid); render(); return; }
 
   if (drop.kind === "entry"){
     // A Nope on a log line reaches the entries that are not a turn: your own
@@ -10156,11 +10345,13 @@ function showRules(){
     Defuse cancels the "no you": the original card is simply played again, at whoever it was first
     aimed at. A <b>Defuse</b> cannot answer another Defuse, though — "no you" does not stack
     against itself.</p>
-    <p><b>Last call is the end of the turn.</b> Drag a Nope or a Defuse onto any of the last
-    <b>four</b> lines of the game log, as long as they happened on the turn still in progress —
-    once a turn is over, everything in it is settled. Lines you are holding the card to answer
-    wear a small badge of that card; only you can see it, so a badge never gives away what is in
-    your hand. Bots take three seconds between moves, so there is always time.</p>
+    <p><b>Everything is answered on the discard pile.</b> Drop a Nope or a Defuse there and it
+    answers whatever there is to answer — a card aimed at you, a roll, a 7's discard, the robber
+    landing on you. When it could answer more than one thing, it asks which. A Nope can also
+    cancel the whole turn in progress.</p>
+    <p><b>Last call is the end of the turn</b>, and only the last four things that happened can
+    be answered — once a turn is over, everything in it is settled. Bots take three seconds
+    between moves, so there is always time.</p>
     <p><b>Defuse</b> answers an attack aimed at you by turning it around. Alter the Future and
     Favor hand you the card's power rather than simply reflecting it — you name the two tokens,
     or your own three resources.</p>

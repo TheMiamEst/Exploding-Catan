@@ -234,14 +234,21 @@ function serializeGame(){
     board: S.board || (BOARDSET === BOARD.large ? "large" : "small"),
     winPoints: S.winPoints || 10,
     turnSeconds: S.turnSeconds || 0,
-    turnTimerRemaining: S.turnTimerPaused ? S.turnTimerRemaining
-      : Math.max(0, ((S.turnTimerUntil || 0) - Date.now()) / 1000),
-    turnTimerPaused: !!S.turnTimerPaused,
+    turnTimerRemaining: Math.min(S.turnSeconds || 0,
+      Math.max(0, ((S.turnTimerUntil || 0) - Date.now()) / 1000)),
+    // Held on the host means frozen everywhere. A guest has no business
+    // deciding this for itself: half of what holds the clock — a dialog owed
+    // on another guest's screen, the host's own tab in the background — is
+    // invisible from where it sits, so it would count down through them.
+    turnTimerPaused: !!(S.turnTimerUntil && typeof turnClockHeld === "function" && turnClockHeld()),
     // Who a seven is still waiting on. Sent because canDefuseEntry asks it:
     // without it, a terminal cannot tell that the roll on its screen is still
     // answerable and draws no Defuse marker on the line.
     seven: S.seven ? { actor: S.seven.actor, jid: S.seven.jid,
                        queue: S.seven.queue.slice() } : null,
+    // Same reason as the seven: owesAnswer asks it, and a guest that cannot
+    // see an Attack is still owed would offer a Roll button that does nothing.
+    attackDue: (S.attackDue || []).map(m => ({ pid: m.pid, n: m.n, jid: m.jid })),
     winner: S.winner, revealed: S.revealed,
     // Who is being made to spend a Nope on a win, so that everybody else's
     // Nopes are refused on their own screen rather than on the host's.
@@ -397,6 +404,7 @@ function applyGame(b){
     : null;
   S.winner = (b.winner === undefined) ? null : b.winner;
   S.forcedNope = b.forcedNope || null;
+  S.attackDue = arr(b.attackDue, (b.attackDue && b.attackDue.length) || 0).filter(Boolean);
   S.revealed = !!b.revealed;
   S.diceLog = arr(b.diceLog, (b.diceLog && b.diceLog.length) || 0).filter(x => x !== null);
 
@@ -565,6 +573,8 @@ function applyRemoteDrop(seat, idx, kind, id){
   // guest's screen, so the host answers the same card they were looking at
   // rather than whatever happens to be on top by the time this lands.
   if (kind === "pile")   drop = { kind:"pile",   jid: id };
+  // A whole turn, chosen on the guest's own screen from the pile's answers.
+  if (kind === "turn")   drop = { kind:"turn",   pid: id };
   if (kind === "player") drop = { kind:"player", pid: id };
   if (kind === "board")  drop = { kind:"board" };
   if (kind === "hand")   drop = { kind:"hand", owner: seat, overIdx: id };
@@ -610,6 +620,16 @@ NET.anyPrompt = function(){
   return false;
 };
 
+/* A dialog somebody owes the TABLE, as opposed to a trade window or a menu
+   somebody opened for themselves — the turn clock's question, where
+   anyPrompt is the bots'. A shipped trade or bank panel is in NET.remote too,
+   and counting it held the clock while a guest browsed the bank on their own
+   turn. */
+NET.anyOwed = function(){
+  for (const k in NET.remote) if (NET.remote[k] && NET.remote[k].owed) return true;
+  return false;
+};
+
 NET.pendingSeats = function(){ return Object.keys(NET.remote).map(Number); };
 
 /* Last resort. A player who closed their tab mid-dialog leaves an answer
@@ -627,7 +647,7 @@ function btnSpec(buttons){
   return (buttons || []).map(b => ({ label: b.label, cls: b.cls || "", disabled: !!b.disabled }));
 }
 
-NET.shipModal = function(title, bodyHTML, buttons, mini){
+NET.shipModal = function(title, bodyHTML, buttons, mini, owed){
   // Read it either way, so a tag left over from an offline game can never send
   // the first online dialog to the wrong person.
   const seat = NET.takePromptSeat();
@@ -642,7 +662,8 @@ NET.shipModal = function(title, bodyHTML, buttons, mini){
   if (!NET.roster[seat] || seatIsOpen(NET.roster[seat])) return false;
 
   const id = ++NET.remoteId;
-  NET.remote[seat] = { id: id, kind: "modal", key: null, buttons: buttons || [] };
+  NET.remote[seat] = { id: id, kind: "modal", key: null, buttons: buttons || [],
+                       owed: !!(owed || mini) };
   writePrompt(seat, { id: id, kind: "modal", title: title, body: bodyHTML,
                       buttons: btnSpec(buttons), mini: !!mini });
   return true;
@@ -826,27 +847,7 @@ function hostLobby(){
       ' — read it out to your friends. They open the same page and press <b>Online → Join</b>.</p>' +
       seatRowsHTML() +
       '<div style="height:10px"></div>' +
-      (typeof modePickerHTML === "function" ? modePickerHTML() : "") +
-      '<div style="height:12px"></div>' +
-      '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Board</div>' +
-      '<div class="pick">' +
-      ["small", "large"].map(key => '<button class="' +
-        ((typeof GAME_BOARD !== "undefined" && GAME_BOARD === key) ? "primary" : "") +
-        '" onclick="window.__board(\'' + key + '\')">' +
-        (key === "small" ? "Normal board" : "Expansion board") + '</button>').join("") +
-      '</div>' +
-      '<div style="height:12px"></div>' +
-      '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Points to win <b id="ngWinValue">' +
-        (typeof GAME_WIN_POINTS !== "undefined" ? GAME_WIN_POINTS : 10) + '</b></div>' +
-      '<input type="range" min="3" max="20" value="' +
-        (typeof GAME_WIN_POINTS !== "undefined" ? GAME_WIN_POINTS : 10) +
-        '" oninput="window.__win(this.value)" style="width:100%">' +
-      '<div style="height:12px"></div>' +
-      '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Turn timer <b id="ngTimerValue">' +
-        ((typeof GAME_TURN_SECONDS !== "undefined" && GAME_TURN_SECONDS) ? GAME_TURN_SECONDS + " seconds" : "Off") + '</b></div>' +
-      '<input type="range" min="0" max="9" step="1" value="' +
-        (typeof timerSliderValue === "function" ? timerSliderValue(GAME_TURN_SECONDS || 0) : 0) +
-        '" oninput="window.__timer(this.value)" style="width:100%">' +
+      tableSettingsHTML() +
       '<div class="okbox" style="margin-top:10px">Empty seats are played by bots. Start when everyone is in ' +
       '— the seating is fixed once the game begins.</div>' +
       '<div class="rules" style="margin-top:8px">You are the host: your browser is running the game, so ' +
@@ -859,13 +860,55 @@ function hostLobby(){
   NET.onRoster = refresh;
   // The opening buttons redraw the lobby they live in rather than the New Game
   // dialog's, which is the only thing the two pickers do differently.
+  bindTableSettings(refresh);
+  refresh();
+}
+
+/* ══ what a table is dealt with ══════════════════════════════════════════════════
+   The opening, the board, the target and the clock. They lived inline in the
+   lobby, which made them the lobby's: their handlers redrew the lobby, and
+   the lobby refuses to draw once a game has started (see hostLobby). So the
+   only other place a game gets dealt — Restart — could not offer them, and a
+   table that wanted a different game had to break up and swap a new code.
+   Shared now, so the two places that deal a game can never disagree about
+   what one is made of. */
+function tableSettingsHTML(){
+  return (typeof modePickerHTML === "function" ? modePickerHTML() : "") +
+    '<div style="height:12px"></div>' +
+    '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Board</div>' +
+    '<div class="pick">' +
+    ["small", "large"].map(key => '<button class="' +
+      ((typeof GAME_BOARD !== "undefined" && GAME_BOARD === key) ? "primary" : "") +
+      '" onclick="window.__board(\'' + key + '\')">' +
+      (key === "small" ? "Normal board" : "Expansion board") + '</button>').join("") +
+    '</div>' +
+    '<div style="height:12px"></div>' +
+    '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Points to win <b id="ngWinValue">' +
+      (typeof GAME_WIN_POINTS !== "undefined" ? GAME_WIN_POINTS : 10) + '</b></div>' +
+    '<input type="range" min="3" max="20" value="' +
+      (typeof GAME_WIN_POINTS !== "undefined" ? GAME_WIN_POINTS : 10) +
+      '" oninput="window.__win(this.value)" style="width:100%">' +
+    '<div style="height:12px"></div>' +
+    '<div style="margin:0 0 4px;color:var(--dim);font-size:11.5px">Turn timer <b id="ngTimerValue">' +
+      ((typeof GAME_TURN_SECONDS !== "undefined" && GAME_TURN_SECONDS) ? GAME_TURN_SECONDS + " seconds" : "Off") + '</b></div>' +
+    '<input type="range" min="0" max="9" step="1" value="' +
+      (typeof timerSliderValue === "function" ? timerSliderValue(GAME_TURN_SECONDS || 0) : 0) +
+      '" oninput="window.__timer(this.value)" style="width:100%">';
+}
+
+/* Point the pickers at whichever dialog is showing them. The opening and the
+   board redraw it, to move the highlight; the two sliders only rewrite their
+   own number, because redrawing a dialog under a slider mid-drag drops the
+   drag. The local New Game dialog binds these same four names for itself, so
+   whichever dialog was opened last is the one they answer to. */
+function bindTableSettings(redraw){
   window.__mode = function(key){
     if (typeof MODES !== "undefined" && MODES[key]) GAME_MODE = key;
-    refresh();
+    redraw();
   };
   window.__board = function(key){
     if (key === "small" || key === "large") GAME_BOARD = key;
-    refresh();
+    redraw();
   };
   window.__win = function(points){
     GAME_WIN_POINTS = Math.min(20, Math.max(3, Number(points) || 10));
@@ -878,7 +921,31 @@ function hostLobby(){
     const out = document.getElementById("ngTimerValue");
     if (out) out.textContent = GAME_TURN_SECONDS ? GAME_TURN_SECONDS + " seconds" : "Off";
   };
-  refresh();
+}
+
+/* Another round with the same people — and, if they like, a different game.
+
+   It starts from the game on the table rather than from whatever the pickers
+   last said. Those are shared with the local New Game dialog, which writes them
+   the moment a button is pressed whether or not that game is ever started: open
+   it, poke at the board, cancel, and the restart would have offered you a game
+   you never chose. What is being played now is the honest default. Read once,
+   on the way in, so the host's own changes survive the dialog redrawing. */
+function restartDialog(){
+  if (S){
+    if (S.mode && typeof MODES !== "undefined" && MODES[S.mode]) GAME_MODE = S.mode;
+    if (S.board === "small" || S.board === "large") GAME_BOARD = S.board;
+    if (S.winPoints) GAME_WIN_POINTS = S.winPoints;
+    GAME_TURN_SECONDS = S.turnSeconds || 0;
+  }
+  const draw = () => openModal("Start another game?",
+    '<p class="sub">Same room, same seats, a brand new board. Whatever is on the ' +
+    'table now is gone. Change anything below first if you want a different game.</p>' +
+    tableSettingsHTML(),
+    [{ label:"Keep playing", fn: closeModal },
+     { label:"Deal a new board", cls:"warn", fn: startTable }]);
+  bindTableSettings(draw);
+  draw();
 }
 
 function guestLobby(){
@@ -1364,13 +1431,7 @@ window.onlineDialog = function(){
            { label: NET.anyPrompt() ? "Unstick (" + NET.pendingSeats().length + " waiting)" : "Unstick",
              fn: () => { NET.clearAllPrompts(); closeModal();
                          announce("⚠ Pending answers were cleared by the host", "info"); } },
-           { label:"Restart with these players", fn: () => {
-               openModal("Start another game?",
-                 '<p class="sub">Same room, same seats, a brand new board. Whatever is on the ' +
-                 'table now is gone.</p>',
-                 [{ label:"Keep playing", fn: closeModal },
-                  { label:"Deal a new board", cls:"warn", fn: startTable }]);
-             } },
+           { label:"Restart with these players", fn: restartDialog },
            { label:"Leave the game", cls:"warn", fn: () => { teardown(); closeModal(); backToIdle(); } }]
         : [{ label:"Stay", cls:"primary", fn: closeModal },
            { label:"Leave the game", cls:"warn", fn: () => { teardown(); closeModal(); backToIdle(); } }]);
