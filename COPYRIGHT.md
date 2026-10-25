@@ -6,3 +6,7 @@ No general license is granted to reproduce, modify, distribute, sublicense, or c
 Permission for uses beyond those exceptions must be obtained from the relevant copyright holder(s).
 Third-party trademarks, artwork, music, software dependencies, and other third-party materials remain subject to their respective owners' rights and applicable licenses.
 This notice does not revoke any rights or permissions previously granted.
+
+Clarification Regarding Third-Party Projects:
+Joshua Partridge has not granted authorization for the commercial exploitation of his original source code contained in this repository, including through third-party forks, adaptations, or derivative works.
+No endorsement of any third-party project or its licensing arrangements should be inferred from its association with this repository.
