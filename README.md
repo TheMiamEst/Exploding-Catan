@@ -1,3 +1,11 @@
+## Copyright
+
+Original source code © 2026 Joshua Partridge.
+All rights reserved.
+
+This repository is not offered under an open-source
+license. See COPYRIGHT.md for details.
+
 # Exploding Catan
 
 Catan with the development deck torn out and 54 kitten cards put in its place.
